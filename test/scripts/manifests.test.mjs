@@ -96,10 +96,3 @@ test('the mod tests have their own npm script', () => {
 test('the changelog has release notes for the current version', () => {
   assert.ok(extractReleaseNotes(read('CHANGELOG.md'), pkg.version).length > 0);
 });
-
-test('the release workflow only publishes: no test job', () => {
-  const workflow = read('.github/workflows/release.yml');
-  assert.match(workflow, /tags:\s*\n\s*- 'v\*\.\*\.\*'/);
-  assert.match(workflow, /gh release create/);
-  assert.doesNotMatch(workflow, /npm (test|ci|install)/);
-});

@@ -1,7 +1,9 @@
 // npm run release -- <patch|minor|major|X.Y.Z> [--push] [--dry-run]
-// Local release: checks, local tests, version bump in every manifest, changelog stamp,
-// commit `LS-N chore(release): vX.Y.Z`, annotated tag. Pushing the tag lets the GitHub
-// workflow publish the release; no tests run on GitHub.
+// Cuts a release on develop: checks, tests, version bump in every manifest, changelog stamp,
+// commit `LS-N chore(release): vX.Y.Z` and an annotated tag. --push sends the branch and the tag
+// in one atomic push, so origin gets both or neither. --dry-run runs the same checks and tests and
+// writes nothing. The Release workflow (.github/workflows/release.yml) runs this command on GitHub,
+// then publishes the GitHub release.
 // Exit codes: 0 released (or dry run), 1 usage error, 2 refused or failed.
 
 import fs from 'node:fs';
@@ -53,42 +55,67 @@ function parseOptions(argv) {
 }
 
 function release({ kind, shouldPush, isDryRun, cwd, exec, today, say }) {
-  const git = (...args) => {
-    const result = exec('git', args, {});
-    if (result.status !== 0) throw new Refusal(`git ${args.join(' ')} failed (exit ${result.status}).`);
-    return result.stdout;
-  };
+  const git = gitRunner(exec);
+  const plan = planRelease({ kind, cwd, exec, git, today });
 
+  if (exec('npm', ['test'], { inherit: true }).status !== 0) throw new Refusal('tests failed; nothing was changed.');
+
+  if (isDryRun) {
+    say(`release (dry run): ${plan.current} → ${plan.version}, commit "${plan.subject}", tag ${plan.tag}${shouldPush ? ', push' : ''}.`);
+    say(extractReleaseNotes(plan.changelog, plan.version));
+    return;
+  }
+
+  writeRelease(plan, cwd);
+  git('add', ...MANIFESTS, CHANGELOG);
+  git('commit', '-m', plan.subject);
+  git('tag', '-a', plan.tag, '-m', plan.tag);
+  if (shouldPush) pushAtomically(plan.tag, exec);
+  say(`release: ${plan.tag} committed and tagged${shouldPush
+    ? ' and pushed; GitHub publishes the release'
+    : `. Push with: git push --atomic origin ${RELEASE_BRANCH} refs/tags/${plan.tag}`}.`);
+}
+
+/** Reads the repository and works the release out, refusing before anything is written. */
+function planRelease({ kind, cwd, exec, git, today }) {
   const branch = git('rev-parse', '--abbrev-ref', 'HEAD').trim();
   if (branch !== RELEASE_BRANCH) throw new Refusal(`releases are cut from ${RELEASE_BRANCH}, not ${branch}.`);
   if (git('status', '--porcelain').trim() !== '') throw new Refusal('the working tree has uncommitted changes.');
 
-  const read = (path) => fs.readFileSync(join(cwd, path), 'utf8');
-  const current = JSON.parse(read('package.json')).version;
+  const current = JSON.parse(readText(cwd, 'package.json')).version;
   const version = toRefusal(() => nextVersion(current, kind));
-  const changelog = toRefusal(() => stampChangelog(read(CHANGELOG), version, today));
-  const index = nextCommitIndex(git('log', '--format=%s').split('\n'));
-  const subject = `${COMMIT_PREFIX}-${index} chore(release): v${version}`;
-
-  if (isDryRun) {
-    say(`release (dry run): ${current} → ${version}, commit "${subject}", tag v${version}${shouldPush ? ', push' : ''}.`);
-    say(extractReleaseNotes(changelog, version));
-    return;
+  const tag = `v${version}`;
+  if (exec('git', ['rev-parse', '--quiet', '--verify', `refs/tags/${tag}`], {}).status === 0) {
+    throw new Refusal(`tag ${tag} already exists.`);
   }
+  const changelog = toRefusal(() => stampChangelog(readText(cwd, CHANGELOG), version, today));
+  const index = nextCommitIndex(git('log', '--format=%s').split('\n'));
+  return { current, version, tag, changelog, subject: `${COMMIT_PREFIX}-${index} chore(release): ${tag}` };
+}
 
-  if (exec('npm', ['test'], { inherit: true }).status !== 0) throw new Refusal('tests failed; nothing was changed.');
-
+function writeRelease({ version, changelog }, cwd) {
   for (const path of MANIFESTS) {
-    fs.writeFileSync(join(cwd, path), `${JSON.stringify(withVersion(JSON.parse(read(path)), version), null, 2)}\n`);
+    fs.writeFileSync(join(cwd, path), `${JSON.stringify(withVersion(JSON.parse(readText(cwd, path)), version), null, 2)}\n`);
   }
   fs.writeFileSync(join(cwd, CHANGELOG), changelog);
-
-  git('add', ...MANIFESTS, CHANGELOG);
-  git('commit', '-m', subject);
-  git('tag', '-a', `v${version}`, '-m', `v${version}`);
-  if (shouldPush) git('push', 'origin', RELEASE_BRANCH, '--follow-tags');
-  say(`release: v${version} committed and tagged${shouldPush ? ' and pushed; GitHub publishes the release' : '. Push with: git push origin develop --follow-tags'}.`);
 }
+
+/** Branch and tag in one atomic push: origin takes both, or neither when develop moved on there. */
+function pushAtomically(tag, exec) {
+  const pushed = exec('git', ['push', '--atomic', 'origin', RELEASE_BRANCH, `refs/tags/${tag}`], { inherit: true });
+  if (pushed.status !== 0) {
+    throw new Refusal(`origin refused the push, so it got neither ${RELEASE_BRANCH} nor ${tag} (did ${RELEASE_BRANCH} move on there?). `
+      + 'The release commit and its tag exist only in this clone.');
+  }
+}
+
+const gitRunner = (exec) => (...args) => {
+  const result = exec('git', args, {});
+  if (result.status !== 0) throw new Refusal(`git ${args.join(' ')} failed (exit ${result.status}).`);
+  return result.stdout;
+};
+
+const readText = (cwd, path) => fs.readFileSync(join(cwd, path), 'utf8');
 
 function toRefusal(compute) {
   try {

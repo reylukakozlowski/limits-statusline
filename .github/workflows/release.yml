@@ -1,25 +1,132 @@
-# Publishes a GitHub release when a version tag is pushed (npm run release -- <kind> --push).
-# Tests run locally before the tag exists; this workflow only publishes.
+# Release: publishes a new version. Start it from Actions → Release → Run workflow, on develop.
+#
+#   authorize  stops anyone but the repository owner, and any branch but develop, before an
+#              approval is even requested.
+#   release    waits for the owner's approval of the `release` environment, then runs
+#              scripts/release.mjs: tests, version bump in every manifest, CHANGELOG stamp, commit
+#              `LS-N chore(release): vX.Y.Z` and tag, sent to develop in one atomic push. The
+#              sealoop marketplace serves develop, so that push is what reaches its users.
+#   publish    creates the GitHub release from the version's CHANGELOG section, unless it exists.
+#
+# A tag pushed from a computer (npm run release -- <kind> --push) starts only the publish job.
+# The tag the release job pushes starts no second run: events made with GITHUB_TOKEN start none.
 name: Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Part of the version to raise
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      version:
+        description: Exact version X.Y.Z instead of the bump (optional)
+        type: string
+        required: false
+        default: ''
+      dry_run:
+        description: Dry run - run every check and the tests, change nothing
+        type: boolean
+        default: false
   push:
-    tags:
-      - 'v*.*.*'
+    tags: ['v*.*.*']
 
-permissions:
-  contents: write
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  release:
+  authorize:
+    name: Check who started the release
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - name: Allow only the repository owner, on develop
+        env:
+          REF: ${{ github.ref }}
+          ACTOR_ID: ${{ github.actor_id }}
+          OWNER_ID: ${{ github.repository_owner_id }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          if [ "$REF" != "refs/heads/develop" ]; then
+            echo "::error::Releases are cut from develop, not $REF."
+            exit 1
+          fi
+          # IDs survive account renames; the triggering actor also covers a re-run by someone else.
+          # Re-running only the failed jobs skips this check: the release environment's approval
+          # still stands in front of the release job.
+          if [ "$ACTOR_ID" != "$OWNER_ID" ] || [ "$TRIGGERING_ACTOR" != "$OWNER" ]; then
+            echo "::error::Only $OWNER can release; this run was started by $TRIGGERING_ACTOR."
+            exit 1
+          fi
+
+  release:
+    name: Test, bump, commit, tag and push
+    needs: authorize
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.result.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # LS-N numbering reads every commit subject; the tag check needs every tag
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Commit as the repository's author
+        run: |
+          git config user.name 'Reywedian'
+          git config user.email '27358836+Reywedian@users.noreply.github.com'
+
+      - name: Test, bump, commit, tag and push
+        env:
+          KIND: ${{ inputs.version || inputs.bump }}
+          MODE: ${{ inputs.dry_run && '--dry-run' || '--push' }}
+        run: node scripts/release.mjs "$KIND" "$MODE"
+
+      - name: Pass the new tag to the publish job
+        id: result
+        if: ${{ !inputs.dry_run }}
+        run: echo "tag=$(git describe --exact-match HEAD)" >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Publish the GitHub release
+    needs: release
+    # After a release, or alone for a tag pushed from a computer; a dry run hands over no tag.
+    if: ${{ !cancelled() && !failure() && (github.event_name == 'push' || needs.release.outputs.tag != '') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.event_name == 'push' && github.ref_name || needs.release.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
 
       - name: Take the release notes from CHANGELOG.md
-        run: node scripts/release-notes.mjs "$GITHUB_REF_NAME" > release-notes.md
+        run: node scripts/release-notes.mjs "$TAG" > "$RUNNER_TEMP/release-notes.md"
 
-      - name: Create the GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md --verify-tag
+      - name: Create the GitHub release unless it exists
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "The release $TAG already exists; nothing to publish."
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md" --verify-tag
+          fi

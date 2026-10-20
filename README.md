@@ -135,7 +135,8 @@ claude plugin validate .  # manifest, hooks module and state contract
 ```
 
 The code is split into a pure `src/core` (snapshot → lines), a terminal adapter
-(`src/terminal`) and a desktop adapter (`src/desktop`). Tests run locally only.
+(`src/terminal`) and a desktop adapter (`src/desktop`). Tests run locally, and the Release
+workflow runs them again before every release.
 
 ### Run a working copy in every session
 
@@ -157,17 +158,34 @@ itself: after an edit, `/reload-plugins` picks it up with no new version.
 
 ## Releasing
 
-1. Describe the changes under `## [Unreleased]` in `CHANGELOG.md` and commit them.
-2. Run `npm run release -- patch` (or `minor`, `major`, `X.Y.Z`) on `develop`. It runs `npm test`,
-   bumps the version in `package.json`, `plugin.json` and `marketplace.json`, stamps the changelog,
-   commits and tags `vX.Y.Z`. Add `--dry-run` to preview it; run `npm run test:mod` first when the
-   band changed.
-3. Push with `git push origin develop --follow-tags` (or pass `--push`). The tag starts the GitHub
-   workflow that publishes the release with the changelog notes. Users get the update through
-   `claude plugin update limits-statusline@sealoop`.
+Releases come from the **Release** workflow on GitHub, which only the repository owner can run.
 
-The first release, `v0.1.0`, is already stamped in the changelog, so it is tagged by hand:
-`git tag -a v0.1.0 -m v0.1.0 && git push origin develop --follow-tags`.
+1. Describe the changes under `## [Unreleased]` in `CHANGELOG.md` and merge them into `develop`.
+   Run `npm run test:mod` first when the band changed: the workflow does not run it.
+2. On GitHub, open **Actions → Release → Run workflow** on `develop` and pick the bump (`patch`,
+   `minor` or `major`) or type an exact `X.Y.Z`. Tick **Dry run** to run every check and the tests
+   without changing anything.
+3. Approve the run: the release job waits for the owner's approval of the `release` environment.
+4. The job runs `npm test`, bumps the version in `package.json`, `plugin.json` and
+   `marketplace.json`, stamps the changelog, commits `LS-N chore(release): vX.Y.Z`, tags `vX.Y.Z`
+   and pushes the commit and the tag to `develop` in one atomic push: when `develop` moved on in the
+   meantime, neither is pushed and nothing changes. The publish job then creates the GitHub release
+   with the changelog notes. A failed publish can be re-run on its own; it skips a release that
+   already exists.
+
+The `sealoop` marketplace serves `develop`, so the push is what reaches users: they get the new
+version with `claude plugin update limits-statusline@sealoop`, or by themselves when they turned
+auto-update on for this marketplace (it is off by default for marketplaces outside Anthropic's).
+The first tagged release is `v0.1.1`; `0.1.0` has a changelog entry but no tag.
+
+Who can release: the workflow stops anyone but the repository owner, and any branch but `develop`,
+before it asks for approval, and the `release` environment (Settings → Environments) requires the
+owner's approval and accepts only `develop`. Keep that environment: GitHub creates a missing
+environment that a workflow names, without any protection rules. The workflow file has to stay on
+`develop`, the default branch, for **Run workflow** to appear.
+
+The same release still runs from a computer, on an up-to-date `develop`:
+`npm run release -- patch --push` (or `--dry-run`). The tag it pushes starts only the publish job.
 
 ## License
 
