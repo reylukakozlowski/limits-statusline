@@ -1,7 +1,9 @@
-// The context history as a thin vector line, the way the approved mockup draws it. The desktop
-// app has an Svg element; the terminal falls back to the braille line from core/glyphs.
+// The context history as a thin vector line, the way the approved mockup draws it, over a
+// see-through shade of the same colour down to the baseline. The desktop app has an Svg
+// element; the terminal falls back to the braille line from core/glyphs.
 
 const PADDING = 1;
+const FILL_OPACITY = 0.2;
 const SAFE_COLOR = /^#[0-9a-f]{3,8}$|^[a-z]+$/i;
 
 const round = (value) => Math.round(value * 10) / 10;
@@ -17,12 +19,15 @@ export function sparklineSvg(series, { width, height, color }) {
   const values = series.length === 1 ? [series[0], series[0]] : series;
   const innerWidth = width - 2 * PADDING;
   const innerHeight = height - 2 * PADDING;
+  const bottom = round(height - PADDING);
   const points = values.map((value, index) => {
     const x = PADDING + (index / (values.length - 1)) * innerWidth;
     const y = PADDING + (1 - Math.min(1, Math.max(0, value))) * innerHeight;
     return `${round(x)},${round(y)}`;
   });
+  const area = [`${round(PADDING)},${bottom}`, ...points, `${round(width - PADDING)},${bottom}`];
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`
+    + `<polygon fill="${color}" fill-opacity="${FILL_OPACITY}" stroke="none" points="${area.join(' ')}"/>`
     + `<polyline fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" points="${points.join(' ')}"/>`
     + '</svg>';
 }
