@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-20
+
 ### Changed
 
 - The 7-day pace is shown per hour again (`↗ 0.4%/h`), like the 5-hour one; it still looks back
