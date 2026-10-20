@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The desktop band writes every call it makes to Claude Code in `src/desktop/band.mjs`, its git
+  command in full, so that Anthropic's directory can read what the mod runs; the band shows the
+  same as before.
+- The README says which program the desktop band runs, which file it writes, and that it sends
+  nothing anywhere.
+
 ## [1.0.1] - 2026-10-20
 
 ### Changed

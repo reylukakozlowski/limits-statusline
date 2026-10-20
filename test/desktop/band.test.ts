@@ -24,9 +24,9 @@ const HISTORY_FILE = 'C:/Users/dev/.claude/limits-statusline/limit-history.json'
 const fileKey = (path: string) => path.replace(/\\/g, '/')
 const failing = async () => { throw new Error('denied') }
 
-type Answers = { processRun?: () => Promise<unknown>, files?: Record<string, string>, refuse?: boolean }
+type Answers = { processRun?: ($: any, e: any) => Promise<unknown>, files?: Record<string, string>, refuse?: boolean, writeFails?: boolean }
 
-function answerSession(on: any, { processRun, files = {}, refuse = false }: Answers = {}) {
+function answerSession(on: any, { processRun, files = {}, refuse = false, writeFails = false }: Answers = {}) {
   on('session.usage', async () => ({ value: USAGE }))
   on('session.model', async () => ({ value: 'claude-opus-5-5' }))
   on('session.cwd', async () => ({ value: 'C:/Users/dev/daily-claude' }))
@@ -36,7 +36,7 @@ function answerSession(on: any, { processRun, files = {}, refuse = false }: Answ
   on('env.get', refuse ? failing : async ($: any, e: any) => ({ value: e.name === 'USERPROFILE' ? 'C:/Users/dev' : undefined }))
   on('settings.read', refuse ? failing : async () => ({ value: {} }))
   on('fs.exists', refuse ? failing : async ($: any, e: any) => ({ value: Object.hasOwn(files, fileKey(e.path)) }))
-  on('fs.write', async ($: any, e: any) => {
+  on('fs.write', writeFails ? failing : async ($: any, e: any) => {
     files[fileKey(e.path)] = e.text
     return { value: undefined }
   })
@@ -132,6 +132,32 @@ test('reads the branch from .git/HEAD when $.process is not available', async ($
   await measure($, 40)
   const ui = await mount($, 'desktop')
   expect(await ui.find({ type: 'Text', text: /git develop/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('runs git status in the session folder without the index lock, and shows the branch', async ($, on) => {
+  const calls: any[] = []
+  answerSession(on, {
+    processRun: async ($: any, e: any) => {
+      calls.push(e)
+      const stdout = '# branch.oid abc\n# branch.head develop\n1 .M N... a b c d e f x.mjs\n'
+      return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    },
+  })
+  await measure($, 40)
+  const ui = await mount($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /git develop/ })).toBeDefined()
+  expect(calls[0].argv).toEqual(['git', 'status', '--porcelain=v2', '--branch', '--untracked-files=no'])
+  expect(calls[0].init?.env?.GIT_OPTIONAL_LOCKS).toBe('0')
+  expect(calls[0].init?.cwd).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a history file that cannot be written leaves the band drawn', async ($, on) => {
+  answerSession(on, { writeFails: true })
+  await $.session.measure({ context: { tokens: 0, window: 1_000_000, percent: 54 }, rateLimits: USAGE.rateLimits, changed: ['rateLimits'] } as never)
+  const ui = await mount($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /7d/ })).toBeDefined()
   await ui.unmount()
 })
 
