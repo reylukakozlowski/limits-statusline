@@ -1,41 +1,19 @@
-// Git state for the band. `$.process` is documented as CLI only, so when it is unavailable the
-// branch is read from <repo>/.git/HEAD through `$.fs`; the dirty marker is then unknown.
-
-import { GIT_STATUS_ARGS, parseGitStatus } from '../core/git-status.mjs';
+// Git state for the band. The band runs `git status` through `$.process`, which is documented as
+// CLI only; where it is unavailable the branch is read from <repo>/.git/HEAD through `$.fs` and
+// the dirty marker is then unknown. The calls on `$` live in band.mjs, where the directory reads
+// them; this file keeps what is decided from their answers.
 
 export const GIT_TIMEOUT_MS = 1500;
 const SHORT_SHA_LENGTH = 7;
-const NOT_A_REPO = Object.freeze({ isRepo: false, branch: null, isDirty: false });
+export const NOT_A_REPO = Object.freeze({ isRepo: false, branch: null, isDirty: false });
 
 /**
- * @param {{ session: any, process?: any, fs?: any }} $ the mods API
- * @returns {Promise<import('../core/git-status.mjs').GitState | null>} null when nothing could be asked
+ * The state of a repository known only by its .git/HEAD.
+ * @param {unknown} head the file's text, or null when it could not be read
+ * @returns {import('../core/git-status.mjs').GitState}
  */
-export async function probeGitWithEngine($) {
-  try {
-    const cwd = await $.session.cwd();
-    return parseGitStatus(await $.process.run(['git', '-C', cwd, ...GIT_STATUS_ARGS], {
-      timeoutMs: GIT_TIMEOUT_MS,
-      env: { GIT_OPTIONAL_LOCKS: '0' }, // never take the index lock from the user's own git
-    }));
-  } catch {
-    return readHeadThroughFs($);
-  }
-}
-
-async function readHeadThroughFs($) {
-  let repo;
-  try {
-    repo = await $.session.repo();
-  } catch {
-    return null;
-  }
-  if (!repo?.root) return { ...NOT_A_REPO };
-  try {
-    return { isRepo: true, branch: branchFromHead(await $.fs.read(`${repo.root}/.git/HEAD`)), isDirty: false };
-  } catch {
-    return { isRepo: true, branch: null, isDirty: false };
-  }
+export function gitFromHead(head) {
+  return { isRepo: true, branch: head == null ? null : branchFromHead(head), isDirty: false };
 }
 
 function branchFromHead(head) {

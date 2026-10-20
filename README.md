@@ -191,6 +191,16 @@ it from the directory, `-sealoop` when you added it from GitHub.
   the prompt-cache variables, keeps the effort, cache counts, time of the last response, context
   history and git state in the state Claude Code holds for the mod, and redraws once a minute so
   the reset countdowns stay current.
+  - **The one program it runs** is `git status --porcelain=v2 --branch --untracked-files=no`, in
+    the session's folder with `GIT_OPTIONAL_LOCKS=0`, written out in full in
+    `src/desktop/band.mjs`. It only reads the repository, to show the branch and whether there are
+    uncommitted changes. Its output is read on your computer and goes nowhere else.
+  - **The one file it writes** is the plan limit history above,
+    `~/.claude/limits-statusline/limit-history.json` (in `CLAUDE_CONFIG_DIR` when set): the
+    plugin's own data, which no other tool runs or reads as settings or instructions. It reads
+    `CLAUDE_CONFIG_DIR`, `USERPROFILE` and `HOME` only to find that folder.
+  - **It sends nothing anywhere**: no network requests, and nothing from the conversation leaves
+    your computer. What it reads is drawn in the band and kept as described here.
 
 With `CLAUDE_CONFIG_DIR` set, these folders live there instead of `~/.claude`.
 

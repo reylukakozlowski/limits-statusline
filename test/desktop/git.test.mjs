@@ -1,42 +1,28 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { probeGitWithEngine } from '../../src/desktop/git.mjs';
+import { readFileSync } from 'node:fs';
+import { GIT_STATUS_ARGS } from '../../src/core/git-status.mjs';
+import { NOT_A_REPO, gitFromHead } from '../../src/desktop/git.mjs';
 
-const engine = ({ run, repo = null, files = {} } = {}) => ({
-  session: { cwd: async () => 'C:/work/app', repo: async () => repo },
-  process: { run: run ?? (async () => { throw new Error('CLI only'); }) },
-  fs: {
-    read: async (path) => {
-      if (!(path in files)) throw new Error(`ENOENT ${path}`);
-      return files[path];
-    },
-  },
+test('a branch HEAD gives the branch, with the dirty marker unknown', () => {
+  assert.deepEqual(gitFromHead('ref: refs/heads/feature/x\n'), { isRepo: true, branch: 'feature/x', isDirty: false });
 });
 
-test('git status through $.process gives branch and dirty state', async () => {
-  const calls = [];
-  const run = async (argv, init) => {
-    calls.push({ argv, init });
-    return { exitCode: 0, stdout: '# branch.oid abc\n# branch.head develop\n1 .M N... a b c d e f x.mjs\n' };
-  };
-  assert.deepEqual(await probeGitWithEngine(engine({ run })), { isRepo: true, branch: 'develop', isDirty: true });
-  assert.deepEqual(calls[0].argv.slice(0, 3), ['git', '-C', 'C:/work/app']);
-  assert.equal(calls[0].init.env.GIT_OPTIONAL_LOCKS, '0');
+test('a detached HEAD reads as its short commit, an unreadable or odd HEAD as an unknown branch', () => {
+  assert.equal(gitFromHead('0123456789abcdef\n').branch, '0123456');
+  assert.deepEqual(gitFromHead(null), { isRepo: true, branch: null, isDirty: false });
+  assert.equal(gitFromHead('something else').branch, null);
 });
 
-test('without $.process the branch comes from .git/HEAD of the session repository', async () => {
-  const $ = engine({ repo: { root: 'C:/work/app', remote: null }, files: { 'C:/work/app/.git/HEAD': 'ref: refs/heads/feature/x\n' } });
-  assert.deepEqual(await probeGitWithEngine($), { isRepo: true, branch: 'feature/x', isDirty: false });
+test('outside a repository there is no git', () => {
+  assert.deepEqual(NOT_A_REPO, { isRepo: false, branch: null, isDirty: false });
 });
 
-test('a detached HEAD reads as its short commit, an unreadable HEAD as an unknown branch', async () => {
-  const detached = engine({ repo: { root: 'C:/r' }, files: { 'C:/r/.git/HEAD': '0123456789abcdef\n' } });
-  assert.equal((await probeGitWithEngine(detached)).branch, '0123456');
-  assert.deepEqual(await probeGitWithEngine(engine({ repo: { root: 'C:/r' } })), { isRepo: true, branch: null, isDirty: false });
-});
-
-test('outside a repository, or when everything fails, there is no git', async () => {
-  assert.deepEqual(await probeGitWithEngine(engine()), { isRepo: false, branch: null, isDirty: false });
-  const broken = { session: { cwd: async () => { throw new Error('x'); }, repo: async () => { throw new Error('y'); } } };
-  assert.equal(await probeGitWithEngine(broken), null);
+// The band writes its git command as fixed text, so that the directory can read what the mod
+// runs; it has to stay the terminal's command.
+test('the band runs the same git status as the terminal status line', () => {
+  const band = readFileSync(new URL('../../src/desktop/band.mjs', import.meta.url), 'utf8');
+  const argv = band.match(/\$\.process\.run\((\[[^\]]*\])/);
+  assert.ok(argv, 'band.mjs calls $.process.run with an argument vector written out');
+  assert.deepEqual(JSON.parse(argv[1].replaceAll("'", '"')), ['git', ...GIT_STATUS_ARGS]);
 });
