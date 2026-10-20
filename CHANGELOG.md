@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-20
+
 ### Changed
 
 - The desktop band writes every call it makes to Claude Code in `src/desktop/band.mjs`, its git

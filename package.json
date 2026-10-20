@@ -1,6 +1,6 @@
 {
   "name": "limits-statusline",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Claude Code status line: cost, runtime, cache, effort, context and the 7-day / 5-hour plan limits with recent pace and usage projected to the reset.",
   "type": "module",
