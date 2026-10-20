@@ -7,7 +7,6 @@ export const DASH = '—';
 const SECONDS_PER_MINUTE = 60;
 const MINUTES_PER_HOUR = 60;
 const HOURS_PER_DAY = 24;
-const HOURS_PER_RATE_UNIT = Object.freeze({ h: 1, d: HOURS_PER_DAY });
 
 /** Duration as `42s`, `50m` or `5h40m` (hours never roll into days, minutes zero-padded). */
 export function formatDuration(ms) {
@@ -50,10 +49,9 @@ export function formatCountdown(ms) {
   return `${Math.floor(totalHours / HOURS_PER_DAY)}d${hours}h`;
 }
 
-/** Percent per hour, shown per hour or per day with one decimal: `14.4%/h`, `10.2%/d`. */
-export function formatRate(percentPerHour, unit = 'h') {
-  if (!Number.isFinite(percentPerHour) || !Object.hasOwn(HOURS_PER_RATE_UNIT, unit)) return DASH;
-  return `${(percentPerHour * HOURS_PER_RATE_UNIT[unit]).toFixed(1)}%/${unit}`;
+/** Percent per hour with one decimal: `14.4%/h`. */
+export function formatRate(percentPerHour) {
+  return Number.isFinite(percentPerHour) ? `${percentPerHour.toFixed(1)}%/h` : DASH;
 }
 
 /**

@@ -46,10 +46,9 @@ const PROJECTION_WIDTH = 4; // "117%"
 const GAP = '  ';
 const POINTS_PER_CHAR = 2;
 
-// The 7-day pace reads per day, which is how a week's budget is planned.
 const LIMIT_LINES = Object.freeze([
-  Object.freeze({ label: '7d', kind: 'sevenDay', rateUnit: 'd' }),
-  Object.freeze({ label: '5h', kind: 'fiveHour', rateUnit: 'h' }),
+  Object.freeze({ label: '7d', kind: 'sevenDay' }),
+  Object.freeze({ label: '5h', kind: 'fiveHour' }),
 ]);
 
 // What the limit lines give up, in order, until they fit the width: first the reset's clock
@@ -138,11 +137,11 @@ function linesChangedSegments(linesChanged) {
 
 function limitLines(snapshot, size, columns) {
   const clock = { nowMs: snapshot.nowMs, timeZone: snapshot.timeZone ?? null };
-  const limits = LIMIT_LINES.map(({ label, kind, rateUnit }) => {
+  const limits = LIMIT_LINES.map(({ label, kind }) => {
     const reading = snapshot.limits?.[kind] ?? null;
     const analysis = analyzeLimit(reading, LIMIT_WINDOWS[kind], snapshot.nowMs, snapshot.limitReadings?.[kind] ?? []);
     const clockText = formatClock(reading?.resetsAtMs, clock);
-    return { label, rateUnit, analysis, countdown: formatCountdown(analysis?.remainingMs), clockText: clockText === DASH ? null : clockText };
+    return { label, analysis, countdown: formatCountdown(analysis?.remainingMs), clockText: clockText === DASH ? null : clockText };
   });
   const draw = (details) => {
     const resets = resetColumn(limits.filter(({ analysis }) => analysis), details.showClock);
@@ -168,7 +167,7 @@ function resetColumn(limits, showClock) {
   }));
 }
 
-function limitLine({ label, rateUnit, analysis }, { size, details, reset }) {
+function limitLine({ label, analysis }, { size, details, reset }) {
   const labelSegment = segment(label.padEnd(LABEL_WIDTH), TONE.muted);
   if (!analysis) return [labelSegment, segment(DASH, TONE.muted)];
   const tone = limitTone(analysis);
@@ -183,7 +182,7 @@ function limitLine({ label, rateUnit, analysis }, { size, details, reset }) {
     segment(GAP),
     segment(`↻ ${reset}`, TONE.muted),
     segment(GAP),
-    segment(`↗ ${formatRate(analysis.ratePerHour, rateUnit)}`, rateTone),
+    segment(`↗ ${formatRate(analysis.ratePerHour)}`, rateTone),
     ...(details.showLimitIn && analysis.limitInMs !== null
       ? [segment(GAP), segment(`⚠ 100% in ${formatCountdown(analysis.limitInMs)}`, TONE.alert)]
       : []),
