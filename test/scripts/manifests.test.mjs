@@ -133,6 +133,19 @@ test('setup runs only when the user types it, and may run only its own script', 
   assert.match(setup, /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/setup\.mjs" --data "\$\{CLAUDE_PLUGIN_DATA\}" \$ARGUMENTS$/m);
 });
 
+test('directory policy: README has three or more use cases, support, privacy and security links', () => {
+  const readme = read('README.md');
+  const useCases = readme.split(/^## Use cases$/m)[1]?.split(/^## /m)[0] ?? '';
+  assert.ok((useCases.match(/^\d+\. \*\*/gm) ?? []).length >= 3);
+  assert.match(readme, /^## Support$/m);
+  assert.match(readme, /\(PRIVACY\.md\)/);
+  assert.match(readme, /\(SECURITY\.md\)/);
+  assert.match(read('SECURITY.md'), /lukakozlowski@outlook\.com/);
+  for (const doc of ['README.md', 'PRIVACY.md']) {
+    assert.doesNotMatch(read(doc), /plugins\/data\/limits-statusline-sealoop/, `${doc} names one install source only`);
+  }
+});
+
 test('userConfig stays loadable on Claude Code before 2.1.271 (no options pickers)', () => {
   for (const [key, field] of Object.entries(plugin.userConfig ?? {})) {
     assert.equal('options' in field, false, key);

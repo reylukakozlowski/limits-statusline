@@ -21,6 +21,9 @@ It works in both places Claude Code runs on your computer:
 - **Claude desktop app (Code tab)** — a band above the prompt, drawn by the plugin's mod in the
   app's monospaced face, with the context history as a real vector line.
 
+It is a Claude Code plugin only: claude.ai chat and Cowork have no status line, so it adds nothing
+there.
+
 ## Requirements
 
 | Feature | Needs |
@@ -31,6 +34,17 @@ It works in both places Claude Code runs on your computer:
 | Prompt-cache ratio in the terminal | Exact with Claude Code 2.1.251+, estimated from the last request on older versions |
 
 ## Install
+
+Install it from one source only, Anthropic's directory or GitHub, so that one copy draws the line.
+
+### From Anthropic's directory
+
+Once the plugin is listed in [Anthropic's directory](https://claude.ai/directory), add **Limits
+Status Line** in claude.ai under **Customize → Plugins**, or browse the directory with
+`/plugin directory` in Claude Code 2.1.287 or later. Claude Code loads it at the next session start
+as `limits-statusline@synced`.
+
+### From GitHub
 
 From a shell, on any Claude Code version with plugins:
 
@@ -56,16 +70,45 @@ A plugin cannot switch the status line on by itself, so run this once in Claude 
 It writes `statusLine` into your `settings.json` (in `CLAUDE_CONFIG_DIR` when you set one, else
 `~/.claude`). Your previous status line, if you had one, is saved and comes back with
 `/limits-statusline:setup --uninstall`. Add `--dry-run` to see what would change without writing
-anything. The desktop band needs no setup.
+anything. The command runs only when you type it, and Claude Code pre-approves only the plugin's
+own setup script for it. The desktop band needs no setup.
 
 ### Uninstall
 
 Run `/limits-statusline:setup --uninstall` **before** removing the plugin: it puts your previous
-status line back (or removes the entry). Then run `claude plugin uninstall limits-statusline@sealoop`.
-Removing or disabling the plugin first leaves `settings.json` pointing at a runtime that no longer
-exists, so the bottom line goes blank; your saved status line is still in
-`~/.claude/limits-statusline/previous-statusline.json` and the command above restores it as long as
-the plugin is installed.
+status line back (or removes the entry). Then remove the plugin where you added it: in claude.ai
+under **Customize → Plugins** for the directory, or with
+`claude plugin uninstall limits-statusline@sealoop` for GitHub. Removing or disabling the plugin
+first leaves `settings.json` pointing at a runtime that no longer exists, so the bottom line goes
+blank; your saved status line is still in `~/.claude/limits-statusline/previous-statusline.json`
+and the command above restores it as long as the plugin is installed.
+
+## Use cases
+
+1. **Turn the status line on, after a look at what changes.** Type
+   `/limits-statusline:setup --dry-run`: it prints the `statusLine` command it would write and
+   writes nothing. Then type `/limits-statusline:setup`: it writes the entry, saves the status line
+   you had, and the five lines appear at the bottom of the terminal after your next message.
+2. **See whether the 5-hour limit runs out before it resets.** Work as usual and read the `5h`
+   line:
+
+   ```
+   5h  ■■■■■■■■■■■□□□□□ 70%  ↻ 2h00m   ↗ 23.3%/h
+   ```
+
+   70% used three hours into the window is 23.3% an hour. At that pace the two hours left add
+   about 47%, so the window would end near 117%, and the line is red. That is the moment to switch
+   to a smaller model or a lower effort, or to plan the rest of the work around the reset in two
+   hours. Below 80% projected the line is green, from 80% to 100% yellow.
+3. **Keep the context window in view during a long session.** The `ctx` bar shows how full the
+   context window is, with the tokens used and the window size (`543k/1.0M`), and the line next to
+   it shows how it moved. When the bar turns red (above 80%), `/compact` or `/clear` before
+   Claude Code compacts on its own.
+4. **Put your old status line back.** Type `/limits-statusline:setup --uninstall`: it restores the
+   status line you had before setup, or removes the entry if you had none.
+5. **Choose where the band appears.** Open `/config` (or the plugin's settings in the desktop app)
+   and set `band` to `all` to draw the band in the terminal too, or to `off` to keep only the status
+   line at the bottom.
 
 ## What the numbers mean
 
@@ -94,100 +137,61 @@ so it shows the shape of the trend; the percentage next to the bar is the absolu
 Change it in `/config` or in the plugin's settings in the desktop app. Set `NO_COLOR=1` to print
 the terminal status line without colours.
 
-## What the plugin runs and writes
+## Privacy: what the plugin runs, reads and writes
 
-Everything stays on your computer. The plugin makes no network requests and reads no credentials.
+Everything stays on your computer. The plugin makes no network requests, sends no telemetry, reads
+no credentials, and stores no prompts, responses or file contents. The full statement is in
+[PRIVACY.md](PRIVACY.md).
+
+Its data folder is `~/.claude/plugins/data/limits-statusline-<source>/`: `-synced` when you added
+it from the directory, `-sealoop` when you added it from GitHub.
 
 - **Status line** (terminal): reads the JSON Claude Code passes on stdin, runs
   `git status --porcelain=v2 --branch --untracked-files=no` in the working folder (with
   `GIT_OPTIONAL_LOCKS=0`, so it never takes git's index lock), and keeps a small context history per
-  session under `~/.claude/plugins/data/limits-statusline-sealoop/history/` (pruned after 7 days).
-- **Setup** (`/limits-statusline:setup`): copies the status line runtime into the plugin's data
-  folder, writes `statusLine` to `settings.json` (atomically, through a symlink if it is one), and
+  session, the fill percentages only, in the data folder's `history/` (pruned after 7 days).
+- **Setup** (`/limits-statusline:setup`): copies the status line runtime (the plugin's own
+  `src/core` and `src/terminal`) into the data folder, because the plugin's install folder changes
+  with every update and the command in `settings.json` must not. It writes `statusLine` to
+  `settings.json` (atomically, through a symlink if it is one) as `node` running that copy, and
   keeps your previous status line and a copy of the previous `settings.json` in
   `~/.claude/limits-statusline/`. It refuses to touch a settings file that is not valid JSON.
 - **SessionStart hook**: after setup has run, refreshes the runtime copy after a plugin update and
   rebuilds it if it went missing; before setup it does nothing.
 - **Desktop band** (mod): reads the session's figures from Claude Code, runs the same `git status`
-  (or reads `.git/HEAD` where commands are unavailable) and redraws once a minute so the reset
-  countdowns stay current.
+  (or reads `.git/HEAD` where commands are unavailable), keeps the effort, cache counts, context
+  history and git state in the state Claude Code holds for the mod, and redraws once a minute so
+  the reset countdowns stay current.
+
+With `CLAUDE_CONFIG_DIR` set, these folders live there instead of `~/.claude`.
 
 ## Troubleshooting
 
 - **Nothing shows in a new session** — the plugin is not installed: `claude --plugin-dir` and a
   session's hot-reloaded mods folder load it for that session only. `claude plugin list` should
-  show `limits-statusline@sealoop`; if it does not, follow [Install](#install) (or, for a clone,
-  [Run a working copy in every session](#run-a-working-copy-in-every-session)).
+  show `limits-statusline@synced` or `limits-statusline@sealoop`; if it does not, follow
+  [Install](#install).
 - **The terminal shows nothing** — run `/limits-statusline:setup` and check that `node --version`
   prints 20 or higher. On Windows the command runs through Git Bash or PowerShell; its paths use
   forward slashes so both read them.
+- **The bottom line went blank after the plugin was removed or moved to another source** — run
+  `/limits-statusline:setup` again with the plugin installed: it rebuilds the runtime copy and
+  points `settings.json` at it, or use `--uninstall` to put your previous status line back.
 - **`7d —` and `5h —`** — the limits arrive with the first response of a session and only for
   Pro and Max subscribers.
 - **No effort or cache shown** — older Claude Code versions do not send them; update Claude Code.
 
+## Support
+
+- Questions, bugs and ideas: [GitHub issues](https://github.com/reylukakozlowski/limits-statusline/issues).
+- Security problems: report them privately as [SECURITY.md](SECURITY.md) describes, not in a
+  public issue.
+- Contact: Luka Kozlowski (SeaLoop), lukakozlowski@outlook.com.
+
 ## Development
 
-```bash
-npm test                 # unit and integration tests (node:test)
-npm run test:coverage    # the same with coverage
-npm run test:mod         # the desktop band, run by the engine itself (Claude Code 2.1.299+)
-claude plugin validate .  # manifest, hooks module and state contract
-```
-
-The code is split into a pure `src/core` (snapshot → lines), a terminal adapter
-(`src/terminal`) and a desktop adapter (`src/desktop`). Tests run locally, and the Release
-workflow runs them again before every release.
-
-### Run a working copy in every session
-
-`claude --plugin-dir <folder>` and a session's hot-reloaded mods folder load the plugin for that
-one session: the next session starts without it. To run a clone everywhere, in the terminal
-and the desktop app alike, add the clone as the `sealoop` marketplace in place of the GitHub one:
-
-```bash
-claude plugin marketplace remove sealoop
-claude plugin marketplace add /path/to/limits-statusline
-claude plugin install limits-statusline@sealoop
-```
-
-The first line is needed only when the GitHub marketplace was added before, since both are named
-`sealoop`. Removing it uninstalls the plugin and deletes its data folder, the status line's runtime
-copy included, so the terminal line goes blank: run `/limits-statusline:setup` again afterwards. It
-rebuilds the runtime and leaves `settings.json` as it is. The plugin is then read from the folder
-itself: after an edit, `/reload-plugins` picks it up with no new version.
-
-## Releasing
-
-Releases come from the **Release** workflow on GitHub, which only the repository owner can run.
-
-1. Describe the changes under `## [Unreleased]` in `CHANGELOG.md` and merge them into `develop`.
-   Run `npm run test:mod` first when the band changed: the workflow does not run it.
-2. On GitHub, open **Actions → Release → Run workflow** on `develop` and pick the bump (`patch`,
-   `minor` or `major`) or type an exact `X.Y.Z`. Tick **Dry run** to run every check and the tests
-   without changing anything. The run is listed as `Dry run patch`, `Release patch` and so on.
-3. Approve the run: it starts by waiting for the owner's approval of the `release` environment, and
-   nothing runs before it.
-4. The job runs `npm test`, bumps the version in `package.json`, `plugin.json` and
-   `marketplace.json`, stamps the changelog, commits `LS-N chore(release): vX.Y.Z`, tags `vX.Y.Z`
-   and pushes the commit and the tag to `develop` in one atomic push: when `develop` moved on in the
-   meantime, neither is pushed and nothing changes. The publish job then creates the GitHub release
-   with the changelog notes. A failed publish can be re-run on its own; it skips a release that
-   already exists.
-
-The `sealoop` marketplace serves `develop`, so the push is what reaches users: they get the new
-version with `claude plugin update limits-statusline@sealoop`, or by themselves when they turned
-auto-update on for this marketplace (it is off by default for marketplaces outside Anthropic's).
-The first tagged release is `v0.1.1`; `0.1.0` has a changelog entry but no tag.
-
-Who can release: GitHub skips the release job, without a runner and without asking for approval,
-when anyone but the repository owner starts the run or when it runs on any branch but `develop`.
-The `release` environment (Settings → Environments) then requires the owner's approval and accepts
-only `develop`. Keep that environment: GitHub creates a missing
-environment that a workflow names, without any protection rules. The workflow file has to stay on
-`develop`, the default branch, for **Run workflow** to appear.
-
-The same release still runs from a computer, on an up-to-date `develop`:
-`npm run release -- patch --push` (or `--dry-run`). The tag it pushes starts only the publish job.
+Tests, running a working copy in every session, and releases are described in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
