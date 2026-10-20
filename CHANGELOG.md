@@ -6,10 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- An icon for the plugin's listing in Anthropic's directory (`assets/icon.png`, drawn from
+  `assets/icon.svg`).
+
 ### Changed
 
 - Desktop band: the context history line is filled down to its baseline with a see-through shade
   of the line's colour, so the trend reads as an area.
+- `/limits-statusline:setup` runs only when you type it (Claude no longer picks it up on its own),
+  and its pre-approved permission covers only its own script instead of any `node` command.
 - `.gitignore` keeps lockfiles, package output, secrets, editor and OS files and local Claude
   Code folders out of the repository, which is also the folder users install.
 
