@@ -1,16 +1,18 @@
 # Release: publishes a new version. Start it from Actions → Release → Run workflow, on develop.
 #
-#   authorize  stops anyone but the repository owner, and any branch but develop, before an
-#              approval is even requested.
-#   release    waits for the owner's approval of the `release` environment, then runs
-#              scripts/release.mjs: tests, version bump in every manifest, CHANGELOG stamp, commit
-#              `LS-N chore(release): vX.Y.Z` and tag, sent to develop in one atomic push. The
-#              sealoop marketplace serves develop, so that push is what reaches its users.
-#   publish    creates the GitHub release from the version's CHANGELOG section, unless it exists.
+#   release  first job of the run. GitHub checks its `if` without a runner: a run by anyone but
+#            the repository owner, or on any branch but develop, is skipped and asks for nothing.
+#            For the owner the run then waits for the approval of the `release` environment before
+#            anything runs; after it, scripts/release.mjs runs the tests, bumps the version in every
+#            manifest, stamps CHANGELOG, commits `LS-N chore(release): vX.Y.Z`, tags it and sends
+#            both to develop in one atomic push. The sealoop marketplace serves develop, so that
+#            push is what reaches its users.
+#   publish  creates the GitHub release from the version's CHANGELOG section, unless it exists.
 #
 # A tag pushed from a computer (npm run release -- <kind> --push) starts only the publish job.
 # The tag the release job pushes starts no second run: events made with GITHUB_TOKEN start none.
 name: Release
+run-name: ${{ github.event_name == 'push' && format('Publish {0}', github.ref_name) || format('{0} {1}', inputs.dry_run && 'Dry run' || 'Release', inputs.version || inputs.bump) }}
 
 on:
   workflow_dispatch:
@@ -39,34 +41,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  authorize:
-    name: Check who started the release
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Allow only the repository owner, on develop
-        env:
-          REF: ${{ github.ref }}
-          ACTOR_ID: ${{ github.actor_id }}
-          OWNER_ID: ${{ github.repository_owner_id }}
-          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
-          OWNER: ${{ github.repository_owner }}
-        run: |
-          if [ "$REF" != "refs/heads/develop" ]; then
-            echo "::error::Releases are cut from develop, not $REF."
-            exit 1
-          fi
-          # IDs survive account renames; the triggering actor also covers a re-run by someone else.
-          # Re-running only the failed jobs skips this check: the release environment's approval
-          # still stands in front of the release job.
-          if [ "$ACTOR_ID" != "$OWNER_ID" ] || [ "$TRIGGERING_ACTOR" != "$OWNER" ]; then
-            echo "::error::Only $OWNER can release; this run was started by $TRIGGERING_ACTOR."
-            exit 1
-          fi
-
   release:
     name: Test, bump, commit, tag and push
-    needs: authorize
+    # IDs survive account renames; the triggering actor covers a re-run started by someone else.
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
+      && github.actor_id == github.repository_owner_id
+      && github.triggering_actor == github.repository_owner
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: release
