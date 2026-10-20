@@ -10,6 +10,10 @@ All notable changes to this project are documented here. The format follows
 
 - An icon for the plugin's listing in Anthropic's directory (`assets/icon.png`, drawn from
   `assets/icon.svg`).
+- `SECURITY.md` (private reporting by email) and `CONTRIBUTING.md` (tests, a working copy in every
+  session, releases); the README keeps what users need, now with use cases, installing from
+  Anthropic's directory, and a support section. `PRIVACY.md` lists what is read and written and for
+  how long, for both install sources.
 
 ### Changed
 
