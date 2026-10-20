@@ -46,13 +46,23 @@ Releases come from the **Release** workflow on GitHub, which only the repository
 3. Approve the run: it starts by waiting for the owner's approval of the `release` environment, and
    nothing runs before it.
 4. The job runs `npm test`, bumps the version in `package.json`, `plugin.json` and
-   `marketplace.json`, stamps the changelog, commits `LS-N chore(release): vX.Y.Z`, tags `vX.Y.Z`
-   and pushes the commit and the tag to `develop` in one atomic push: when `develop` moved on in the
-   meantime, neither is pushed and nothing changes. The publish job then creates the GitHub release
-   with the changelog notes. A failed publish can be re-run on its own; it skips a release that
-   already exists.
+   `marketplace.json`, stamps the changelog, commits `LS-N chore(release): vX.Y.Z` on a new branch
+   `release/vX.Y.Z`, pushes it and opens its pull request into `develop`. `develop` is protected
+   (changes only through pull requests, for the owner too), so nothing is pushed to it directly.
+   When origin already has that branch, the run stops before the tests: the earlier pull request
+   is still waiting.
+5. Merge that pull request with **Rebase and merge**. The merge changes `package.json` on
+   `develop`, which starts the workflow again: the tag job tags the merged commit `vX.Y.Z` (the
+   tag comes after the merge because Rebase and merge gives the commit a new SHA) and the publish
+   job creates the GitHub release with the changelog notes. A failed publish can be re-run on its
+   own; it skips a release that already exists.
 
-The `sealoop` marketplace serves `develop`, so the push is what reaches users: they get the new
+The workflow can open the pull request only while **Settings → Actions → General → Workflow
+permissions → Allow GitHub Actions to create and approve pull requests** is on; a personal
+repository starts with it off. Without it the run pushes the branch, stops, and prints the
+`gh pr create` command that opens the pull request by hand.
+
+The `sealoop` marketplace serves `develop`, so the merge is what reaches users: they get the new
 version with `claude plugin update limits-statusline@sealoop`, or by themselves when they turned
 auto-update on for this marketplace (it is off by default for marketplaces outside Anthropic's).
 The first tagged release is `v0.1.1`; `0.1.0` has a changelog entry but no tag.
@@ -62,8 +72,12 @@ when anyone but the repository owner starts the run or when it runs on any branc
 The `release` environment (Settings → Environments) then requires the owner's approval and accepts
 only `develop`. Keep that environment: GitHub creates a missing
 environment that a workflow names, without any protection rules. The workflow file has to stay on
-`develop`, the default branch, for **Run workflow** to appear.
+`develop`, the default branch, for **Run workflow** to appear. The tag job asks for no approval:
+it runs for a push to `develop` that changes `package.json`, which only a merged pull request can
+make, and it only names a commit that is already there.
 
-The same release still runs from a computer, on an up-to-date `develop`:
-`npm run release -- patch --push` (or `--dry-run`). The tag it pushes starts only the publish job.
+The same release still runs from a computer, on an up-to-date `develop` and with `gh` signed in:
+`npm run release -- patch --push` (or `--dry-run`) commits on `release/vX.Y.Z`, pushes it and opens
+the pull request; after the merge the workflow tags and publishes as above. Without `--push` the
+commit stays in the clone, with the commands that push it and open the pull request.
 

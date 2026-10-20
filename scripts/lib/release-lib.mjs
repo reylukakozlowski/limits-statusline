@@ -72,3 +72,17 @@ export function withVersion(manifest, version) {
   }
   return updated;
 }
+
+/**
+ * The commit that released `version`: the newest of `sha<TAB>subject` lines (newest first) whose
+ * subject is `LS-N chore(release): vX.Y.Z`; null when none did.
+ */
+export function findReleaseCommit(lines, version, prefix = COMMIT_PREFIX) {
+  const bare = String(version).replace(/^v/, '').replace(/\./g, '\\.');
+  const subject = new RegExp(`^${prefix}-\\d+ chore\\(release\\): v${bare}$`);
+  for (const line of lines) {
+    const tab = line.indexOf('\t');
+    if (tab > 0 && subject.test(line.slice(tab + 1))) return line.slice(0, tab);
+  }
+  return null;
+}

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  extractReleaseNotes, nextCommitIndex, nextVersion, stampChangelog, withVersion,
+  extractReleaseNotes, findReleaseCommit, nextCommitIndex, nextVersion, stampChangelog, withVersion,
 } from '../../scripts/lib/release-lib.mjs';
 
 const CHANGELOG = `# Changelog
@@ -64,4 +64,12 @@ test('withVersion sets the top-level version and every marketplace entry version
     withVersion({ name: 'm', plugins: [{ name: 'p', version: '0.1.0', source: './' }] }, '0.2.0'),
     { name: 'm', plugins: [{ name: 'p', version: '0.2.0', source: './' }] },
   );
+});
+
+test('findReleaseCommit picks the newest commit that released the version, or null', () => {
+  const log = ['c3\tLS-9 docs: later', 'c2\tLS-8 chore(release): v0.1.2', 'c1\tLS-7 chore(release): v0.1.1', ''];
+  assert.equal(findReleaseCommit(log, '0.1.2'), 'c2');
+  assert.equal(findReleaseCommit(log, 'v0.1.1'), 'c1');
+  assert.equal(findReleaseCommit(log, '0.1.3'), null);
+  assert.equal(findReleaseCommit(['c4\tLS-10 chore(release): v0x1x2'], '0.1.2'), null);
 });
