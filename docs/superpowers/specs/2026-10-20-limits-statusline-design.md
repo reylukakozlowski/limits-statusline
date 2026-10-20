@@ -36,7 +36,7 @@ $20.33 · 5h40m · cache 99% · xhigh
 | Context colours | < 50 green · 50–80 orange · > 80 red |
 | Early window | No rate until 15 min elapsed: shows `↗ —` |
 | Git | `git <branch>` with `*` when dirty (tracked files), `no git` outside a repo |
-| Release | GitHub workflow **Release**, run by hand by the owner only, after approval of the `release` environment: tests, bump, changelog, commit on `release/vX.Y.Z` and its pull request into the protected `develop`; after the owner's Rebase and merge, tag `vX.Y.Z` on the merged commit and GitHub Release. `npm run release <patch|minor|major>` is the local equivalent; no test workflow on pull requests |
+| Release | GitHub workflow **Release**, run by hand by the owner only, after approval of the `release` environment: tests, bump, changelog, commit on `release/vX.Y.Z` and its pull request into the protected `develop`, merged by the workflow (Rebase and merge; the approval is the decision to merge), tag `vX.Y.Z` on the merged commit and GitHub Release. Anthropic's directory follows `develop`. `npm run release <patch|minor|major>` is the local equivalent; no test workflow on pull requests |
 | Repo | `Reywedian/limits-statusline` (public, read-only for others), default branch `develop`, commits `LS-<N> <type>: <subject>` |
 
 ## Data sources (verified, docs as of 2026-10-20)

@@ -8,17 +8,21 @@
 #            approval of the `release` environment before anything runs; after it,
 #            scripts/release.mjs runs the tests, bumps the version in every manifest, stamps
 #            CHANGELOG, commits `LS-N_chore(release): vX.Y.Z` on release/vX.Y.Z, pushes that
-#            branch and opens its pull request into develop. A dry run checks all of it and
-#            changes nothing. Opening the pull request needs Settings → Actions → General →
-#            "Allow GitHub Actions to create and approve pull requests".
-#   tag      the owner's merge of that pull request changes package.json on develop, which starts
-#            this job: scripts/tag-release.mjs tags the merged release commit and pushes the tag;
-#            a version already tagged is passed on as it is.
+#            branch and opens its pull request into develop; the job then merges that pull request
+#            (Rebase and merge), tags the merged commit with scripts/tag-release.mjs and hands the
+#            tag to publish. A dry run checks all of it and changes nothing. Opening the pull
+#            request needs Settings → Actions → General → "Allow GitHub Actions to create and
+#            approve pull requests".
+#   tag      for a release pull request the owner merged by hand (one the release job could not
+#            merge, or one opened from a computer): that merge changes package.json on develop,
+#            which starts this job, and it tags like the release job; a version already tagged is
+#            passed on as it is.
 #   publish  creates the GitHub release from the version's CHANGELOG section, unless it exists.
 #
 # A tag pushed from a computer starts only the publish job (path filters do not apply to tags).
-# The tag the tag job pushes starts no second run: events made with GITHUB_TOKEN start none. The
-# sealoop marketplace serves develop, so the merge is what reaches its users.
+# The merge and the tag the jobs make start no second run: events made with GITHUB_TOKEN start
+# none. Anthropic's directory and the sealoop marketplace both follow develop, so the merge is
+# what reaches their users.
 name: Release
 run-name: ${{ github.event_name == 'workflow_dispatch' && format('{0} {1}', inputs.dry_run && 'Dry run' || 'Release', inputs.version || inputs.bump) || github.ref_type == 'tag' && format('Publish {0}', github.ref_name) || 'Tag and publish the merged release' }}
 
@@ -65,6 +69,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    outputs:
+      tag: ${{ steps.result.outputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -85,6 +91,38 @@ jobs:
           MODE: ${{ inputs.dry_run && '--dry-run' || '--push' }}
           GH_TOKEN: ${{ github.token }}
         run: node scripts/release.mjs "$KIND" "$MODE"
+
+      # The owner's approval of the release environment is the decision to merge. Only the commit
+      # prepared above is merged (--match-head-commit), by rebase, with no rule bypassed. GitHub
+      # works out whether a new pull request can merge in the background, so a refusal is retried.
+      - name: Merge the release pull request
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="$(git rev-parse --abbrev-ref HEAD)"
+          case "$branch" in
+            release/v*) ;;
+            *) echo "::error::Not on a release branch ($branch): nothing was merged."; exit 1 ;;
+          esac
+          head="$(git rev-parse HEAD)"
+          for pause in 5 10 20 0; do
+            if gh pr merge "$branch" --rebase --match-head-commit "$head"; then exit 0; fi
+            if [ "$(gh pr view "$branch" --json state --jq .state)" = MERGED ]; then exit 0; fi
+            if [ "$pause" -gt 0 ]; then sleep "$pause"; fi
+          done
+          echo "::error::The pull request of $branch is still open: merge it with Rebase and merge, and the tag job finishes the release."
+          exit 1
+
+      # A merge made with GITHUB_TOKEN starts no run, so the tag job would not see it: tag here.
+      - name: Tag the merged release commit and push the tag
+        id: result
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git fetch --quiet origin develop
+          git switch --quiet --detach FETCH_HEAD
+          tag="$(node scripts/tag-release.mjs)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
   tag:
     name: Tag the merged release
@@ -120,14 +158,15 @@ jobs:
 
   publish:
     name: Publish the GitHub release
-    needs: tag
-    # After the tag job, or alone for a tag pushed from a computer; a release run hands over no tag.
-    if: ${{ !cancelled() && !failure() && (github.ref_type == 'tag' || needs.tag.outputs.tag != '') }}
+    needs: [release, tag]
+    # After a release or the tag job, or alone for a tag pushed from a computer; a dry run hands
+    # over no tag.
+    if: ${{ !cancelled() && !failure() && (github.ref_type == 'tag' || needs.release.outputs.tag != '' || needs.tag.outputs.tag != '') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
-      TAG: ${{ github.ref_type == 'tag' && github.ref_name || needs.tag.outputs.tag }}
+      TAG: ${{ github.ref_type == 'tag' && github.ref_name || needs.release.outputs.tag || needs.tag.outputs.tag }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
