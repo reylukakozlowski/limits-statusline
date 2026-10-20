@@ -10,6 +10,8 @@ All notable changes to this project are documented here. The format follows
 
 - Desktop band: the context history line is filled down to its baseline with a see-through shade
   of the line's colour, so the trend reads as an area.
+- `.gitignore` keeps lockfiles, package output, secrets, editor and OS files and local Claude
+  Code folders out of the repository, which is also the folder users install.
 
 ## [0.1.1] - 2026-10-20
 
