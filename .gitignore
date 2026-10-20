@@ -1,8 +1,49 @@
+# The repository root is the plugin folder: everything committed here ships to the people who
+# install the plugin, so only source, tests and documentation belong in it.
+
+# Dependencies and package output. The plugin has no dependencies, and a lockfile beside
+# package.json would make Claude Code install packages for every user (Anthropic's directory
+# holds such a plugin for review).
 node_modules/
+package-lock.json
+npm-shrinkwrap.json
+yarn.lock
+pnpm-lock.yaml
+bun.lock
+bun.lockb
+*.tgz
+
+# Test and tool output
 coverage/
+.nyc_output/
+*.log
+*.tmp
+
+# Secrets and package-manager configuration (a registry setting blocks a directory submission)
+.env
+.env.*
+.npmrc
+
+# Claude Code and its tools on this machine
+.claude/worktrees/
+.claude/settings.local.json
 .claude-plugin/types/
 .superpowers/
-*.log
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Operating system files (the directory validator blocks them)
 .DS_Store
+._*
+__MACOSX/
+.Spotlight-V100/
+.Trashes/
 Thumbs.db
+ehthumbs.db
 desktop.ini
+$RECYCLE.BIN/
