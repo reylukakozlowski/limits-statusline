@@ -16,18 +16,40 @@ const USAGE = Object.freeze({
   cost: { usd: 20.33 },
 });
 
+const ONE_HOUR = 3_600_000;
+
 const TRACKER = Object.freeze({
   effort: 'xhigh',
   cache: { input: 10, creation: 0, read: 990 },
+  lastTurn: { atMs: NOW - 480_000, isCached: true }, // 8 minutes ago: 52 minutes of a one-hour cache left
   history: [...MOCKUP.contextHistory],
   git: MOCKUP.git,
 });
 
-test('mods API figures map onto the mockup snapshot', () => {
-  const snapshot = snapshotFromSession({
-    usage: USAGE, modelRaw: 'claude-opus-5-5[1m]', cwd: 'C:\\Users\\dev\\daily-claude', tracker: TRACKER, nowMs: NOW,
-  });
-  assert.deepEqual(snapshot, MOCKUP);
+const SOURCES = Object.freeze({
+  usage: USAGE, modelRaw: 'claude-opus-5-5[1m]', cwd: 'C:\\Users\\dev\\daily-claude', tracker: TRACKER, nowMs: NOW,
+  timeZone: 'UTC', cacheTtlMs: ONE_HOUR,
+});
+
+test('mods API figures map onto the mockup snapshot, without the changed lines the API does not have', () => {
+  assert.deepEqual(snapshotFromSession(SOURCES), { ...MOCKUP, linesChanged: null });
+});
+
+test('the shared limit readings passed in reach the snapshot', () => {
+  const limitReadings = { fiveHour: [[NOW, 12, NOW + 15_000_000]], sevenDay: [] };
+  assert.equal(snapshotFromSession({ ...SOURCES, limitReadings }).limitReadings, limitReadings);
+});
+
+test('the cache state is estimated from the last turn and the lifetime, and unknown without either', () => {
+  assert.deepEqual(snapshotFromSession({ ...SOURCES, cacheTtlMs: 300_000 }).promptCache,
+    { warm: true, expiresAtMs: NOW - 180_000 });
+  const uncached = { ...TRACKER, lastTurn: { atMs: NOW, isCached: false } };
+  assert.deepEqual(snapshotFromSession({ ...SOURCES, tracker: uncached }).promptCache, { warm: false, expiresAtMs: null });
+  assert.equal(snapshotFromSession({ ...SOURCES, cacheTtlMs: null }).promptCache, null);
+  assert.equal(snapshotFromSession({ ...SOURCES, tracker: { ...TRACKER, lastTurn: null } }).promptCache, null);
+  // A tracker kept by an older version of the band has no lastTurn at all.
+  const { lastTurn: _dropped, ...older } = TRACKER;
+  assert.equal(snapshotFromSession({ ...SOURCES, tracker: older }).promptCache, null);
 });
 
 test('nothing known yet gives the all-null snapshot', () => {

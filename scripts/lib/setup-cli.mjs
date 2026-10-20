@@ -3,8 +3,9 @@
 //
 // Where things live:
 //   <config>/settings.json                    the statusLine entry (config = CLAUDE_CONFIG_DIR or ~/.claude)
-//   <config>/limits-statusline/               previous status line + settings backup; outlives the plugin,
-//                                             whose data folder `/plugin uninstall` deletes
+//   <config>/limits-statusline/               previous status line + settings backup, and the plan limit
+//                                             history the status line and the band share; outlives the
+//                                             plugin, whose data folder `/plugin uninstall` deletes
 //   <data>/runtime, <data>/setup.json         the runtime copy the command runs, and the hook's marker
 
 import fs from 'node:fs';

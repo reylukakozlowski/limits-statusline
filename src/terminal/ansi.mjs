@@ -13,6 +13,8 @@ export const TONE_SGR = Object.freeze({
   alert: '1;38;5;203',
   cost: '38;5;214',
   spark: '38;5;73',
+  added: '38;5;71',
+  removed: '38;5;203',
 });
 
 /**

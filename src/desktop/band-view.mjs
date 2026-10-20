@@ -13,6 +13,8 @@ export const TONE_COLOR = Object.freeze({
   alert: 'error',
   cost: 'claude',
   spark: 'suggestion',
+  added: 'success',
+  removed: 'error',
 });
 
 const BOLD_TONES = new Set(['accent', 'alert']);

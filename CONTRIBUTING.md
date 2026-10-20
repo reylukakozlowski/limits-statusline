@@ -10,7 +10,12 @@ npm test                 # unit and integration tests (node:test)
 npm run test:coverage    # the same with coverage
 npm run test:mod         # the desktop band, run by the engine itself (Claude Code 2.1.299+)
 claude plugin validate .  # manifest, hooks module and state contract
+npm run simulate:pace    # the Monte Carlo comparison behind the pace look-backs
 ```
+
+`npm run test:mod` needs a `claude` of 2.1.299 or later. When the one on `PATH` is older, the
+desktop app's own copy works too; on Windows it is under
+`%LOCALAPPDATA%Claude-Data<app id>claude-code<version><build>claude.exe`.
 
 The code is split into a pure `src/core` (snapshot → lines), a terminal adapter
 (`src/terminal`) and a desktop adapter (`src/desktop`). Tests run locally, and the Release

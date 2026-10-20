@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, readdirSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,11 +40,73 @@ test('main survives garbage on stdin with a fallback line and exit 0', () => {
   assert.equal(result.stderr, '');
 });
 
-test('main keeps context history under --data <dir>/history', (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'ls-main-'));
+const tempDir = (t, prefix) => {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  assert.equal(runMain(FULL, ['--data', dir]).status, 0);
+  return dir;
+};
+
+test('main keeps context history under --data <dir>/history', (t) => {
+  const dir = tempDir(t, 'ls-main-');
+  const configDir = tempDir(t, 'ls-config-');
+  assert.equal(runMain(FULL, ['--data', dir], { CLAUDE_CONFIG_DIR: configDir }).status, 0);
   assert.deepEqual(readdirSync(join(dir, 'history')), ['3f2c9a1e-77b0-4c1d-9f5e-0a1b2c3d4e5f.json']);
+});
+
+test('main records the plan limits in the shared history under CLAUDE_CONFIG_DIR', (t) => {
+  const configDir = tempDir(t, 'ls-config-');
+  assert.equal(runMain(FULL, ['--data', tempDir(t, 'ls-main-')], { CLAUDE_CONFIG_DIR: configDir }).status, 0);
+  const history = JSON.parse(readFileSync(join(configDir, 'limits-statusline', 'limit-history.json'), 'utf8'));
+  assert.deepEqual(history.readings.fiveHour.map(([, percent, resetsAt]) => [percent, resetsAt]), [[12, 1_800_015_000_000]]);
+  assert.deepEqual(history.readings.sevenDay.map(([, percent]) => percent), [39]);
+  assert.deepEqual(Object.keys(history.sessions), ['3f2c9a1e-77b0-4c1d-9f5e-0a1b2c3d4e5f']);
+});
+
+test('run keeps the shared history in .claude under the home folder when CLAUDE_CONFIG_DIR is unset', async (t) => {
+  const home = tempDir(t, 'ls-home-');
+  const argv = ['--data', tempDir(t, 'ls-main-')];
+  await run({ stdin: Readable.from([FULL]), stdout: sink().stream, env: { NO_COLOR: '1' }, argv, nowMs: 1_800_000_000_000, home });
+  const history = JSON.parse(readFileSync(join(home, '.claude', 'limits-statusline', 'limit-history.json'), 'utf8'));
+  assert.deepEqual(history.readings.sevenDay.map(([, percent]) => percent), [39]);
+});
+
+test('run without any config folder still draws the limits, from the session alone', async (t) => {
+  const out = sink();
+  const argv = ['--data', tempDir(t, 'ls-main-')];
+  await run({ stdin: Readable.from([FULL]), stdout: out.stream, env: { NO_COLOR: '1', COLUMNS: '120' }, argv, nowMs: 1_800_000_000_000, home: '', timeZone: 'UTC' });
+  assert.equal(out.read().split('\n')[4], '5h  ■■□□□□□□□□□□□□□□ 12% →  72%  ↻ 4h10m 12:10      ↗ 14.4%/h');
+});
+
+test('main without --data writes no history at all', (t) => {
+  const configDir = tempDir(t, 'ls-config-');
+  assert.equal(runMain(FULL, [], { CLAUDE_CONFIG_DIR: configDir }).status, 0);
+  assert.deepEqual(readdirSync(configDir), []);
+});
+
+test('run draws from the shared history: another session\'s newer figure and the recent pace', async (t) => {
+  const configDir = tempDir(t, 'ls-config-');
+  const nowMs = 1_800_000_000_000;
+  const input = JSON.parse(FULL);
+  // The idle session's last response came 40 minutes ago; its transcript says so.
+  const idleTranscript = join(configDir, 'idle.jsonl');
+  writeFileSync(idleTranscript, '{}\n');
+  utimesSync(idleTranscript, (nowMs - 2_400_000) / 1000, (nowMs - 2_400_000) / 1000);
+  const runAt = async (sessionId, fivePercent, atMs, transcriptPath = input.transcript_path) => {
+    const out = sink();
+    const stdin = Readable.from([JSON.stringify({
+      ...input, session_id: sessionId, transcript_path: transcriptPath,
+      rate_limits: { ...input.rate_limits, five_hour: { used_percentage: fivePercent, resets_at: 1_800_015_000 } },
+    })]);
+    await run({ stdin, stdout: out.stream, env: { NO_COLOR: '1', COLUMNS: '120', CLAUDE_CONFIG_DIR: configDir }, argv: ['--data', tempDir(t, 'ls-main-')], nowMs: atMs });
+    return out.read().split('\n')[4];
+  };
+  await runAt('busy', 2, nowMs - 1_800_000);
+  await runAt('busy', 20, nowMs);
+  // The idle session, seen for the first time, still reports 2%; the line shows the 20% the busy
+  // session saw since, and 18 points in the last half hour: 36%/h.
+  assert.match(await runAt('idle', 2, nowMs, idleTranscript), /^5h {2}\S+ 20% → .* ↗ 36\.0%\/h/);
+  const history = JSON.parse(readFileSync(join(configDir, 'limits-statusline', 'limit-history.json'), 'utf8'));
+  assert.deepEqual(history.readings.fiveHour.map(([atMs, percent]) => [atMs - nowMs, percent]), [[-1_800_000, 2], [0, 20], [-2_400_000, 2]]);
 });
 
 test('run colours unless NO_COLOR is set, and returns 0', async () => {

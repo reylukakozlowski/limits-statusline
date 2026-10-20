@@ -1,8 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  formatDuration, formatTokens, formatUsd, formatPercent, formatRate,
+  formatClock, formatCountdown, formatDuration, formatTokens, formatUsd, formatPercent, formatRate,
 } from '../../src/core/format.mjs';
+
+const HOUR = 3_600_000;
+// 2027-01-15 08:00 UTC, a Friday.
+const NOW = 1_800_000_000_000;
 
 test('formatDuration renders hours and zero-padded minutes like the mockup', () => {
   assert.equal(formatDuration(20_400_000), '5h40m');
@@ -44,4 +48,42 @@ test('formatPercent rounds and formatRate keeps one decimal per hour', () => {
   assert.equal(formatRate(14.4), '14.4%/h');
   assert.equal(formatRate(0.4247), '0.4%/h');
   assert.equal(formatRate(NaN), '—');
+});
+
+test('formatRate shows a per-day rate as 24 hours of the hourly one', () => {
+  assert.equal(formatRate(0.4247, 'd'), '10.2%/d');
+  assert.equal(formatRate(0, 'd'), '0.0%/d');
+  assert.equal(formatRate(1, 'week'), '—');
+});
+
+test('formatCountdown rolls whole days out of the hours from a day on', () => {
+  assert.equal(formatCountdown(161 * HOUR + 50 * 60_000), '6d17h');
+  assert.equal(formatCountdown(274_200_000), '3d04h');
+  assert.equal(formatCountdown(24 * HOUR), '1d00h');
+  assert.equal(formatCountdown(24 * HOUR - 60_000), '23h59m');
+  assert.equal(formatCountdown(13_800_000), '3h50m');
+  assert.equal(formatCountdown(42_000), '42s');
+  assert.equal(formatCountdown(-1), '—');
+  assert.equal(formatCountdown(null), '—');
+});
+
+test('formatClock gives the 24-hour time within a day and the weekday beyond', () => {
+  const utc = { nowMs: NOW, timeZone: 'UTC' };
+  assert.equal(formatClock(NOW + 15_000_000, utc), '12:10');
+  assert.equal(formatClock(NOW + 14 * HOUR + 30 * 60_000, utc), '22:30');
+  assert.equal(formatClock(NOW + 17 * HOUR, utc), '01:00');
+  assert.equal(formatClock(NOW + 274_200_000, utc), 'Mon 12:10');
+  assert.equal(formatClock(NOW + 24 * HOUR, utc), 'Sat 08:00');
+});
+
+test('formatClock follows the time zone it is given', () => {
+  assert.equal(formatClock(NOW + HOUR, { nowMs: NOW, timeZone: 'Europe/Warsaw' }), '10:00');
+  assert.equal(formatClock(NOW + HOUR, { nowMs: NOW, timeZone: 'America/New_York' }), '04:00');
+});
+
+test('formatClock is a dash without a usable time or zone', () => {
+  assert.equal(formatClock(NOW, { nowMs: NOW, timeZone: null }), '—');
+  assert.equal(formatClock(NOW, { nowMs: NOW, timeZone: 'Not/AZone' }), '—');
+  assert.equal(formatClock(NaN, { nowMs: NOW, timeZone: 'UTC' }), '—');
+  assert.equal(formatClock(NOW, { nowMs: undefined, timeZone: 'UTC' }), '—');
 });
