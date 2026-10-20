@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-20
+
 ### Changed
 
 - The repository keeps one GitHub release, the latest: after publishing, the Release workflow deletes the
