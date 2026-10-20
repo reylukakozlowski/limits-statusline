@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Directory icon: the status line's three meters (context, 7-day, 5-hour) as cells. -->
+  <rect width="512" height="512" rx="112" fill="#1f1e1d"/>
+  <g fill="#3d3c39">
+    <rect x="61" y="150" width="40" height="40" rx="8"/><rect x="111" y="150" width="40" height="40" rx="8"/>
+    <rect x="161" y="150" width="40" height="40" rx="8"/><rect x="211" y="150" width="40" height="40" rx="8"/>
+    <rect x="261" y="150" width="40" height="40" rx="8"/><rect x="311" y="150" width="40" height="40" rx="8"/>
+    <rect x="361" y="150" width="40" height="40" rx="8"/><rect x="411" y="150" width="40" height="40" rx="8"/>
+    <rect x="61" y="236" width="40" height="40" rx="8"/><rect x="111" y="236" width="40" height="40" rx="8"/>
+    <rect x="161" y="236" width="40" height="40" rx="8"/><rect x="211" y="236" width="40" height="40" rx="8"/>
+    <rect x="261" y="236" width="40" height="40" rx="8"/><rect x="311" y="236" width="40" height="40" rx="8"/>
+    <rect x="361" y="236" width="40" height="40" rx="8"/><rect x="411" y="236" width="40" height="40" rx="8"/>
+    <rect x="61" y="322" width="40" height="40" rx="8"/><rect x="111" y="322" width="40" height="40" rx="8"/>
+    <rect x="161" y="322" width="40" height="40" rx="8"/><rect x="211" y="322" width="40" height="40" rx="8"/>
+    <rect x="261" y="322" width="40" height="40" rx="8"/><rect x="311" y="322" width="40" height="40" rx="8"/>
+    <rect x="361" y="322" width="40" height="40" rx="8"/><rect x="411" y="322" width="40" height="40" rx="8"/>
+  </g>
+  <g fill="#3fb950">
+    <rect x="61" y="150" width="40" height="40" rx="8"/><rect x="111" y="150" width="40" height="40" rx="8"/>
+    <rect x="161" y="150" width="40" height="40" rx="8"/>
+  </g>
+  <g fill="#d29922">
+    <rect x="61" y="236" width="40" height="40" rx="8"/><rect x="111" y="236" width="40" height="40" rx="8"/>
+    <rect x="161" y="236" width="40" height="40" rx="8"/><rect x="211" y="236" width="40" height="40" rx="8"/>
+    <rect x="261" y="236" width="40" height="40" rx="8"/>
+  </g>
+  <g fill="#f85149">
+    <rect x="61" y="322" width="40" height="40" rx="8"/><rect x="111" y="322" width="40" height="40" rx="8"/>
+    <rect x="161" y="322" width="40" height="40" rx="8"/><rect x="211" y="322" width="40" height="40" rx="8"/>
+    <rect x="261" y="322" width="40" height="40" rx="8"/><rect x="311" y="322" width="40" height="40" rx="8"/>
+    <rect x="361" y="322" width="40" height="40" rx="8"/>
+  </g>
+</svg>

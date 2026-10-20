@@ -65,6 +65,74 @@ test('directory rules: every shipped file is under 256 KiB and none is an OS art
   }
 });
 
+const shippedFiles = () => {
+  const listed = spawnSync('git', ['ls-files', '--cached', '--others', '--exclude-standard'], { cwd: ROOT, encoding: 'utf8' });
+  assert.equal(listed.status, 0);
+  return listed.stdout.split('\n').filter((file) => file && existsSync(join(ROOT, file)));
+};
+
+const WINDOWS_DEVICE = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
+
+test('directory rules: names work on Windows and macOS, and the plugin stays under 512 files', () => {
+  const files = shippedFiles();
+  assert.ok(files.length <= 512, `${files.length} files`);
+  const seen = new Map();
+  for (const file of files) {
+    for (const part of file.split('/')) {
+      assert.doesNotMatch(part, /[:<>"|?*\\]|[. ]$/, file);
+      assert.doesNotMatch(part, WINDOWS_DEVICE, file);
+    }
+    const folded = file.toLowerCase();
+    assert.equal(seen.get(folded) ?? file, file, `${file} differs from ${seen.get(folded)} only by case`);
+    seen.set(folded, file);
+  }
+});
+
+const IMAGE = /\.(png|jpe?g|gif|webp)$/i;
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const PNG_END = Buffer.from([0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82]);
+
+test('directory rules: only text files and complete PNG images ship (anything else is held)', () => {
+  for (const file of shippedFiles()) {
+    const bytes = readFileSync(join(ROOT, file));
+    if (IMAGE.test(file)) {
+      assert.match(file, /\.png$/, `${file}: keep images PNG`);
+      assert.ok(bytes.subarray(0, 8).equals(PNG_SIGNATURE) && bytes.subarray(-8).equals(PNG_END), `${file} is not a complete PNG`);
+    } else {
+      assert.equal(bytes.includes(0), false, `${file} looks binary`);
+    }
+  }
+});
+
+test('the directory listing has a PNG icon and https links into this repository', () => {
+  assert.match(plugin.icon, /^\.\/assets\/[\w.-]+\.png$/);
+  const icon = readFileSync(join(ROOT, plugin.icon));
+  const [width, height] = [icon.readUInt32BE(16), icon.readUInt32BE(20)];
+  assert.ok(width === height && width >= 256, `icon is ${width}x${height}`);
+  const repository = 'https://github.com/reylukakozlowski/limits-statusline';
+  assert.equal(plugin.repository, repository);
+  for (const key of ['homepage', 'documentationUrl', 'supportUrl', 'privacyPolicyUrl']) {
+    assert.ok(plugin[key].startsWith(`${repository}`), `${key}: ${plugin[key]}`);
+  }
+  assert.equal(plugin.supportUrl, `${repository}/issues`);
+  assert.equal(plugin.privacyPolicyUrl, `${repository}/blob/develop/PRIVACY.md`);
+  assert.ok(existsSync(join(ROOT, 'PRIVACY.md')));
+});
+
+test('the description says the plugin is for Claude Code (chat and Cowork have no status line)', () => {
+  assert.match(plugin.description, /^Status line for Claude Code\b/);
+  assert.ok(plugin.description.length <= 300, `${plugin.description.length} characters`);
+});
+
+test('setup runs only when the user types it, and may run only its own script', () => {
+  const setup = read('commands/setup.md');
+  const frontmatter = setup.split(/^---$/m)[1];
+  assert.match(frontmatter, /^disable-model-invocation: true$/m);
+  assert.doesNotMatch(frontmatter, /Bash\(node:\*\)/);
+  assert.match(frontmatter, /^ {2}- Bash\(node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/setup\.mjs" \*\)$/m);
+  assert.match(setup, /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/setup\.mjs" --data "\$\{CLAUDE_PLUGIN_DATA\}" \$ARGUMENTS$/m);
+});
+
 test('userConfig stays loadable on Claude Code before 2.1.271 (no options pickers)', () => {
   for (const [key, field] of Object.entries(plugin.userConfig ?? {})) {
     assert.equal('options' in field, false, key);

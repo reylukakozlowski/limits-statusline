@@ -1,7 +1,9 @@
 ---
-description: Turn the limits status line on in ~/.claude/settings.json (or off with --uninstall)
+description: Turn the Claude Code limits status line on in ~/.claude/settings.json (or off with --uninstall)
 argument-hint: "[--uninstall] [--dry-run]"
-allowed-tools: Bash(node:*)
+disable-model-invocation: true
+allowed-tools:
+  - Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" *)
 ---
 
 Run this exact command with the Bash tool, then show its output to the user and stop. Do not edit
