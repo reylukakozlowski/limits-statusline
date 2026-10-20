@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-10-20
+
 ### Added
 
 - The 7-day and 5-hour lines show where the usage ends up at the reset if the current pace
