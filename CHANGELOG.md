@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Desktop band: the context history line is filled down to its baseline with a see-through shade
+  of the line's colour, so the trend reads as an area.
+
 ## [0.1.1] - 2026-10-20
 
 ### Added

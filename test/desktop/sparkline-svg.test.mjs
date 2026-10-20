@@ -9,6 +9,12 @@ test('sparklineSvg draws the series as one polyline, bottom-left to top-right', 
   assert.match(svg, /<\/svg>$/);
 });
 
+test('sparklineSvg fills the area under the line with a see-through shade of the stroke, behind it', () => {
+  const svg = sparklineSvg([0, 1], { width: 100, height: 20, color: '#5fafaf' });
+  assert.match(svg, /<polygon fill="#5fafaf" fill-opacity="0\.2" stroke="none" points="1,19 1,19 99,1 99,19"\/>/);
+  assert.ok(svg.indexOf('<polygon') < svg.indexOf('<polyline'), 'the line is drawn over its fill');
+});
+
 test('sparklineSvg spaces points evenly and clamps values into the box', () => {
   const svg = sparklineSvg([0, 0.5, 2], { width: 100, height: 20, color: '#000' });
   assert.match(svg, /points="1,19 50,10 99,1"/);
