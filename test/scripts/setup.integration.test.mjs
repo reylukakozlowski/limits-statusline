@@ -115,6 +115,41 @@ test('the saved status line survives the plugin removing its data folder', (t) =
   assert.deepEqual(readJson(box.settings).statusLine, FOREIGN);
 });
 
+test('setup run again after the runtime went missing rebuilds it and says so', (t) => {
+  const box = sandbox(t, '{}');
+  assert.equal(install(box).status, 0);
+  const settingsText = readFileSync(box.settings, 'utf8');
+  rmSync(join(box.data, 'runtime'), { recursive: true, force: true });
+  const result = install(box);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /already enabled; its runtime was rebuilt in .+runtime/);
+  assert.doesNotMatch(result.stdout, /nothing changed/i);
+  assert.ok(existsSync(join(box.data, 'runtime', 'src', 'terminal', 'main.mjs')));
+  assert.equal(readFileSync(box.settings, 'utf8'), settingsText);
+});
+
+test('setup run again with a current runtime reports that nothing changed', (t) => {
+  const box = sandbox(t, '{}');
+  assert.equal(install(box).status, 0);
+  const result = install(box);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /already enabled; nothing changed/);
+  assert.doesNotMatch(result.stdout, /rebuilt/i);
+});
+
+test('setup refuses an invalid settings.json without rebuilding a missing runtime', (t) => {
+  const box = sandbox(t, '{}');
+  assert.equal(install(box).status, 0);
+  rmSync(join(box.data, 'runtime'), { recursive: true, force: true });
+  writeFileSync(box.settings, '{ "statusLine": ');
+  const result = install(box);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /not valid JSON/);
+  assert.equal(result.stdout, '');
+  assert.equal(readFileSync(box.settings, 'utf8'), '{ "statusLine": ');
+  assert.equal(existsSync(join(box.data, 'runtime')), false);
+});
+
 test('setup --uninstall leaves a foreign status line alone', (t) => {
   const box = sandbox(t, JSON.stringify({ statusLine: FOREIGN }));
   const result = install(box, '--uninstall');

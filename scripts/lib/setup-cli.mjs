@@ -12,7 +12,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { writeFileAtomic } from './fs-atomic.mjs';
-import { SETUP_MARKER, readPluginVersion, runtimeMainPath, syncRuntime } from './runtime-sync.mjs';
+import { SETUP_MARKER, readPluginVersion, runtimeDir, runtimeMainPath, syncRuntime } from './runtime-sync.mjs';
 import { buildStatusLineCommand, planInstall, planUninstall } from './settings-plan.mjs';
 
 const NAME = 'limits-statusline';
@@ -87,10 +87,10 @@ function install({ dataDir, settingsPath, stateDir, isDryRun, pluginRoot }, say)
     return;
   }
   const version = readPluginVersion(pluginRoot);
-  syncRuntime({ pluginRoot, dataDir, version });
+  const { copied } = syncRuntime({ pluginRoot, dataDir, version });
   writeFileAtomic(join(dataDir, SETUP_MARKER), `${JSON.stringify({ version, settingsPath }, null, 2)}\n`);
   if (!plan.changed) {
-    say(`${NAME}: the status line is already enabled; nothing changed.`);
+    say(alreadyEnabledMessage(copied, dataDir));
     return;
   }
   // The status line in place now is the one to bring back, even if an older one was saved.
@@ -101,6 +101,12 @@ function install({ dataDir, settingsPath, stateDir, isDryRun, pluginRoot }, say)
   if (plan.previous) say('  your previous status line is saved and comes back with --uninstall');
   say(`  before uninstalling the plugin, run /${NAME}:setup --uninstall`);
 }
+
+// A missing or outdated runtime is rebuilt even when settings.json needs no change: that is the
+// repair after the plugin's data folder was deleted, so the message has to admit to it.
+const alreadyEnabledMessage = (isRuntimeCopied, dataDir) => (isRuntimeCopied
+  ? `${NAME}: the status line is already enabled; its runtime was rebuilt in ${runtimeDir(dataDir)}`
+  : `${NAME}: the status line is already enabled; nothing changed.`);
 
 function uninstall({ settingsPath, stateDir, isDryRun }, say) {
   const { settings, text, writePath } = readSettings(settingsPath);

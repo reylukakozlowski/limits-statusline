@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `/limits-statusline:setup` run again after the plugin's data folder was deleted says that it
+  rebuilt the runtime, instead of claiming that nothing changed.
+
 ## [0.1.0] - 2026-10-20
 
 ### Added
