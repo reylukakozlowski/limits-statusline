@@ -41,7 +41,9 @@ test('the plugin name is permanent-safe and matches its marketplace entry', () =
   assert.doesNotMatch(plugin.name, /^(claude|anthropic)/);
   assert.equal(marketplace.plugins.length, 1);
   assert.equal(marketplace.plugins[0].name, plugin.name);
-  assert.equal(marketplace.plugins[0].source, './');
+  // The marketplace file is read from develop; the plugin itself comes from master, which only
+  // a release moves.
+  assert.deepEqual(marketplace.plugins[0].source, { source: 'github', repo: 'reylukakozlowski/limits-statusline', ref: 'master' });
 });
 
 test('directory rules: README of 40+ words, license, no top-level bin, no lockfile', () => {

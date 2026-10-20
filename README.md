@@ -161,9 +161,10 @@ the terminal status line without colours.
 
 ## Privacy: what the plugin runs, reads and writes
 
-Everything stays on your computer. The plugin makes no network requests, sends no telemetry, reads
-no credentials, and stores no prompts, responses or file contents. The full statement is in
-[PRIVACY.md](PRIVACY.md).
+Everything stays on your computer. The plugin makes no network requests, sends no telemetry, uses
+no credentials, and stores no prompts or responses. The only file contents it keeps are the
+backup copy of your `settings.json` that setup makes. Folder paths and branch names, which it
+reads and shows, can contain your name; [PRIVACY.md](PRIVACY.md) has the full statement.
 
 Its data folder is `~/.claude/plugins/data/limits-statusline-<source>/`: `-synced` when you added
 it from the directory, `-sealoop` when you added it from GitHub.

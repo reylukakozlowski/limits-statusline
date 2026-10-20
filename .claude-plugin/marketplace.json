@@ -8,7 +8,11 @@
   "plugins": [
     {
       "name": "limits-statusline",
-      "source": "./",
+      "source": {
+        "source": "github",
+        "repo": "reylukakozlowski/limits-statusline",
+        "ref": "master"
+      },
       "version": "1.0.2",
       "description": "Status line with session cost, cache, effort, context and the 7-day / 5-hour plan limits with recent pace and usage projected to the reset.",
       "author": {

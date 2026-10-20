@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The `sealoop` marketplace installs the plugin from `master`, the production branch a release
+  moves to its tag, instead of `develop`; Anthropic's directory follows `master` too.
+- PRIVACY.md and the README say which personal data the plugin can read and keep (folder paths,
+  branch names, the setup marker's path and the `settings.json` backup), and that it uses no
+  credentials although it reads `settings.json` whole.
+
 ## [1.0.2] - 2026-10-20
 
 ### Changed
