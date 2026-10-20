@@ -114,6 +114,10 @@ Everything stays on your computer. The plugin makes no network requests and read
 
 ## Troubleshooting
 
+- **Nothing shows in a new session** — the plugin is not installed: `claude --plugin-dir` and a
+  session's hot-reloaded mods folder load it for that session only. `claude plugin list` should
+  show `limits-statusline@sealoop`; if it does not, follow [Install](#install) (or, for a clone,
+  [Run a working copy in every session](#run-a-working-copy-in-every-session)).
 - **The terminal shows nothing** — run `/limits-statusline:setup` and check that `node --version`
   prints 20 or higher. On Windows the command runs through Git Bash or PowerShell; its paths use
   forward slashes so both read them.
@@ -132,6 +136,24 @@ claude plugin validate .  # manifest, hooks module and state contract
 
 The code is split into a pure `src/core` (snapshot → lines), a terminal adapter
 (`src/terminal`) and a desktop adapter (`src/desktop`). Tests run locally only.
+
+### Run a working copy in every session
+
+`claude --plugin-dir <folder>` and a session's hot-reloaded mods folder load the plugin for that
+one session: the next session starts without it. To run a clone everywhere, in the terminal
+and the desktop app alike, add the clone as the `sealoop` marketplace in place of the GitHub one:
+
+```bash
+claude plugin marketplace remove sealoop
+claude plugin marketplace add /path/to/limits-statusline
+claude plugin install limits-statusline@sealoop
+```
+
+The first line is needed only when the GitHub marketplace was added before, since both are named
+`sealoop`. Removing it uninstalls the plugin and deletes its data folder, the status line's runtime
+copy included, so the terminal line goes blank: run `/limits-statusline:setup` again afterwards. It
+rebuilds the runtime and leaves `settings.json` as it is. The plugin is then read from the folder
+itself: after an edit, `/reload-plugins` picks it up with no new version.
 
 ## Releasing
 
