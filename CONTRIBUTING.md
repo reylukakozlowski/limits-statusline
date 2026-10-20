@@ -75,11 +75,11 @@ permissions → Allow GitHub Actions to create and approve pull requests** is on
 repository starts with it off. Without it the run pushes the branch, stops, and prints the
 `gh pr create` command that opens the pull request by hand.
 
-Anthropic's directory follows `develop` too (see [docs/directory-submission.md](docs/directory-submission.md)):
-it scans the merged release and publishes it as its publish setting says.
-
-The `sealoop` marketplace serves `develop`, so the merge is what reaches users: they get the new
-version with `claude plugin update limits-statusline@sealoop`, or by themselves when they turned
+Users get only releases: `master` is the production branch, which only a release moves to its
+tag. Anthropic's directory follows `master` (see
+[docs/directory-submission.md](docs/directory-submission.md)): it scans each release and publishes
+it as its publish setting says. The `sealoop` marketplace file is read from `develop`, and its
+entry fetches the plugin from `master`, so users get the new version with `claude plugin update limits-statusline@sealoop`, or by themselves when they turned
 auto-update on for this marketplace (it is off by default for marketplaces outside Anthropic's).
 The first tagged release is `v0.1.1`; `0.1.0` has a changelog entry but no tag.
 
