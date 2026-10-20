@@ -54,8 +54,8 @@ export function buildLines(snapshot, { columns } = {}) {
   const size = Number.isFinite(columns) && columns < FULL_LINE_COLUMNS ? NARROW : WIDE;
   return [
     headerLine(snapshot),
-    contextLine(snapshot, size),
     sessionLine(snapshot),
+    contextLine(snapshot, size),
     limitLine('7d', analyzeLimit(snapshot.limits?.sevenDay ?? null, WINDOW_MS.sevenDay, snapshot.nowMs), size),
     limitLine('5h', analyzeLimit(snapshot.limits?.fiveHour ?? null, WINDOW_MS.fiveHour, snapshot.nowMs), size),
   ];

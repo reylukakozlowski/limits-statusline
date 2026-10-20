@@ -8,8 +8,8 @@ before the window resets, the limit turns red.
 
 ```
 daily-claude | no git | ✦ Opus 5.5
-ctx ■■■■■■■■■□□□□□□□ 54%  543k/1.0M  ⣀⡠⠔⠊
     $20.33 · 5h40m · cache 99% · xhigh
+ctx ■■■■■■■■■□□□□□□□ 54%  543k/1.0M  ⣀⡠⠔⠊
 7d  ■■■■■■□□□□□□□□□□ 39%  ↻ 76h10m  ↗ 0.4%/h
 5h  ■■□□□□□□□□□□□□□□ 12%  ↻ 4h10m   ↗ 14.4%/h
 ```

@@ -17,6 +17,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The session line (cost, runtime, cache, effort) moves up to sit right under the project, git and
+  model line, above the context bar, in the terminal and in the desktop band alike.
 - Desktop band: the context history line is filled down to its baseline with a see-through shade
   of the line's colour, so the trend reads as an area.
 - `/limits-statusline:setup` runs only when you type it (Claude no longer picks it up on its own),
