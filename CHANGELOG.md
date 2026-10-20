@@ -6,8 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `docs/directory-submission.md`: what the developer portal asks when the plugin is submitted to
+  Anthropic's directory, with this repository's answers; the directory follows `develop`.
+
 ### Changed
 
+- One run releases: after the owner approves the `release` environment, the Release workflow
+  merges its own release pull request (Rebase and merge, only the commit it prepared), tags the
+  merged commit and publishes the GitHub release. A pull request it cannot merge stays open, and
+  the owner's merge finishes the release as before.
 - The session line (cost, runtime, cache, effort) moves up to sit right under the project, git and
   model line, above the context bar, in the terminal and in the desktop band alike.
 

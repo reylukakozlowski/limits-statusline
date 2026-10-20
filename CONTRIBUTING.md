@@ -44,23 +44,31 @@ Releases come from the **Release** workflow on GitHub, which only the repository
    `minor` or `major`) or type an exact `X.Y.Z`. Tick **Dry run** to run every check and the tests
    without changing anything. The run is listed as `Dry run patch`, `Release patch` and so on.
 3. Approve the run: it starts by waiting for the owner's approval of the `release` environment, and
-   nothing runs before it.
+   nothing runs before it. The approval is also the decision to merge the release.
 4. The job runs `npm test`, bumps the version in `package.json`, `plugin.json` and
    `marketplace.json`, stamps the changelog, commits `LS-N_chore(release): vX.Y.Z` on a new branch
    `release/vX.Y.Z`, pushes it and opens its pull request into `develop`. `develop` is protected
    (changes only through pull requests, for the owner too), so nothing is pushed to it directly.
    When origin already has that branch, the run stops before the tests: the earlier pull request
    is still waiting.
-5. Merge that pull request with **Rebase and merge**. The merge changes `package.json` on
-   `develop`, which starts the workflow again: the tag job tags the merged commit `vX.Y.Z` (the
-   tag comes after the merge because Rebase and merge gives the commit a new SHA) and the publish
-   job creates the GitHub release with the changelog notes. A failed publish can be re-run on its
-   own; it skips a release that already exists.
+5. The job merges that pull request (Rebase and merge, only the commit it prepared, no rule
+   bypassed), tags the merged commit `vX.Y.Z` (after the merge, because Rebase and merge gives the
+   commit a new SHA), and the publish job creates the GitHub release with the changelog notes. A
+   failed publish can be re-run on its own; it skips a release that already exists.
+
+When the job cannot merge the pull request (GitHub still refuses after four tries over about half
+a minute), the run fails and the pull request stays open. Merge it with **Rebase and merge**: that
+merge changes `package.json` on `develop`, which starts the workflow again, and its tag job tags
+and the publish job publishes. When the merge went through but tagging failed, run
+`node scripts/tag-release.mjs` on an up-to-date `develop`: the tag it pushes starts the publish job.
 
 The workflow can open the pull request only while **Settings → Actions → General → Workflow
 permissions → Allow GitHub Actions to create and approve pull requests** is on; a personal
 repository starts with it off. Without it the run pushes the branch, stops, and prints the
 `gh pr create` command that opens the pull request by hand.
+
+Anthropic's directory follows `develop` too (see [docs/directory-submission.md](docs/directory-submission.md)):
+it scans the merged release and publishes it as its publish setting says.
 
 The `sealoop` marketplace serves `develop`, so the merge is what reaches users: they get the new
 version with `claude plugin update limits-statusline@sealoop`, or by themselves when they turned
@@ -78,6 +86,7 @@ make, and it only names a commit that is already there.
 
 The same release still runs from a computer, on an up-to-date `develop` and with `gh` signed in:
 `npm run release -- patch --push` (or `--dry-run`) commits on `release/vX.Y.Z`, pushes it and opens
-the pull request; after the merge the workflow tags and publishes as above. Without `--push` the
-commit stays in the clone, with the commands that push it and open the pull request.
+the pull request, which the owner then merges with Rebase and merge; the workflow's tag job tags and
+publishes as above. Without `--push` the commit stays in the clone, with the commands that push it
+and open the pull request.
 
