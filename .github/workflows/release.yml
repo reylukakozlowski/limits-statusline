@@ -7,7 +7,7 @@
 #            develop, is skipped and asks for nothing. For the owner the run then waits for the
 #            approval of the `release` environment before anything runs; after it,
 #            scripts/release.mjs runs the tests, bumps the version in every manifest, stamps
-#            CHANGELOG, commits `LS-N chore(release): vX.Y.Z` on release/vX.Y.Z, pushes that
+#            CHANGELOG, commits `LS-N_chore(release): vX.Y.Z` on release/vX.Y.Z, pushes that
 #            branch and opens its pull request into develop. A dry run checks all of it and
 #            changes nothing. Opening the pull request needs Settings → Actions → General →
 #            "Allow GitHub Actions to create and approve pull requests".

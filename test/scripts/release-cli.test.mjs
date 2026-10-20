@@ -22,7 +22,7 @@ function project(t, changelog = CHANGELOG, version = '0.1.0') {
 }
 
 function fakeGit({
-  branch = 'develop', status = '', log = 'LS-1 feat: first\nLS-4 fix: x', tags = [], remoteBranches = [],
+  branch = 'develop', status = '', log = 'LS-1 feat: first\nLS-4_fix: x', tags = [], remoteBranches = [],
   testStatus = 0, pushStatus = 0, ghStatus = 0,
 } = {}) {
   const calls = [];
@@ -78,7 +78,7 @@ test('release bumps every manifest, stamps the changelog, tests and commits on a
     'npm test',
     'git switch --create release/v0.1.1',
     'git add package.json .claude-plugin/plugin.json .claude-plugin/marketplace.json CHANGELOG.md',
-    'git commit -m LS-5 chore(release): v0.1.1',
+    'git commit -m LS-5_chore(release): v0.1.1',
   ]);
   assert.match(result.text, /git push origin release\/v0\.1\.1/);
   assert.match(result.text, /gh pr create --base develop --head release\/v0\.1\.1/);
@@ -90,7 +90,7 @@ test('release --push pushes the release branch and opens its pull request into d
   assert.equal(result.code, 0, result.text);
   const [push, pr] = git.writes().slice(-2);
   assert.equal(push, 'git push --set-upstream origin release/v0.2.0');
-  assert.match(pr, /^gh pr create --base develop --head release\/v0\.2\.0 --title LS-5 chore\(release\): v0\.2\.0 --body /);
+  assert.match(pr, /^gh pr create --base develop --head release\/v0\.2\.0 --title LS-5_chore\(release\): v0\.2\.0 --body /);
   assert.match(pr, /- A bug\./);
   assert.match(pr, /Rebase and merge/);
   assert.ok(!git.calls.some((call) => call.startsWith('git tag')));
@@ -167,7 +167,7 @@ test('release --dry-run runs the checks and the tests and writes nothing', (t) =
   const git = fakeGit();
   const result = release(dir, git, ['major', '--dry-run', '--push']);
   assert.equal(result.code, 0, result.text);
-  assert.match(result.text, /0\.1\.0 → 1\.0\.0, commit "LS-5 chore\(release\): v1\.0\.0" on release\/v1\.0\.0, pull request into develop/);
+  assert.match(result.text, /0\.1\.0 → 1\.0\.0, commit "LS-5_chore\(release\): v1\.0\.0" on release\/v1\.0\.0, pull request into develop/);
   assert.match(result.text, /- A bug\./);
   assert.ok(git.calls.includes('git ls-remote --exit-code --heads origin release/v1.0.0'));
   assert.deepEqual(git.writes(), ['npm test']);
@@ -202,7 +202,7 @@ test('release without a bump kind, or with an unknown option, is a usage error',
   assert.equal(release(project(t), fakeGit(), ['patch', '--force']).code, 1);
 });
 
-const MERGED_LOG = 'abc1234\tLS-6 chore(release): v0.1.1\nfff0000\tLS-5 feat: x\n';
+const MERGED_LOG = 'abc1234\tLS-6_chore(release): v0.1.1\nfff0000\tLS-5 feat: x\n';
 
 test('tag-release tags the merged release commit, pushes the tag and prints only the tag', (t) => {
   const git = fakeGit({ log: MERGED_LOG });
