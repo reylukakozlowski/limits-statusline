@@ -60,6 +60,9 @@ Releases come from the **Release** workflow on GitHub, which only the repository
    bypassed), tags the merged commit `vX.Y.Z` (after the merge, because Rebase and merge gives the
    commit a new SHA), and the publish job creates the GitHub release with the changelog notes. A
    failed publish can be re-run on its own; it skips a release that already exists.
+6. Once GitHub shows the new release as the latest, the publish job deletes the older releases: the
+   repository keeps one release, and the `vX.Y.Z` tags of all versions stay as the history (a tag
+   ruleset forbids deleting or moving them).
 
 When the job cannot merge the pull request (GitHub still refuses after four tries over about half
 a minute), the run fails and the pull request stays open. Merge it with **Rebase and merge**: that

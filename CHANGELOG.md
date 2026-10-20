@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The repository keeps one GitHub release, the latest: after publishing, the Release workflow deletes the
+  older releases and keeps their tags as the history.
+
 ## [1.0.0] - 2026-10-20
 
 ### Changed

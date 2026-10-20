@@ -188,3 +188,16 @@ jobs:
           else
             gh release create "$TAG" --title "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md" --verify-tag
           fi
+
+      # One release per repository, the latest; its predecessors go, their tags stay as the history.
+      # Only after GitHub shows the new release as the latest, so a failed publish never leaves none.
+      - name: Keep only the latest release, tags stay
+        run: |
+          latest="$(gh release view --json tagName --jq .tagName)"
+          if [ "$latest" != "$TAG" ]; then
+            echo "The latest release is '$latest', not $TAG; no release deleted."
+            exit 0
+          fi
+          gh release list --limit 100 --json tagName --jq '.[].tagName' | while read -r old; do
+            if [ "$old" != "$TAG" ]; then gh release delete "$old" --yes; fi
+          done
