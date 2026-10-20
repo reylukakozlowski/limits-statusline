@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Release workflow on GitHub (Actions → Release): only the repository owner can run it, from
+  `develop`, after approving the `release` environment. It tests, bumps the version, stamps the
+  changelog, commits, tags, pushes the commit and the tag atomically and publishes the GitHub
+  release; a dry run checks all of it and changes nothing.
+
+### Changed
+
+- `npm run release -- --dry-run` runs the tests too, `--push` sends the branch and the tag in one
+  atomic push, and a version whose tag already exists is refused before anything is written.
+
 ### Fixed
 
 - `/limits-statusline:setup` run again after the plugin's data folder was deleted says that it
