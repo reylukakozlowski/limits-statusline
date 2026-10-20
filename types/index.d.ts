@@ -3,6 +3,7 @@
 export type LimitsTracker = {
   effort: string | null
   cache: { input: number; creation: number; read: number }
+  lastTurn: { atMs: number; isCached: boolean } | null
   history: number[]
   git: { isRepo: boolean; branch: string | null; isDirty: boolean } | null
 }

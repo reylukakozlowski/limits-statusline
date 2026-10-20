@@ -32,7 +32,7 @@
     }
   },
   "exceeds_200k_tokens": true,
-  "prompt_cache": { "warm": true, "caching_observed": true, "ttl": "1h", "requests": 140, "misses": 1, "hit_ratio": 0.99 },
+  "prompt_cache": { "warm": true, "caching_observed": true, "ttl": "1h", "expires_at": 1800003120, "requests": 140, "misses": 1, "hit_ratio": 0.99 },
   "fast_mode": false,
   "effort": { "level": "xhigh" },
   "thinking": { "enabled": true },

@@ -6,6 +6,31 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- The 7-day and 5-hour lines show where the usage ends up at the reset if the current pace
+  holds, right after the usage (`39% →  71%`), and the reset's clock time next to the countdown
+  (`↻ 4h10m 12:10`, with the weekday beyond a day: `3d04h Mon 12:10`).
+- When the pace would use a limit up before its reset, the line also says when:
+  `⚠ 100% in 1h17m`. On a narrow screen the clock time goes first, then this part.
+- The session line shows how long the prompt cache stays warm (`cache 99% 52m`, yellow in its
+  last five minutes, `cold` once expired; estimated in the desktop app from the last response and
+  Claude Code's cache lifetime) and, in the terminal, the lines changed (`+156 -23`).
+- A plan limit history shared by every session and by the status line and the desktop band
+  (`~/.claude/limits-statusline/limit-history.json`, readings kept for 1 or 48 hours), so the
+  pace counts all sessions and a new session has it at once.
+
+### Changed
+
+- The pace (`↗`) is the recent one instead of the average since the window opened: over the last
+  30 minutes for the 5-hour limit, and over the last 24 hours for the 7-day limit, now shown per
+  day (`10.2%/d`) and taken across the weekly reset. A Monte Carlo comparison of bursty work
+  (`npm run simulate:pace`) chose both look-backs; the 24-hour one keeps the 7-day projection
+  from soaring early in the week. The colours follow this projection.
+- The limit lines show the newest figure any session saw, so an idle session no longer shows an
+  old usage.
+- The reset countdown rolls whole days out of the hours (`3d04h` instead of `76h10m`).
+
 ## [0.1.3] - 2026-10-20
 
 ### Added

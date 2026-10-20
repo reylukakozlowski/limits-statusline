@@ -1,6 +1,7 @@
 // Status-line stdin JSON (https://code.claude.com/docs/en/statusline) → core Snapshot.
 // Every field is optional and type-checked: older Claude Code versions send fewer fields.
 
+import { EMPTY_LIMIT_HISTORY } from '../core/limit-history.mjs';
 import { cacheHitRatio } from '../core/metrics.mjs';
 import { prettyModelName } from '../core/model-name.mjs';
 import { folderName } from '../core/paths.mjs';
@@ -16,18 +17,19 @@ export function workingDirectory(input) {
 
 /**
  * @param {unknown} input parsed stdin JSON
- * @param {{ nowMs: number, git: import('../core/git-status.mjs').GitState | null, contextHistory: number[] }} extras
+ * @param {{ nowMs: number, git: import('../core/git-status.mjs').GitState | null, contextHistory: number[],
+ *           timeZone?: string | null, limitReadings?: import('../core/limit-history.mjs').LimitReadings }} extras
  * @returns {import('../core/layout.mjs').Snapshot}
  */
-export function snapshotFromStatusInput(input, { nowMs, git, contextHistory }) {
+export function snapshotFromStatusInput(input, { nowMs, git, contextHistory, timeZone = null, limitReadings }) {
   const data = record(input);
   const workspace = record(data.workspace);
   const model = record(data.model);
   const cost = record(data.cost);
   const context = record(data.context_window);
-  const limits = record(data.rate_limits);
   return {
     nowMs,
+    timeZone,
     project: text(record(workspace.repo).name)
       ?? folderName(text(workspace.project_dir) ?? workingDirectory(data)),
     git: git ?? null,
@@ -35,18 +37,28 @@ export function snapshotFromStatusInput(input, { nowMs, git, contextHistory }) {
     costUsd: number(cost.total_cost_usd),
     durationMs: number(cost.total_duration_ms),
     cacheHitRatio: number(record(data.prompt_cache).hit_ratio) ?? cacheFromUsage(context.current_usage),
+    promptCache: promptCacheState(data.prompt_cache),
     effort: text(record(data.effort).level),
+    linesChanged: linesChanged(cost),
     context: {
       usedTokens: number(context.total_input_tokens),
       windowTokens: number(context.context_window_size),
       percent: number(context.used_percentage),
     },
     contextHistory: Array.isArray(contextHistory) ? contextHistory : [],
-    limits: {
-      sevenDay: limitReading(limits.seven_day),
-      fiveHour: limitReading(limits.five_hour),
-    },
+    limits: limitsFromStatusInput(data),
+    limitReadings: limitReadings ?? EMPTY_LIMIT_HISTORY.readings,
   };
+}
+
+/**
+ * The 7-day and 5-hour readings of `rate_limits`.
+ * @param {unknown} input parsed stdin JSON
+ * @returns {import('../core/limit-history.mjs').Limits}
+ */
+export function limitsFromStatusInput(input) {
+  const limits = record(record(input).rate_limits);
+  return { sevenDay: limitReading(limits.seven_day), fiveHour: limitReading(limits.five_hour) };
 }
 
 function limitReading(window) {
@@ -62,4 +74,23 @@ function cacheFromUsage(usage) {
     cacheCreationTokens: usage.cache_creation_input_tokens,
     cacheReadTokens: usage.cache_read_input_tokens,
   });
+}
+
+// `prompt_cache.warm` and `expires_at` (epoch seconds, null once cold), Claude Code 2.1.251+.
+function promptCacheState(promptCache) {
+  const { warm, expires_at: expiresAt } = record(promptCache);
+  const expiresAtSeconds = number(expiresAt);
+  const state = {
+    warm: typeof warm === 'boolean' ? warm : null,
+    expiresAtMs: expiresAtSeconds === null ? null : expiresAtSeconds * MS_PER_SECOND,
+  };
+  return state.warm === null && state.expiresAtMs === null ? null : state;
+}
+
+const count = (value) => (number(value) !== null && value >= 0 ? value : null);
+
+function linesChanged(cost) {
+  const added = count(cost.total_lines_added);
+  const removed = count(cost.total_lines_removed);
+  return added === null && removed === null ? null : { added: added ?? 0, removed: removed ?? 0 };
 }

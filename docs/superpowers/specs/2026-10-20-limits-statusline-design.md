@@ -30,8 +30,8 @@ $20.33 · 5h40m · cache 99% · xhigh
 | Distribution | Public GitHub repo + own marketplace `sealoop` + prepared for Anthropic's directory (user submits) |
 | Identity | Only "Luka Kozlowski", "lukakozlowski@outlook.com", "SeaLoop" — manifests, commit author, LICENSE; no Claude co-author trailer |
 | Name | `limits-statusline` (permanent) |
-| Burn rate | Average since window start: `rate = used% / elapsedHours`, `elapsed = window − (resetsAt − now)` (matches mockup: 12%/50min = 14.4%/h) |
-| Red rule | `projected = used + rate × remainingHours` (= rate × window length); red when > 100 |
+| Burn rate | Average since window start: `rate = used% / elapsedHours`, `elapsed = window − (resetsAt − now)` (matches mockup: 12%/50min = 14.4%/h). **Superseded by LS-20:** the recent pace over the last 30 min (5h, %/h) or 24 h across the weekly reset (7d, %/d), from a plan-limit history shared by all sessions; the average since window start remains the fallback without history |
+| Red rule | `projected = used + rate × remainingHours`; red when > 100. LS-20 shows it (`→ 117%`) with `⚠ 100% in 1h17m` when the limit runs out before the reset |
 | Limit colours | projected < 80 green · 80–100 yellow · > 100 red; `used ≥ 100` is red |
 | Context colours | < 50 green · 50–80 orange · > 80 red |
 | Early window | No rate until 15 min elapsed: shows `↗ —` |

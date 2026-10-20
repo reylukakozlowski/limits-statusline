@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import { join } from 'node:path';
 import { HISTORY_MAX_POINTS, appendPoint } from '../core/history.mjs';
+import { writeAtomic } from './atomic-file.mjs';
 
 export const HISTORY_MAX_AGE_MS = 7 * 24 * 3_600_000;
 
@@ -48,12 +49,6 @@ function readPoints(file) {
   } catch {
     return [];
   }
-}
-
-function writeAtomic(file, content) {
-  const temporary = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(temporary, content);
-  fs.renameSync(temporary, file);
 }
 
 function pruneOldFiles(dir, nowMs) {

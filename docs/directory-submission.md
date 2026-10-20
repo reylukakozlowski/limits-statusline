@@ -33,14 +33,19 @@ the Release workflow merges each release there.
 4. **Data handling**: the facts below are from [PRIVACY.md](../PRIVACY.md); the answers are yours to
    give.
    - Reads or stores personal data: it reads what Claude Code gives every status line (cost,
-     duration, context fill, cache counts, effort, model, plan limits), the working folder and the
-     git branch, which can contain names. It shows them on your screen and keeps them on your
-     computer only: context-fill percentages for 7 days, the desktop band's figures in Claude
-     Code's session state. It reads no prompts, responses, conversation history or credentials.
+     duration, lines changed, context fill, cache counts and expiry, effort, model, plan limits),
+     the working folder and the git branch, which can contain names, and the time the session's
+     transcript was last written (not its contents). It shows them on your screen and keeps them
+     on your computer only: context-fill percentages for 7 days, plan-limit percentages with
+     session ids in `~/.claude/limits-statusline/limit-history.json` for 1 to 48 hours, the
+     desktop band's figures in Claude Code's session state. It reads no prompts, responses,
+     conversation history or credentials.
    - Sends data to services other than its declared connectors: no. It makes no network requests
      and declares no connectors.
-   - How long it keeps data: context-fill history 7 days; the runtime copy, the `statusLine`
-     entry and the setup backups until you uninstall or remove them.
+   - How long it keeps data: context-fill history 7 days; plan-limit readings 1 hour (5-hour) or
+     48 hours (7-day), and sessions 48 hours, pruned whenever a reading is added; the runtime copy,
+     the `statusLine` entry, the setup backups and the limit history file until you uninstall or
+     remove them.
    - Intended for people under 18: no; it is a developer tool.
 5. **Compliance**: contact email `lukakozlowski@outlook.com` (the address in `plugin.json` and
    `PRIVACY.md`). Read the [Anthropic Software Directory

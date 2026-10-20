@@ -1,17 +1,19 @@
 # Limits Status Line
 
 A Claude Code status line that answers, at a glance, "how much have I spent and how close am I to
-my plan limits?". It shows the session's cost, runtime, prompt-cache hit ratio and effort, the
-project, git branch and model, how full the context window is, and the claude.ai **7-day** and
-**5-hour** limits with the time to reset and a burn rate. When the current pace would pass 100%
-before the window resets, the limit turns red.
+my plan limits?". It shows the session's cost, runtime, prompt-cache hit ratio and how long the
+cache stays warm, effort and lines changed, the project, git branch and model, how full the
+context window is, and the claude.ai **7-day** and **5-hour** limits: the usage now and where your
+current pace takes it by the reset, the time and clock time of the reset, and the pace itself.
+When that pace would pass 100% before the window resets, the limit turns red and says when it
+runs out.
 
 ```
 daily-claude | no git | ✦ Opus 5.5
-    $20.33 · 5h40m · cache 99% · xhigh
+    $20.33 · 5h40m · cache 99% 52m · xhigh · +156 -23
 ctx ■■■■■■■■■□□□□□□□ 54%  543k/1.0M  ⣀⡠⠔⠊
-7d  ■■■■■■□□□□□□□□□□ 39%  ↻ 76h10m  ↗ 0.4%/h
-5h  ■■□□□□□□□□□□□□□□ 12%  ↻ 4h10m   ↗ 14.4%/h
+7d  ■■■■■■□□□□□□□□□□ 39% →  71%  ↻ 3d04h Mon 12:10  ↗ 10.2%/d
+5h  ■■□□□□□□□□□□□□□□ 12% →  72%  ↻ 4h10m 12:10      ↗ 14.4%/h
 ```
 
 It works in both places Claude Code runs on your computer:
@@ -93,13 +95,15 @@ and the command above restores it as long as the plugin is installed.
    line:
 
    ```
-   5h  ■■■■■■■■■■■□□□□□ 70%  ↻ 2h00m   ↗ 23.3%/h
+   5h  ■■■■■■■■■■■□□□□□ 70% → 117%  ↻ 2h00m 16:20      ↗ 23.3%/h  ⚠ 100% in 1h17m
    ```
 
-   70% used three hours into the window is 23.3% an hour. At that pace the two hours left add
-   about 47%, so the window would end near 117%, and the line is red. That is the moment to switch
-   to a smaller model or a lower effort, or to plan the rest of the work around the reset in two
-   hours. Below 80% projected the line is green, from 80% to 100% yellow.
+   Over the last half hour you used 23.3% an hour. At that pace the two hours left until the
+   reset at 16:20 add about 47%, so the window would end near 117%: the line is red, and the
+   limit runs out in 1h17m, well before the reset. That is the moment to switch to a smaller
+   model or a lower effort, or to plan the rest of the work around the reset. Slow down and the
+   pace, the projection and the colour follow within half an hour. Below 80% projected the line
+   is green, from 80% to 100% yellow.
 3. **Keep the context window in view during a long session.** The `ctx` bar shows how full the
    context window is, with the tokens used and the window size (`543k/1.0M`), and the line next to
    it shows how it moved. When the bar turns red (above 80%), `/compact` or `/clear` before
@@ -117,16 +121,34 @@ and the command above restores it as long as the plugin is installed.
 | `$20.33` | `cost.total_cost_usd` | Session cost estimated by Claude Code at list price; resets on `/clear` |
 | `5h40m` | `cost.total_duration_ms` | How long the session has been running (desktop: since the session first started) |
 | `cache 99%` | `prompt_cache.hit_ratio` | Share of input tokens served from the prompt cache |
+| `52m` / `cold` | `prompt_cache.expires_at` | How long the prompt cache stays warm without a new prompt (yellow in its last 5 minutes), or that it went cold and the next prompt rebuilds it |
 | `xhigh` | `effort.level` | Reasoning effort of the session (desktop: shown after the first request) |
+| `+156 -23` | `cost.total_lines_added`, `total_lines_removed` | Lines of code added and removed in the session (terminal only) |
 | `ctx 54% 543k/1.0M` | `context_window` | Context window fill; the line shows how it moved during the session |
-| `7d` / `5h` | `rate_limits` | Plan usage, `↻` time to reset, `↗` burn rate |
+| `7d` / `5h` | `rate_limits` | Plan usage now `→` projected at the reset, `↻` time and clock time of the reset, `↗` pace, `⚠` when the limit runs out before the reset |
 
-**Burn rate** is the average since the window opened: used percent divided by the hours elapsed
-(12% after 50 minutes is 14.4%/h). The **projection** extends that pace to the reset. Colours:
-green below 80% projected, yellow from 80% to 100%, **red above 100%** or when the limit is used up.
-In the first 15 minutes of a window there is no rate yet (`↗ —`). The context bar is green below
-50%, orange to 80% and red above. The context line is scaled from its lowest to its highest point,
-so it shows the shape of the trend; the percentage next to the bar is the absolute figure.
+**Pace** is how fast the usage grew recently: over the last **30 minutes** for the 5-hour limit,
+shown per hour, and over the last **24 hours** for the 7-day limit, shown per day, so the 7-day
+pace includes your nights and days off. The **projection** (`→`) extends that pace to the reset:
+it answers "where do I end up if I keep going like this?". The plan's limits are shared by every
+session and by claude.ai, so the pace counts all of them: each session adds the figures it
+receives to a small shared history, and the line always shows the newest figure any session saw.
+Without readings from before it, a new window has no pace in its first 15 minutes (`→ —`,
+`↗ —`); when you work on across a reset, the pace carries on from the previous window. Without
+any history yet the pace is the average since the window opened. A large drop within a window is
+taken as a limit reset given on claude.ai, and usage counts again from there.
+
+Colours: green below 80% projected, yellow from 80% to 100%, **red above 100%** or when the limit
+is used up; then `⚠ 100% in 1h17m` says when it runs out at the current pace. The reset's clock
+time is in your computer's time zone, with the weekday when it is more than a day away. On a
+narrow screen the clock time goes first, then the `⚠` part. The context bar is green below 50%,
+orange to 80% and red above. The context line is scaled from its lowest to its highest point, so
+it shows the shape of the trend; the percentage next to the bar is the absolute figure.
+
+In the desktop app the cache countdown is estimated: Claude Code keeps the cache warm for an hour
+after the last response on a plan within its limits and five minutes otherwise, unless
+`promptCacheTtl` or a prompt-cache variable says else. Lines changed are shown in the terminal
+only, because the desktop app does not give plugins that count.
 
 ## Settings
 
@@ -150,6 +172,12 @@ it from the directory, `-sealoop` when you added it from GitHub.
   `git status --porcelain=v2 --branch --untracked-files=no` in the working folder (with
   `GIT_OPTIONAL_LOCKS=0`, so it never takes git's index lock), and keeps a small context history per
   session, the fill percentages only, in the data folder's `history/` (pruned after 7 days).
+- **Plan limit history** (status line and desktop band alike): the 5-hour and 7-day percentages
+  with their time and reset time, and each session's last figures, in
+  `~/.claude/limits-statusline/limit-history.json`, kept for 1 hour (5-hour) and 48 hours
+  (7-day). A figure a session reports for the first time may be an old one, so the status line
+  stamps it with the time the session's transcript was last written (the file's time only, never
+  its contents).
 - **Setup** (`/limits-statusline:setup`): copies the status line runtime (the plugin's own
   `src/core` and `src/terminal`) into the data folder, because the plugin's install folder changes
   with every update and the command in `settings.json` must not. It writes `statusLine` to
@@ -159,7 +187,8 @@ it from the directory, `-sealoop` when you added it from GitHub.
 - **SessionStart hook**: after setup has run, refreshes the runtime copy after a plugin update and
   rebuilds it if it went missing; before setup it does nothing.
 - **Desktop band** (mod): reads the session's figures from Claude Code, runs the same `git status`
-  (or reads `.git/HEAD` where commands are unavailable), keeps the effort, cache counts, context
+  (or reads `.git/HEAD` where commands are unavailable), reads the `promptCacheTtl` setting and
+  the prompt-cache variables, keeps the effort, cache counts, time of the last response, context
   history and git state in the state Claude Code holds for the mod, and redraws once a minute so
   the reset countdowns stay current.
 
@@ -179,6 +208,12 @@ With `CLAUDE_CONFIG_DIR` set, these folders live there instead of `~/.claude`.
   points `settings.json` at it, or use `--uninstall` to put your previous status line back.
 - **`7d —` and `5h —`** — the limits arrive with the first response of a session and only for
   Pro and Max subscribers.
+- **The 7-day projection is very high on the first day after installing** — the 7-day pace looks
+  back 24 hours; until the shared history covers a day, the pace is the average since the weekly
+  reset, which early in the week counts only working hours. It settles once a day of history is
+  there.
+- **Odd pace after switching accounts** — the shared history does not tell accounts apart; two
+  accounts used in turn within a week mix their figures until the readings age out (48 hours).
 - **No effort or cache shown** — older Claude Code versions do not send them; update Claude Code.
 
 ## Support

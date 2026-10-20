@@ -1,10 +1,13 @@
 // Number → short label formatting shared by every renderer. Pure: no I/O, no clock.
 
+import { MS_PER_DAY, MS_PER_HOUR, MS_PER_SECOND } from './time.mjs';
+
 export const DASH = '—';
 
-const MS_PER_SECOND = 1000;
 const SECONDS_PER_MINUTE = 60;
 const MINUTES_PER_HOUR = 60;
+const HOURS_PER_DAY = 24;
+const HOURS_PER_RATE_UNIT = Object.freeze({ h: 1, d: HOURS_PER_DAY });
 
 /** Duration as `42s`, `50m` or `5h40m` (hours never roll into days, minutes zero-padded). */
 export function formatDuration(ms) {
@@ -38,7 +41,37 @@ export function formatPercent(percent) {
   return Number.isFinite(percent) ? `${Math.round(percent)}%` : DASH;
 }
 
-/** Percent per hour with one decimal: `14.4%/h`. */
-export function formatRate(percentPerHour) {
-  return Number.isFinite(percentPerHour) ? `${percentPerHour.toFixed(1)}%/h` : DASH;
+/** Time to a reset: `3h50m` under a day, `6d17h` from a day on. */
+export function formatCountdown(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return DASH;
+  const totalHours = Math.floor(ms / MS_PER_HOUR);
+  if (totalHours < HOURS_PER_DAY) return formatDuration(ms);
+  const hours = String(totalHours % HOURS_PER_DAY).padStart(2, '0');
+  return `${Math.floor(totalHours / HOURS_PER_DAY)}d${hours}h`;
+}
+
+/** Percent per hour, shown per hour or per day with one decimal: `14.4%/h`, `10.2%/d`. */
+export function formatRate(percentPerHour, unit = 'h') {
+  if (!Number.isFinite(percentPerHour) || !Object.hasOwn(HOURS_PER_RATE_UNIT, unit)) return DASH;
+  return `${(percentPerHour * HOURS_PER_RATE_UNIT[unit]).toFixed(1)}%/${unit}`;
+}
+
+/**
+ * Wall-clock time of a moment in `timeZone`, 24-hour: `18:10` within a day of now, else with
+ * the weekday, `Tue 08:10`. A dash for an unknown time or zone.
+ * @param {number} atMs @param {{ nowMs: number, timeZone: string | null }} context
+ */
+export function formatClock(atMs, { nowMs, timeZone }) {
+  if (!Number.isFinite(atMs) || !Number.isFinite(nowMs) || typeof timeZone !== 'string') return DASH;
+  const withDay = atMs - nowMs >= MS_PER_DAY;
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23', ...(withDay ? { weekday: 'short' } : {}),
+    }).formatToParts(atMs);
+    const part = (type) => parts.find((candidate) => candidate.type === type)?.value;
+    const time = `${part('hour')}:${part('minute')}`;
+    return withDay ? `${part('weekday')} ${time}` : time;
+  } catch {
+    return DASH; // an unknown zone name
+  }
 }

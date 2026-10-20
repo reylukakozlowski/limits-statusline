@@ -4,7 +4,9 @@
 import { atom, read, update } from 'claude-code';
 import { buildLines } from '../core/layout.mjs';
 import { renderBand } from './band-view.mjs';
+import { cacheTtlWithEngine } from './cache-ttl.mjs';
 import { probeGitWithEngine } from './git.mjs';
+import { loadLimitReadings, recordMeasuredLimits } from './limit-history.mjs';
 import { shouldDraw, supportsTypography } from './policy.mjs';
 import { snapshotFromSession } from './snapshot.mjs';
 import { afterClear, initialTracker, withContext, withEffort, withGit, withTurnUsage } from './tracker.mjs';
@@ -30,12 +32,16 @@ export function registerBand(on, options) {
   });
 
   on('turn.complete', async ($, e, next) => {
-    await update($, tracker, (state) => withTurnUsage(state ?? initialTracker(), e));
+    const nowMs = await $.clock.now();
+    await update($, tracker, (state) => withTurnUsage(state ?? initialTracker(), e, nowMs));
     return next(e);
   });
 
+  // A measurement names what moved since the last one, so a plan figure recorded here was
+  // observed just now: the shared history gets it with the right time.
   on('session.measure', async ($, e, next) => {
     await update($, tracker, (state) => withContext(state ?? initialTracker(), e.context?.percent));
+    if (e.changed?.includes('rateLimits')) await recordMeasuredLimits($, e.rateLimits, await $.clock.now());
     await refreshGit($);
     return next(e);
   });
@@ -48,12 +54,14 @@ export function registerBand(on, options) {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (!shouldDraw(mode, e.surface) || e.props.hasSurvey) return next(e);
-    const [usage, modelRaw, cwd, state, nowMs, typography] = await Promise.all([
+    const [usage, modelRaw, cwd, state, nowMs, typography, limitReadings] = await Promise.all([
       $.session.usage(), $.session.model(), $.session.cwd(), read($, tracker), $.clock.now(), hasTypography($),
+      loadLimitReadings($),
     ]);
-    const lines = buildLines(snapshotFromSession({ usage, modelRaw, cwd, tracker: state, nowMs }), {
-      columns: e.props.bodyColumns,
-    });
+    const cacheTtlMs = await cacheTtlWithEngine($, usage?.rateLimits, nowMs);
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const snapshot = snapshotFromSession({ usage, modelRaw, cwd, tracker: state, nowMs, timeZone, limitReadings, cacheTtlMs });
+    const lines = buildLines(snapshot, { columns: e.props.bodyColumns });
     return renderBand(lines, $.ui.resolve(e), h, { typography });
   });
 }

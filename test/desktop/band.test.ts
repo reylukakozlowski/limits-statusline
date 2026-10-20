@@ -17,16 +17,34 @@ const USAGE = {
 
 const PROPS = { hasSurvey: false, isWorking: false, maxRows: 8, bodyColumns: 120 } as never
 
-function answerSession(on: any, { processRun }: { processRun?: () => Promise<unknown> } = {}) {
+const HISTORY_FILE = 'C:/Users/dev/.claude/limits-statusline/limit-history.json'
+
+// The shared limit history lives in `files`, never in the real configuration folder. The engine
+// hands hooks platform paths (backslashes on Windows), so files are keyed with forward slashes.
+const fileKey = (path: string) => path.replace(/\\/g, '/')
+const failing = async () => { throw new Error('denied') }
+
+type Answers = { processRun?: () => Promise<unknown>, files?: Record<string, string>, refuse?: boolean }
+
+function answerSession(on: any, { processRun, files = {}, refuse = false }: Answers = {}) {
   on('session.usage', async () => ({ value: USAGE }))
   on('session.model', async () => ({ value: 'claude-opus-5-5' }))
   on('session.cwd', async () => ({ value: 'C:/Users/dev/daily-claude' }))
+  on('session.id', async () => ({ value: 'session-under-test' }))
   on('clock.now', async () => ({ value: NOW }))
   on('session.version', async () => ({ value: { version: '2.1.299' } }))
+  on('env.get', refuse ? failing : async ($: any, e: any) => ({ value: e.name === 'USERPROFILE' ? 'C:/Users/dev' : undefined }))
+  on('settings.read', refuse ? failing : async () => ({ value: {} }))
+  on('fs.exists', refuse ? failing : async ($: any, e: any) => ({ value: Object.hasOwn(files, fileKey(e.path)) }))
+  on('fs.write', async ($: any, e: any) => {
+    files[fileKey(e.path)] = e.text
+    return { value: undefined }
+  })
   on('process.run', processRun ?? (async () => ({
     value: { exitCode: 128, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
   })))
   on('session.measure', async ($: any, e: any) => ({ changed: e.changed }))
+  on('turn.complete', async ($: any, e: any) => ({ text: e.answer, usage: e.usage }))
   // Stands in for the engine's own band, so a test can tell "passed to the engine" from "drew".
   on('ui.render', { component: 'AbovePrompt' }, ($: any, e: any) => {
     const { Text } = $.ui.resolve(e)
@@ -114,5 +132,57 @@ test('reads the branch from .git/HEAD when $.process is not available', async ($
   await measure($, 40)
   const ui = await mount($, 'desktop')
   expect(await ui.find({ type: 'Text', text: /git develop/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('records the plan figures a measurement reports in the shared history', async ($, on) => {
+  const files: Record<string, string> = {}
+  answerSession(on, { files })
+  await $.session.measure({ context: { tokens: 0, window: 1_000_000, percent: 54 }, rateLimits: USAGE.rateLimits, changed: ['rateLimits'] } as never)
+  const history = JSON.parse(files[HISTORY_FILE] ?? 'null')
+  expect(history.readings.fiveHour).toEqual([[NOW, 12, NOW + 15_000_000]])
+  expect(history.readings.sevenDay).toEqual([[NOW, 39, NOW + 274_200_000]])
+  expect(Object.keys(history.sessions)).toEqual(['session-under-test'])
+})
+
+test('a measurement of the context alone writes no history', async ($, on) => {
+  const files: Record<string, string> = {}
+  answerSession(on, { files })
+  await measure($, 54)
+  expect(files[HISTORY_FILE]).toBeUndefined()
+})
+
+test('draws the newest shared figure and the pace of the last half hour', async ($, on) => {
+  const reset = NOW + 15_000_000
+  const readings = { fiveHour: [[NOW - 3_600_000, 20, reset], [NOW - 1_800_000, 30, reset], [NOW - 60_000, 45, reset]], sevenDay: [] }
+  const files: Record<string, string> = { [HISTORY_FILE]: JSON.stringify({ version: 1, readings, sessions: {} }) }
+  answerSession(on, { files })
+  on('fs.read', async ($: any, e: any) => ({ value: files[fileKey(e.path)] ?? '' }))
+  const ui = await mount($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /45% → 170%/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /30\.0%\/h/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('shows how long the cache stays warm after a cached turn, and nothing of it after /clear', async ($, on) => {
+  answerSession(on)
+  on('session.end', async ($: any, e: any) => ({ sessionId: e.sessionId }))
+  const usage = { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 990, model: 'm' }
+  await $.turn.complete({ turnId: 't1', answer: 'done', durationMs: 1000, isAborted: false, reason: 'answer', usage } as never)
+  const ui = await mount($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /cache 99% 1h00m/ })).toBeDefined()
+  await ui.unmount()
+  await $.session.end({ reason: 'clear', sessionId: 'session-under-test', resume: { id: 'session-under-test' } })
+  const cleared = await mount($, 'desktop')
+  expect(await cleared.find({ type: 'Text', text: /1h00m/ })).toBeUndefined()
+  await cleared.unmount()
+})
+
+test('still draws the band when the environment, files and settings refuse', async ($, on) => {
+  answerSession(on, { refuse: true })
+  await $.session.measure({ context: { tokens: 0, window: 1_000_000, percent: 54 }, rateLimits: USAGE.rateLimits, changed: ['rateLimits'] } as never)
+  const ui = await mount($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /7d/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /cache 99%/ })).toBeUndefined()
   await ui.unmount()
 })
