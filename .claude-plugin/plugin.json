@@ -1,0 +1,26 @@
+{
+  "name": "limits-statusline",
+  "displayName": "Limits Status Line",
+  "version": "0.1.0",
+  "description": "Status line for Claude Code: session cost, runtime, prompt-cache hit ratio, effort, project, git and model, context fill, and the 7-day and 5-hour plan limits with reset countdown, burn rate and a red warning when the projected usage passes 100%.",
+  "author": {
+    "name": "Luka Kozlowski",
+    "email": "lukakozlowski@outlook.com"
+  },
+  "homepage": "https://github.com/Reywedian/limits-statusline#readme",
+  "repository": "https://github.com/Reywedian/limits-statusline",
+  "license": "MIT",
+  "keywords": ["statusline", "status-line", "rate-limits", "usage", "cost", "context-window", "desktop"],
+  "documentationUrl": "https://github.com/Reywedian/limits-statusline#readme",
+  "supportUrl": "https://github.com/Reywedian/limits-statusline/issues",
+  "privacyPolicyUrl": "https://github.com/Reywedian/limits-statusline/blob/develop/PRIVACY.md",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "band": {
+      "type": "string",
+      "title": "Band above the prompt",
+      "description": "Where the plugin draws its band above the prompt: desktop (only in the desktop app; the terminal has the status line at the bottom), all (desktop app and terminal) or off. Any other value means desktop.",
+      "default": "desktop"
+    }
+  }
+}

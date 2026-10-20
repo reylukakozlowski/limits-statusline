@@ -1,0 +1,24 @@
+# Changelog
+
+All notable changes to this project are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
+[Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+## [0.1.0] - 2026-10-20
+
+### Added
+
+- Terminal status line: project, git branch and model; a 16-cell context bar with token counts and
+  a braille line of the context history; session cost, runtime, prompt-cache hit ratio and effort;
+  7-day and 5-hour plan limits with reset countdown, burn rate and a red warning when the projected
+  usage passes 100%.
+- Desktop band above the prompt (mod), drawing the same five lines in the Claude desktop app in the
+  monospaced face (2.1.299+), with the context history as an SVG line; the branch comes from
+  `.git/HEAD` where commands are unavailable.
+- `/limits-statusline:setup` to enable the terminal status line (with backup, `--dry-run` and
+  `--uninstall`, honouring `CLAUDE_CONFIG_DIR`); the previous status line is kept outside the
+  plugin's data folder, and a SessionStart hook keeps the runtime current and repairs it.
+- `band` option: `desktop`, `all` or `off`.
+- Local release tooling (`npm run release`) and a GitHub workflow that publishes tagged releases.

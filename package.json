@@ -1,0 +1,18 @@
+{
+  "name": "limits-statusline",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Claude Code status line: cost, runtime, cache, effort, context and the 7-day / 5-hour plan limits with burn rate.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.mjs\"",
+    "test:coverage": "node --test --experimental-test-coverage \"test/**/*.test.mjs\"",
+    "release": "node scripts/release.mjs",
+    "test:mod": "claude plugin test ."
+  },
+  "author": "Luka Kozlowski <lukakozlowski@outlook.com>",
+  "license": "MIT"
+}

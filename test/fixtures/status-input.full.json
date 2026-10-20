@@ -1,0 +1,43 @@
+{
+  "cwd": "C:/Users/dev/daily-claude",
+  "session_id": "3f2c9a1e-77b0-4c1d-9f5e-0a1b2c3d4e5f",
+  "session_name": "daily",
+  "transcript_path": "C:/Users/dev/.claude/projects/daily/3f2c9a1e.jsonl",
+  "model": { "id": "claude-opus-5-5", "display_name": "Opus 5.5" },
+  "workspace": {
+    "current_dir": "C:/Users/dev/daily-claude",
+    "project_dir": "C:/Users/dev/daily-claude",
+    "added_dirs": []
+  },
+  "version": "2.1.299",
+  "output_style": { "name": "default" },
+  "cost": {
+    "total_cost_usd": 20.33,
+    "total_duration_ms": 20400000,
+    "total_api_duration_ms": 4100000,
+    "total_lines_added": 156,
+    "total_lines_removed": 23
+  },
+  "context_window": {
+    "total_input_tokens": 543000,
+    "total_output_tokens": 1200,
+    "context_window_size": 1000000,
+    "used_percentage": 54,
+    "remaining_percentage": 46,
+    "current_usage": {
+      "input_tokens": 5000,
+      "output_tokens": 1200,
+      "cache_creation_input_tokens": 500,
+      "cache_read_input_tokens": 537500
+    }
+  },
+  "exceeds_200k_tokens": true,
+  "prompt_cache": { "warm": true, "caching_observed": true, "ttl": "1h", "requests": 140, "misses": 1, "hit_ratio": 0.99 },
+  "fast_mode": false,
+  "effort": { "level": "xhigh" },
+  "thinking": { "enabled": true },
+  "rate_limits": {
+    "five_hour": { "used_percentage": 12, "resets_at": 1800015000 },
+    "seven_day": { "used_percentage": 39, "resets_at": 1800274200 }
+  }
+}
