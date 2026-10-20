@@ -1,18 +1,26 @@
-# Release: publishes a new version. Start it from Actions → Release → Run workflow, on develop.
+# Release: publishes a new version. develop is protected (changes only through pull requests, for
+# the owner too), so the release commit reaches it through a pull request, and the tag follows the
+# merge: Rebase and merge gives the commit a new SHA.
 #
-#   release  first job of the run. GitHub checks its `if` without a runner: a run by anyone but
-#            the repository owner, or on any branch but develop, is skipped and asks for nothing.
-#            For the owner the run then waits for the approval of the `release` environment before
-#            anything runs; after it, scripts/release.mjs runs the tests, bumps the version in every
-#            manifest, stamps CHANGELOG, commits `LS-N chore(release): vX.Y.Z`, tags it and sends
-#            both to develop in one atomic push. The sealoop marketplace serves develop, so that
-#            push is what reaches its users.
+#   release  started from Actions → Release → Run workflow, on develop. GitHub checks its `if`
+#            without a runner: a run by anyone but the repository owner, or on any branch but
+#            develop, is skipped and asks for nothing. For the owner the run then waits for the
+#            approval of the `release` environment before anything runs; after it,
+#            scripts/release.mjs runs the tests, bumps the version in every manifest, stamps
+#            CHANGELOG, commits `LS-N chore(release): vX.Y.Z` on release/vX.Y.Z, pushes that
+#            branch and opens its pull request into develop. A dry run checks all of it and
+#            changes nothing. Opening the pull request needs Settings → Actions → General →
+#            "Allow GitHub Actions to create and approve pull requests".
+#   tag      the owner's merge of that pull request changes package.json on develop, which starts
+#            this job: scripts/tag-release.mjs tags the merged release commit and pushes the tag;
+#            a version already tagged is passed on as it is.
 #   publish  creates the GitHub release from the version's CHANGELOG section, unless it exists.
 #
-# A tag pushed from a computer (npm run release -- <kind> --push) starts only the publish job.
-# The tag the release job pushes starts no second run: events made with GITHUB_TOKEN start none.
+# A tag pushed from a computer starts only the publish job (path filters do not apply to tags).
+# The tag the tag job pushes starts no second run: events made with GITHUB_TOKEN start none. The
+# sealoop marketplace serves develop, so the merge is what reaches its users.
 name: Release
-run-name: ${{ github.event_name == 'push' && format('Publish {0}', github.ref_name) || format('{0} {1}', inputs.dry_run && 'Dry run' || 'Release', inputs.version || inputs.bump) }}
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('{0} {1}', inputs.dry_run && 'Dry run' || 'Release', inputs.version || inputs.bump) || github.ref_type == 'tag' && format('Publish {0}', github.ref_name) || 'Tag and publish the merged release' }}
 
 on:
   workflow_dispatch:
@@ -32,6 +40,9 @@ on:
         type: boolean
         default: false
   push:
+    branches: [develop]
+    # Every release commit changes package.json, so other merges start no run.
+    paths: [package.json]
     tags: ['v*.*.*']
 
 permissions: {}
@@ -42,7 +53,7 @@ concurrency:
 
 jobs:
   release:
-    name: Test, bump, commit, tag and push
+    name: Test, bump, commit and open the release pull request
     # IDs survive account renames; the triggering actor covers a re-run started by someone else.
     if: >-
       github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
@@ -53,8 +64,7 @@ jobs:
     environment: release
     permissions:
       contents: write
-    outputs:
-      tag: ${{ steps.result.outputs.tag }}
+      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -69,27 +79,55 @@ jobs:
           git config user.name 'Reywedian'
           git config user.email '27358836+Reywedian@users.noreply.github.com'
 
-      - name: Test, bump, commit, tag and push
+      - name: Test, bump, commit, push the release branch and open its pull request
         env:
           KIND: ${{ inputs.version || inputs.bump }}
           MODE: ${{ inputs.dry_run && '--dry-run' || '--push' }}
+          GH_TOKEN: ${{ github.token }}
         run: node scripts/release.mjs "$KIND" "$MODE"
 
-      - name: Pass the new tag to the publish job
+  tag:
+    name: Tag the merged release
+    # No owner check: develop takes changes only through pull requests, and whoever can merge one
+    # already decides what the marketplace serves; the tag only names a commit that is there.
+    if: >-
+      github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.result.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the release commit is found in the history; the check needs every tag
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Tag as the repository's author
+        run: |
+          git config user.name 'Reywedian'
+          git config user.email '27358836+Reywedian@users.noreply.github.com'
+
+      - name: Tag the merged release commit and push the tag
         id: result
-        if: ${{ !inputs.dry_run }}
-        run: echo "tag=$(git describe --exact-match HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          tag="$(node scripts/tag-release.mjs)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
   publish:
     name: Publish the GitHub release
-    needs: release
-    # After a release, or alone for a tag pushed from a computer; a dry run hands over no tag.
-    if: ${{ !cancelled() && !failure() && (github.event_name == 'push' || needs.release.outputs.tag != '') }}
+    needs: tag
+    # After the tag job, or alone for a tag pushed from a computer; a release run hands over no tag.
+    if: ${{ !cancelled() && !failure() && (github.ref_type == 'tag' || needs.tag.outputs.tag != '') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
-      TAG: ${{ github.event_name == 'push' && github.ref_name || needs.release.outputs.tag }}
+      TAG: ${{ github.ref_type == 'tag' && github.ref_name || needs.tag.outputs.tag }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

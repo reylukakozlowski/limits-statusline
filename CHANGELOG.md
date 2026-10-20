@@ -24,6 +24,13 @@ All notable changes to this project are documented here. The format follows
 - `.gitignore` keeps lockfiles, package output, secrets, editor and OS files and local Claude
   Code folders out of the repository, which is also the folder users install.
 
+### Fixed
+
+- Releasing with a protected `develop` (changes only through pull requests): the Release workflow
+  and `npm run release -- --push` no longer push to `develop`, which the protection refused. They
+  commit the version on `release/vX.Y.Z` and open its pull request; after the owner's Rebase and
+  merge, the workflow tags the merged commit and publishes the GitHub release.
+
 ## [0.1.1] - 2026-10-20
 
 ### Added
