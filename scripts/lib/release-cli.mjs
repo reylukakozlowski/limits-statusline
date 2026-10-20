@@ -1,6 +1,6 @@
 // npm run release -- <patch|minor|major|X.Y.Z> [--push] [--dry-run]
 // Prepares a release from develop: checks, tests, version bump in every manifest, changelog stamp
-// and the commit `LS-N chore(release): vX.Y.Z` on a new branch release/vX.Y.Z. develop is
+// and the commit `LS-N_chore(release): vX.Y.Z` on a new branch release/vX.Y.Z. develop is
 // protected (changes only through pull requests), so the release reaches it through one: --push
 // pushes the branch and opens its pull request with gh. Once the owner merges it with Rebase and
 // merge, which gives the commit a new SHA, the Release workflow runs `node scripts/tag-release.mjs`
@@ -124,7 +124,7 @@ function planRelease({ kind, shouldPush, cwd, exec, git, today }) {
   }
   const changelog = toRefusal(() => stampChangelog(readText(cwd, CHANGELOG), version, today));
   const index = nextCommitIndex(git('log', '--format=%s').split('\n'));
-  return { current, version, tag, branch: releaseBranch, changelog, subject: `${COMMIT_PREFIX}-${index} chore(release): ${tag}` };
+  return { current, version, tag, branch: releaseBranch, changelog, subject: `${COMMIT_PREFIX}-${index}_chore(release): ${tag}` };
 }
 
 function writeRelease({ version, changelog }, cwd) {

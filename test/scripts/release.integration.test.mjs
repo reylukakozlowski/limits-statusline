@@ -116,14 +116,14 @@ test('a pushed release reaches origin as one commit on release/vX.Y.Z, with deve
   assert.equal(git(repo.origin, 'rev-parse', 'release/v0.1.1^'), developBefore);
   assert.equal(git(repo.origin, 'rev-parse', 'develop'), developBefore);
   assert.equal(git(repo.origin, 'tag', '--list'), '');
-  assert.equal(git(repo.origin, 'log', '-1', '--format=%s', 'release/v0.1.1'), 'LS-2 chore(release): v0.1.1');
+  assert.equal(git(repo.origin, 'log', '-1', '--format=%s', 'release/v0.1.1'), 'LS-2_chore(release): v0.1.1');
   assert.equal(originJson(repo, 'release/v0.1.1', 'package.json').version, '0.1.1');
   assert.equal(originJson(repo, 'release/v0.1.1', '.claude-plugin/plugin.json').version, '0.1.1');
   assert.equal(originJson(repo, 'release/v0.1.1', '.claude-plugin/marketplace.json').plugins[0].version, '0.1.1');
   assert.match(git(repo.origin, 'show', 'release/v0.1.1:CHANGELOG.md'), /## \[Unreleased\]\n\n## \[0\.1\.1\] - 2026-10-21\n\n### Fixed\n\n- A bug\./);
   assert.equal(git(repo.clone, 'status', '--porcelain'), '');
   assert.deepEqual(repo.pullRequests.map((args) => args.slice(0, 8)), [
-    ['pr', 'create', '--base', 'develop', '--head', 'release/v0.1.1', '--title', 'LS-2 chore(release): v0.1.1'],
+    ['pr', 'create', '--base', 'develop', '--head', 'release/v0.1.1', '--title', 'LS-2_chore(release): v0.1.1'],
   ]);
 });
 

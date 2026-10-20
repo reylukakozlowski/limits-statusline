@@ -46,7 +46,7 @@ Releases come from the **Release** workflow on GitHub, which only the repository
 3. Approve the run: it starts by waiting for the owner's approval of the `release` environment, and
    nothing runs before it.
 4. The job runs `npm test`, bumps the version in `package.json`, `plugin.json` and
-   `marketplace.json`, stamps the changelog, commits `LS-N chore(release): vX.Y.Z` on a new branch
+   `marketplace.json`, stamps the changelog, commits `LS-N_chore(release): vX.Y.Z` on a new branch
    `release/vX.Y.Z`, pushes it and opens its pull request into `develop`. `develop` is protected
    (changes only through pull requests, for the owner too), so nothing is pushed to it directly.
    When origin already has that branch, the run stops before the tests: the earlier pull request

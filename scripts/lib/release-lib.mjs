@@ -56,9 +56,10 @@ function sectionEnd(text, start) {
   return next === -1 ? text.length : start + next;
 }
 
-/** Next N for `LS-N` commit subjects. */
+/** Next N for `LS-N_…` and the older `LS-N …` commit subjects. */
 export function nextCommitIndex(subjects, prefix = COMMIT_PREFIX) {
-  const pattern = new RegExp(`^${prefix}-(\\d+)\\b`);
+  // Not \b: `_` is a word character, so `LS-12_fix` has no word boundary after the number.
+  const pattern = new RegExp(`^${prefix}-(\\d+)(?!\\d)`);
   const numbers = subjects.map((subject) => pattern.exec(subject)?.[1]).filter(Boolean).map(Number);
   return numbers.length ? Math.max(...numbers) + 1 : 1;
 }
@@ -75,11 +76,11 @@ export function withVersion(manifest, version) {
 
 /**
  * The commit that released `version`: the newest of `sha<TAB>subject` lines (newest first) whose
- * subject is `LS-N chore(release): vX.Y.Z`; null when none did.
+ * subject is `LS-N_chore(release): vX.Y.Z` (or the older `LS-N chore(release): …`); null when none did.
  */
 export function findReleaseCommit(lines, version, prefix = COMMIT_PREFIX) {
   const bare = String(version).replace(/^v/, '').replace(/\./g, '\\.');
-  const subject = new RegExp(`^${prefix}-\\d+ chore\\(release\\): v${bare}$`);
+  const subject = new RegExp(`^${prefix}-\\d+[ _]chore\\(release\\): v${bare}$`);
   for (const line of lines) {
     const tab = line.indexOf('\t');
     if (tab > 0 && subject.test(line.slice(tab + 1))) return line.slice(0, tab);

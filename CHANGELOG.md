@@ -30,6 +30,8 @@ All notable changes to this project are documented here. The format follows
   and `npm run release -- --push` no longer push to `develop`, which the protection refused. They
   commit the version on `release/vX.Y.Z` and open its pull request; after the owner's Rebase and
   merge, the workflow tags the merged commit and publishes the GitHub release.
+- The release commit is numbered after every `LS-N` commit, `LS-N_…` subjects included (it took
+  `LS-8` after `LS-12_…`), and is named `LS-N_chore(release): vX.Y.Z` like the other commits.
 
 ## [0.1.1] - 2026-10-20
 

@@ -58,6 +58,11 @@ test('nextCommitIndex continues the LS-N numbering', () => {
   assert.equal(nextCommitIndex([]), 1);
 });
 
+test('nextCommitIndex counts LS-N_ subjects too, where no word boundary follows the number', () => {
+  assert.equal(nextCommitIndex(['LS-12_fix: y', 'LS-7 chore(release): v0.1.1', 'LS-9_chore: z']), 13);
+  assert.equal(nextCommitIndex(['LS-123456789x', 'LS-2_a']), 123456790);
+});
+
 test('withVersion sets the top-level version and every marketplace entry version', () => {
   assert.deepEqual(withVersion({ name: 'p', version: '0.1.0' }, '0.2.0'), { name: 'p', version: '0.2.0' });
   assert.deepEqual(
@@ -67,7 +72,8 @@ test('withVersion sets the top-level version and every marketplace entry version
 });
 
 test('findReleaseCommit picks the newest commit that released the version, or null', () => {
-  const log = ['c3\tLS-9 docs: later', 'c2\tLS-8 chore(release): v0.1.2', 'c1\tLS-7 chore(release): v0.1.1', ''];
+  // v0.1.1 was released under the older `LS-N chore` subject, later releases as `LS-N_chore`.
+  const log = ['c3\tLS-9_docs: later', 'c2\tLS-8_chore(release): v0.1.2', 'c1\tLS-7 chore(release): v0.1.1', ''];
   assert.equal(findReleaseCommit(log, '0.1.2'), 'c2');
   assert.equal(findReleaseCommit(log, 'v0.1.1'), 'c1');
   assert.equal(findReleaseCommit(log, '0.1.3'), null);
