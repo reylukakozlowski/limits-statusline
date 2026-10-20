@@ -1,6 +1,7 @@
 // Snapshot fixtures shared by core and adapter tests. MOCKUP encodes the approved mockup;
-// MOCKUP_LINES is the mockup as measured from its pixels (16-cell bars, line 3 in the bar
-// column, a min→max line for the context history).
+// MOCKUP_LINES is the mockup as measured from its pixels (16-cell bars, the session line in the
+// bar column, a min→max line for the context history), with the session line moved up to sit
+// under the header so cost and runtime are read first.
 
 export const NOW = 1_800_000_000_000;
 
@@ -23,8 +24,8 @@ export const MOCKUP = Object.freeze({
 
 export const MOCKUP_LINES = Object.freeze([
   'daily-claude | no git | ✦ Opus 5.5',
-  'ctx ■■■■■■■■■□□□□□□□ 54%  543k/1.0M  ⣀⡠⠔⠊',
   '    $20.33 · 5h40m · cache 99% · xhigh',
+  'ctx ■■■■■■■■■□□□□□□□ 54%  543k/1.0M  ⣀⡠⠔⠊',
   '7d  ■■■■■■□□□□□□□□□□ 39%  ↻ 76h10m  ↗ 0.4%/h',
   '5h  ■■□□□□□□□□□□□□□□ 12%  ↻ 4h10m   ↗ 14.4%/h',
 ]);
