@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-10-20
+
 ### Added
 
 - `docs/directory-submission.md`: what the developer portal asks when the plugin is submitted to
