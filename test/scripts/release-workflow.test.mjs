@@ -259,3 +259,65 @@ test('merge step: a merge gh reported as failed but GitHub shows as merged count
   assert.equal(run.status, 0, run.output);
   assert.deepEqual(run.calls, [MERGE_CALL, VIEW_CALL]);
 });
+
+// --- One release per repository, tags kept ----------------------------------------------------
+
+const KEEP_STEP = 'Keep only the latest release, tags stay';
+
+test('publish keeps only the latest release after creating it, and never deletes a tag', () => {
+  const publish = job('publish');
+  const create = publish.indexOf('      - name: Create the GitHub release unless it exists\n');
+  const keep = publish.indexOf(`      - name: ${KEEP_STEP}\n`);
+  assert.ok(create !== -1 && keep > create, 'the old releases go only after the new one exists');
+  const run = script(step('publish', KEEP_STEP));
+  assert.match(run, /gh release delete "\$old" --yes/);
+  assert.doesNotMatch(publish, /--cleanup-tag|git\/refs\/tags|git push [^\n]*--delete/);
+});
+
+// Stand-in gh for the keep step: GH_LATEST is the release GitHub marks as latest, GH_RELEASES the
+// tags of all releases; deletions are recorded.
+const KEEP_GH = [
+  '#!/usr/bin/env bash',
+  'echo "gh $*" >> "$STUB_LOG"',
+  'case "$1 $2" in',
+  '  "release view") echo "$GH_LATEST" ;;',
+  '  "release list") printf "%s\\n" $GH_RELEASES ;;',
+  '  "release delete") ;;',
+  '  *) exit 64 ;;',
+  'esac',
+];
+
+function runKeepStep(t, env) {
+  const dir = mkdtempSync(join(tmpdir(), 'ls-keep-step-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, 'gh'), `${KEEP_GH.join('\n')}\n`);
+  chmodSync(join(dir, 'gh'), 0o755);
+  const log = join(dir, 'calls.log');
+  writeFileSync(log, '');
+  const pathKey = Object.keys(process.env).find((key) => key.toUpperCase() === 'PATH') ?? 'PATH';
+  const result = spawnSync('bash', ['-c', script(step('publish', KEEP_STEP))], {
+    encoding: 'utf8',
+    env: { ...process.env, [pathKey]: `${dir}${delimiter}${process.env[pathKey]}`, STUB_LOG: log, ...env },
+  });
+  const deleted = readFileSync(log, 'utf8').split('\n').filter((l) => l.startsWith('gh release delete '));
+  return { status: result.status, output: `${result.stdout}${result.stderr}`, deleted };
+}
+
+test('keep step: the new release is the latest, so every older release goes and the tags stay', { skip: NO_BASH }, (t) => {
+  const run = runKeepStep(t, { TAG: 'v0.1.5', GH_LATEST: 'v0.1.5', GH_RELEASES: 'v0.1.5 v0.1.4 v0.1.3' });
+  assert.equal(run.status, 0, run.output);
+  assert.deepEqual(run.deleted, ['gh release delete v0.1.4 --yes', 'gh release delete v0.1.3 --yes']);
+});
+
+test('keep step: when the new release is not the latest, nothing is deleted', { skip: NO_BASH }, (t) => {
+  const run = runKeepStep(t, { TAG: 'v0.1.3', GH_LATEST: 'v0.1.5', GH_RELEASES: 'v0.1.5 v0.1.3' });
+  assert.equal(run.status, 0, run.output);
+  assert.deepEqual(run.deleted, []);
+  assert.match(run.output, /not v0\.1\.3/);
+});
+
+test('keep step: a lone release deletes nothing', { skip: NO_BASH }, (t) => {
+  const run = runKeepStep(t, { TAG: 'v0.1.5', GH_LATEST: 'v0.1.5', GH_RELEASES: 'v0.1.5' });
+  assert.equal(run.status, 0, run.output);
+  assert.deepEqual(run.deleted, []);
+});
