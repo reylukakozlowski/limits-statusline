@@ -89,12 +89,12 @@ test('narrower lines drop the clock time first, then the time to 100%, on both l
   assert.ok(at(80).every((line) => line.length <= 80));
   assert.match(at(80)[0], /Mon 12:10/);
   assert.deepEqual(at(70), [
-    '7d  ■■■■■■□□□□□□□□□□ 39% →  71%  ↻ 3d04h  ↗ 10.2%/d',
+    '7d  ■■■■■■□□□□□□□□□□ 39% →  71%  ↻ 3d04h  ↗ 0.4%/h',
     '5h  ■■■■■■■■■■■□□□□□ 70% → 117%  ↻ 2h00m  ↗ 23.3%/h  ⚠ 100% in 1h17m',
   ]);
   assert.deepEqual(at(60)[1], '5h  ■■■■■■■■■■■□□□□□ 70% → 117%  ↻ 2h00m  ↗ 23.3%/h');
   assert.deepEqual(at(45), [
-    '7d  ■■■■□□□□□□ 39% →  71%  ↻ 3d04h  ↗ 10.2%/d',
+    '7d  ■■■■□□□□□□ 39% →  71%  ↻ 3d04h  ↗ 0.4%/h',
     '5h  ■■■■■■■□□□ 70% → 117%  ↻ 2h00m  ↗ 23.3%/h',
   ]);
 });
@@ -103,7 +103,7 @@ test('without a known width or time zone the limit lines keep everything they ca
   const { fiveHour } = byRole(buildLines(RUNNING_OUT, { columns: undefined }));
   assert.match(lineText(fiveHour), /10:00 .* ⚠ 100% in 1h17m$/);
   const { sevenDay } = byRole(buildLines({ ...MOCKUP, timeZone: null }, { columns: 120 }));
-  assert.equal(lineText(sevenDay), '7d  ■■■■■■□□□□□□□□□□ 39% →  71%  ↻ 3d04h  ↗ 10.2%/d');
+  assert.equal(lineText(sevenDay), '7d  ■■■■■■□□□□□□□□□□ 39% →  71%  ↻ 3d04h  ↗ 0.4%/h');
 });
 
 test('in the first 15 minutes of a window there is no projection yet, shown as a muted dash', () => {

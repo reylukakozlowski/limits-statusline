@@ -12,7 +12,7 @@ runs out.
 daily-claude | no git | ✦ Opus 5.5
     $20.33 · 5h40m · cache 99% 52m · xhigh · +156 -23
 ctx ■■■■■■■■■□□□□□□□ 54%  543k/1.0M  ⣀⡠⠔⠊
-7d  ■■■■■■□□□□□□□□□□ 39% →  71%  ↻ 3d04h Mon 12:10  ↗ 10.2%/d
+7d  ■■■■■■□□□□□□□□□□ 39% →  71%  ↻ 3d04h Mon 12:10  ↗ 0.4%/h
 5h  ■■□□□□□□□□□□□□□□ 12% →  72%  ↻ 4h10m 12:10      ↗ 14.4%/h
 ```
 
@@ -127,9 +127,9 @@ and the command above restores it as long as the plugin is installed.
 | `ctx 54% 543k/1.0M` | `context_window` | Context window fill; the line shows how it moved during the session |
 | `7d` / `5h` | `rate_limits` | Plan usage now `→` projected at the reset, `↻` time and clock time of the reset, `↗` pace, `⚠` when the limit runs out before the reset |
 
-**Pace** is how fast the usage grew recently: over the last **30 minutes** for the 5-hour limit,
-shown per hour, and over the last **24 hours** for the 7-day limit, shown per day, so the 7-day
-pace includes your nights and days off. The **projection** (`→`) extends that pace to the reset:
+**Pace** is how fast the usage grew recently, shown per hour: over the last **30 minutes** for the
+5-hour limit and over the last **24 hours** for the 7-day limit, so the 7-day pace includes your
+nights and days off. The **projection** (`→`) extends that pace to the reset:
 it answers "where do I end up if I keep going like this?". The plan's limits are shared by every
 session and by claude.ai, so the pace counts all of them: each session adds the figures it
 receives to a small shared history, and the line always shows the newest figure any session saw.

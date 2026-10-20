@@ -50,12 +50,6 @@ test('formatPercent rounds and formatRate keeps one decimal per hour', () => {
   assert.equal(formatRate(NaN), '—');
 });
 
-test('formatRate shows a per-day rate as 24 hours of the hourly one', () => {
-  assert.equal(formatRate(0.4247, 'd'), '10.2%/d');
-  assert.equal(formatRate(0, 'd'), '0.0%/d');
-  assert.equal(formatRate(1, 'week'), '—');
-});
-
 test('formatCountdown rolls whole days out of the hours from a day on', () => {
   assert.equal(formatCountdown(161 * HOUR + 50 * 60_000), '6d17h');
   assert.equal(formatCountdown(274_200_000), '3d04h');
