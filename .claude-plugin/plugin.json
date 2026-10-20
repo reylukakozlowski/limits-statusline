@@ -7,13 +7,13 @@
     "name": "Luka Kozlowski",
     "email": "lukakozlowski@outlook.com"
   },
-  "homepage": "https://github.com/Reywedian/limits-statusline#readme",
-  "repository": "https://github.com/Reywedian/limits-statusline",
+  "homepage": "https://github.com/reylukakozlowski/limits-statusline#readme",
+  "repository": "https://github.com/reylukakozlowski/limits-statusline",
   "license": "MIT",
   "keywords": ["statusline", "status-line", "rate-limits", "usage", "cost", "context-window", "desktop"],
-  "documentationUrl": "https://github.com/Reywedian/limits-statusline#readme",
-  "supportUrl": "https://github.com/Reywedian/limits-statusline/issues",
-  "privacyPolicyUrl": "https://github.com/Reywedian/limits-statusline/blob/develop/PRIVACY.md",
+  "documentationUrl": "https://github.com/reylukakozlowski/limits-statusline#readme",
+  "supportUrl": "https://github.com/reylukakozlowski/limits-statusline/issues",
+  "privacyPolicyUrl": "https://github.com/reylukakozlowski/limits-statusline/blob/develop/PRIVACY.md",
   "types": "./types/index.d.ts",
   "userConfig": {
     "band": {

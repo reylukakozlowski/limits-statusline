@@ -35,15 +35,15 @@ It works in both places Claude Code runs on your computer:
 From a shell, on any Claude Code version with plugins:
 
 ```bash
-claude plugin marketplace add Reywedian/limits-statusline
+claude plugin marketplace add reylukakozlowski/limits-statusline
 claude plugin install limits-statusline@sealoop
 ```
 
 Newer versions can do both steps in one line: `/plugin install limits-statusline --marketplace
-Reywedian/limits-statusline` inside a session (Claude Code 2.1.275+), or
-`claude plugin install limits-statusline --marketplace Reywedian/limits-statusline` from a shell
-(2.1.292+). In the desktop app: click **+** next to the prompt box, then **Plugins**,
-**Add marketplace** with `Reywedian/limits-statusline`, then add **limits-statusline**.
+reylukakozlowski/limits-statusline` inside a session (Claude Code 2.1.275+), or
+`claude plugin install limits-statusline --marketplace reylukakozlowski/limits-statusline` from a
+shell (2.1.292+). In the desktop app: click **+** next to the prompt box, then **Plugins**,
+**Add marketplace** with `reylukakozlowski/limits-statusline`, then add **limits-statusline**.
 
 ### Turn on the terminal status line
 
