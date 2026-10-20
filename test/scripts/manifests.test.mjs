@@ -193,3 +193,21 @@ test('the mod tests have their own npm script', () => {
 test('the changelog has release notes for the current version', () => {
   assert.ok(extractReleaseNotes(read('CHANGELOG.md'), pkg.version).length > 0);
 });
+
+test('a tagged version keeps the notes it was released with: later changes go under [Unreleased]', (t) => {
+  const changelog = read('CHANGELOG.md');
+  const git = (...args) => spawnSync('git', args, { cwd: ROOT, encoding: 'utf8' });
+  const tagged = [...changelog.matchAll(/^## \[(\d+\.\d+\.\d+)\]/gm)]
+    .map((match) => match[1])
+    .filter((version) => git('rev-parse', '--quiet', '--verify', `refs/tags/v${version}`).status === 0);
+  if (tagged.length === 0) {
+    t.skip('this clone has no version tags');
+    return;
+  }
+  for (const version of tagged) {
+    const atTag = git('show', `v${version}:CHANGELOG.md`);
+    assert.equal(atTag.status, 0, `CHANGELOG.md at v${version}`);
+    assert.equal(extractReleaseNotes(changelog, version), extractReleaseNotes(atTag.stdout, version),
+      `the [${version}] notes changed after v${version} was tagged; move the new entries under [Unreleased]`);
+  }
+});
