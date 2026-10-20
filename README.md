@@ -164,8 +164,9 @@ Releases come from the **Release** workflow on GitHub, which only the repository
    Run `npm run test:mod` first when the band changed: the workflow does not run it.
 2. On GitHub, open **Actions → Release → Run workflow** on `develop` and pick the bump (`patch`,
    `minor` or `major`) or type an exact `X.Y.Z`. Tick **Dry run** to run every check and the tests
-   without changing anything.
-3. Approve the run: the release job waits for the owner's approval of the `release` environment.
+   without changing anything. The run is listed as `Dry run patch`, `Release patch` and so on.
+3. Approve the run: it starts by waiting for the owner's approval of the `release` environment, and
+   nothing runs before it.
 4. The job runs `npm test`, bumps the version in `package.json`, `plugin.json` and
    `marketplace.json`, stamps the changelog, commits `LS-N chore(release): vX.Y.Z`, tags `vX.Y.Z`
    and pushes the commit and the tag to `develop` in one atomic push: when `develop` moved on in the
@@ -178,9 +179,10 @@ version with `claude plugin update limits-statusline@sealoop`, or by themselves 
 auto-update on for this marketplace (it is off by default for marketplaces outside Anthropic's).
 The first tagged release is `v0.1.1`; `0.1.0` has a changelog entry but no tag.
 
-Who can release: the workflow stops anyone but the repository owner, and any branch but `develop`,
-before it asks for approval, and the `release` environment (Settings → Environments) requires the
-owner's approval and accepts only `develop`. Keep that environment: GitHub creates a missing
+Who can release: GitHub skips the release job, without a runner and without asking for approval,
+when anyone but the repository owner starts the run or when it runs on any branch but `develop`.
+The `release` environment (Settings → Environments) then requires the owner's approval and accepts
+only `develop`. Keep that environment: GitHub creates a missing
 environment that a workflow names, without any protection rules. The workflow file has to stay on
 `develop`, the default branch, for **Run workflow** to appear.
 

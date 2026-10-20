@@ -9,9 +9,10 @@ All notable changes to this project are documented here. The format follows
 ### Added
 
 - Release workflow on GitHub (Actions → Release): only the repository owner can run it, from
-  `develop`, after approving the `release` environment. It tests, bumps the version, stamps the
-  changelog, commits, tags, pushes the commit and the tag atomically and publishes the GitHub
-  release; a dry run checks all of it and changes nothing.
+  `develop`, and each run starts by waiting for the owner's approval of the `release` environment,
+  before anything runs. It tests, bumps the version, stamps the changelog, commits, tags, pushes the
+  commit and the tag atomically and publishes the GitHub release; a dry run checks all of it and
+  changes nothing. Runs are named `Dry run …`, `Release …` or `Publish vX.Y.Z`.
 
 ### Changed
 
