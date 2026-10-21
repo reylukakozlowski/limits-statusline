@@ -80,22 +80,22 @@ repository owner can run.
    `minor` or `major`) or type an exact `X.Y.Z`. Tick **Dry run** to run the tests and see the
    version and the notes without changing anything. The run is listed as `Dry run patch`,
    `Release patch` and so on.
-3. Approve the run: it starts by waiting for the owner's approval of the `release` environment,
-   and nothing runs before it.
+3. Approve the run: the job **tag** starts by waiting for the owner's approval of the `release`
+   environment, and nothing runs before it.
 4. The job runs `npm test`, works the version out from the newest `vX.Y.Z` tag, and tags the head
    of `develop` with an annotated tag whose message lists the subjects of the commits since the
    previous tag. It pushes the tag.
-5. It sets the commit status **Release from develop** on that commit and merges `develop` into
-   `master` by fast-forward: `master` becomes exactly the tagged commit. Nothing else can move
-   `master` (see below).
-6. It creates the GitHub release from the tag's notes and marks it Latest. Once GitHub shows the
-   new release as the latest, it deletes the older releases: the repository keeps one release, and
-   the `vX.Y.Z` tags of all versions stay as the history (a tag ruleset forbids deleting or moving
-   them).
+5. Approve the job **promote**: it waits for the owner's approval of the `production` environment,
+   then fast-forwards `master` to the tagged commit with the repository's deploy key: `master`
+   becomes exactly the tagged commit. Nothing else can move `master` (see below).
+6. The job **publish** creates the GitHub release from the tag's notes and marks it Latest. Once
+   GitHub shows the new release as the latest, it deletes the older releases: the repository keeps
+   one release, and the `vX.Y.Z` tags of all versions stay as the history (a tag ruleset forbids
+   deleting or moving them).
 
-A run that fails part way is finished by running the workflow again: when the head of `develop`
-already carries a version tag, the run finishes that release (status, `master`, GitHub release)
-instead of cutting a new one, and skips what is done.
+A run that fails or is rejected part way is finished by running the workflow again: when the head
+of `develop` already carries a version tag, the run finishes that release (`master`, GitHub
+release) instead of cutting a new one, and skips what is done.
 
 ### master
 
@@ -105,52 +105,70 @@ marketplace file, which is read from `develop`, fetches the plugin from it. User
 with `claude plugin update limits-statusline@sealoop`, or by themselves when they turned auto-update
 on for this marketplace (it is off by default for marketplaces outside Anthropic's).
 
-The ruleset **master takes only releases from develop**
-([.github/rulesets/master.json](.github/rulesets/master.json)) forbids deleting `master`, force
-pushes and merge commits, and lets `master` move only to a commit whose status **Release from
-develop** is successful; a push of any other commit is refused (`GH013 … Required status check
-"Release from develop" is expected`). The Release workflow sets that status only on the head of
-`develop` it has just tagged. No one bypasses the ruleset, the owner included; only someone with
-write access, that is the owner, could set the status by hand. It is a commit status rather than
-a check run because GitHub counts workflow checks towards a required check only from events such
-as `push` and `pull_request`, and the Release run is a `workflow_dispatch`. Do not open pull
-requests into `master`: the workflow moves it. To create the ruleset again, in a fork for example:
+Two rulesets guard `master`, and GitHub refuses every other change, the owner's included:
+
+- **master: release only** ([.github/rulesets/master-release-only.json](.github/rulesets/master-release-only.json))
+  lets only a deploy key create or move `master`.
+- **master: history** ([.github/rulesets/master-history.json](.github/rulesets/master-history.json))
+  forbids deleting `master`, force pushes and merge commits, and no one bypasses it, the deploy
+  key and the owner included.
+
+The repository has exactly one deploy key with write access, `production: master (release
+workflow)`: GitHub cannot name a single key as the one that bypasses a ruleset, so every deploy key
+of the repository could move `master`. Its private half is the secret `PRODUCTION_DEPLOY_KEY` of
+the `production` environment, which deploys from `develop` only, and only the promote job of the
+Release workflow names it. Do not open pull requests into `master`: Rebase and merge would rewrite
+the commits, and the workflow moves it.
+
+To set this up again, in a fork for example (the first release then creates `master`):
 
 ```bash
-gh api --method POST repos/<owner>/<repo>/rulesets --input .github/rulesets/master.json
+gh api --method POST repos/<owner>/<repo>/rulesets --input .github/rulesets/master-release-only.json
+gh api --method POST repos/<owner>/<repo>/rulesets --input .github/rulesets/master-history.json
+gh api --method PUT repos/<owner>/<repo>/environments/production \
+  -F 'deployment_branch_policy[protected_branches]=false' -F 'deployment_branch_policy[custom_branch_policies]=true'
+gh api --method POST repos/<owner>/<repo>/environments/production/deployment-branch-policies -f name=develop -f type=branch
+ssh-keygen -q -t ed25519 -N '' -C 'production: master (release workflow)' -f production-key
+gh repo deploy-key add production-key.pub -R <owner>/<repo> --allow-write --title 'production: master (release workflow)'
+gh secret set PRODUCTION_DEPLOY_KEY --env production -R <owner>/<repo> < production-key
+rm production-key production-key.pub
 ```
 
-To change it, edit the file and send it with `gh api --method PUT
-repos/<owner>/<repo>/rulesets/<id> --input .github/rulesets/master.json`; `gh api
-repos/<owner>/<repo>/rulesets` lists the id.
+Then add the owner as the required reviewer of `production` (Settings → Environments →
+production), with **Prevent self-review** off: the owner starts the run and approves it. To change
+a ruleset, edit its file and send it with `gh api --method PUT repos/<owner>/<repo>/rulesets/<id>
+--input <file>`; `gh api repos/<owner>/<repo>/rulesets` lists the ids.
 
-### Tokens
+### Credentials
 
-The job pushes the tag and `master` with its own `GITHUB_TOKEN`. GitHub lets that token point a
-branch or a tag only at a commit whose `.github/workflows` match the head of the default branch,
-and the head of `develop`, the default branch, always does. So the push of `master` is refused
-only when `develop` moved on with a workflow change after the release was tagged. Then add a
-fine-grained personal access token limited to this repository, with **Contents** and **Workflows**
-read and write, as the secret `RELEASE_TOKEN` of the `release` environment, and run the workflow
-again: the checkout pushes with it from then on. The workflow opens no pull requests, so
-**Settings → Actions → General → Allow GitHub Actions to create and approve pull requests** can
-stay off.
+The tag job pushes the tag with its own `GITHUB_TOKEN`. GitHub lets that token point a branch or a
+tag only at a commit whose `.github/workflows` match the head of the default branch; the tag sits
+on the head of `develop`, the default branch, which always does. The promote job pushes `master`
+over SSH with the deploy key, which has no such limit, so `master` catches up even when `develop`
+moved on with a workflow change. No workflow here runs on a push, so neither push starts another
+run. The workflow opens no pull requests, so **Settings → Actions → General → Allow GitHub Actions
+to create and approve pull requests** can stay off.
 
 ### Who can release
 
-GitHub skips the job, without a runner and without asking for approval, when anyone but the
-repository owner starts the run or when it runs on any branch but `develop`. The `release`
-environment (Settings → Environments) then requires the owner's approval and accepts only
-`develop`. Keep that environment: GitHub creates a missing environment that a workflow names,
-without any protection rules. The workflow file has to stay on `develop`, the default branch, for
-**Run workflow** to appear.
+GitHub skips every job, without a runner and without asking for approval, when anyone but the
+repository owner starts the run or when it runs on any branch but `develop`. Two environments
+(Settings → Environments) accept only `develop` and require the owner's approval: `release` before
+the tag, `production` before `master` moves. They guard different things. The first decides that
+the head of `develop` becomes a release, whose tag stays for good. The second guards the one
+credential that can move `master`: GitHub holds every job that names `production`, in any workflow
+and on any event, until the owner approves it. The repository is public, and events that anyone
+can cause, such as an issue comment, run the workflows of `develop`, so accepting only `develop`
+would not keep the key from such a job on its own. Keep both environments: GitHub creates a
+missing environment that a workflow names, without any protection rules. The workflow file has to
+stay on `develop`, the default branch, for **Run workflow** to appear.
 
 ### From a computer
 
 `npm run release -- patch --dry-run` runs the same checks and the tests and prints the version and
 the notes. On an up-to-date, clean `develop`, `npm run release -- patch` tags its head in the clone
 and prints the command that pushes the tag, and `--push` pushes it. A pushed tag is not a release
-yet: run the Release workflow on `develop` to finish it (status, `master`, GitHub release).
+yet: run the Release workflow on `develop` to finish it (`master`, GitHub release).
 
 `CHANGELOG.md` covers the versions up to 1.0.2; the first tagged release is `v0.1.1`, and `0.1.0`
 has a changelog entry but no tag.
