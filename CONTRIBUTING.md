@@ -51,6 +51,13 @@ plan](https://support.claude.com/en/articles/11145838-using-claude-code-with-you
 and say only what the plugin does, with no ranking, endorsement or affiliation words.
 `test/scripts/manifests.test.mjs` checks both in the manifests and the README introduction.
 
+The README banner is also the repository's social preview (Settings → General → Social
+preview). It is rendered from `assets/banner.html`, whose lines are the sample at the top of the
+README: when the sample changes, render the banner again and upload it there. The banner's path
+stays out of backticks and code blocks here: Anthropic's directory holds for a reviewer any
+bundled image named that way outside Markdown image syntax
+([pre-submission checklist](https://claude.com/docs/plugins/pre-submission-checklist#files-in-the-plugin-folder)).
+
 About and topics live on GitHub, not in the repository. Their current values, set with:
 
 ```bash

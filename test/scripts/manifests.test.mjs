@@ -137,7 +137,8 @@ const LISTINGS = {
 };
 
 test('the listings and the README introduction name the 5-hour and weekly limits', () => {
-  const intro = read('README.md').split(/^## /m)[0];
+  // The prose itself, not the banner's alt text.
+  const intro = read('README.md').split(/^## /m)[0].replace(/!\[[^\]]*\]\([^)]*\)/g, '');
   for (const [source, text] of Object.entries({ ...LISTINGS, 'README.md': intro })) {
     assert.match(text, /\b5-hour\b/, source);
     assert.match(text, /\bweekly\b/, source);
@@ -147,6 +148,15 @@ test('the listings and the README introduction name the 5-hour and weekly limits
 test('the listings claim nothing the plugin cannot back: no ranking, endorsement or affiliation words', () => {
   for (const [source, text] of Object.entries(LISTINGS)) {
     assert.doesNotMatch(text, /\b(best|fastest|leading|official|endorsed|verified|anthropic)\b/i, source);
+  }
+});
+
+test('every README image exists in the repository and has alt text', () => {
+  const images = [...read('README.md').matchAll(/!\[([^\]]*)\]\(([^)\s]+)\)/g)];
+  assert.ok(images.length > 0);
+  for (const [, alt, path] of images) {
+    assert.ok(alt.trim().length > 0, `${path} has no alt text`);
+    assert.ok(existsSync(join(ROOT, path)), path);
   }
 });
 
