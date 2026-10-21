@@ -1,30 +1,32 @@
-# Release: publishes a new version. develop is protected (changes only through pull requests, for
-# the owner too), so the release commit reaches it through a pull request, and the tag follows the
-# merge: Rebase and merge gives the commit a new SHA.
+# Release: publishes develop as a new version. A release is a tag: no commit, no release branch,
+# no pull request. The version lives only in the tag vX.Y.Z; the manifests carry none, so Claude
+# Code tells versions apart by their commit.
 #
-#   release  started from Actions → Release → Run workflow, on develop. GitHub checks its `if`
-#            without a runner: a run by anyone but the repository owner, or on any branch but
-#            develop, is skipped and asks for nothing. For the owner the run then waits for the
-#            approval of the `release` environment before anything runs; after it,
-#            scripts/release.mjs runs the tests, bumps the version in every manifest, stamps
-#            CHANGELOG, commits `LS-N_chore(release): vX.Y.Z` on release/vX.Y.Z, pushes that
-#            branch and opens its pull request into develop; the job then merges that pull request
-#            (Rebase and merge), tags the merged commit with scripts/tag-release.mjs and hands the
-#            tag to publish. A dry run checks all of it and changes nothing. Opening the pull
-#            request needs Settings → Actions → General → "Allow GitHub Actions to create and
-#            approve pull requests".
-#   tag      for a release pull request the owner merged by hand (one the release job could not
-#            merge, or one opened from a computer): that merge changes package.json on develop,
-#            which starts this job, and it tags like the release job; a version already tagged is
-#            passed on as it is.
-#   publish  creates the GitHub release from the version's CHANGELOG section, unless it exists.
+# Started from Actions → Release → Run workflow, on develop. GitHub checks the job's `if` without
+# a runner: a run by anyone but the repository owner, or on any branch but develop, is skipped and
+# asks for nothing. For the owner the run waits for the approval of the `release` environment
+# before anything runs; after it the job:
+#   1. runs scripts/release.mjs: the tests, then the annotated tag vX.Y.Z on develop's head, its
+#      message the subjects of the commits since the previous tag, pushed to origin;
+#   2. sets the commit status "Release from develop" on that commit: master's ruleset
+#      (.github/rulesets/master.json) lets master move only to a commit that carries it. A status,
+#      not a check run: GitHub counts workflow checks towards a required check only from events
+#      such as push and pull_request, and this run is a workflow_dispatch;
+#   3. merges develop into master by fast-forward: master becomes exactly the tagged commit and
+#      never moves back;
+#   4. creates the GitHub release from the tag's notes, marks it Latest and deletes the older
+#      releases; their tags stay as the history.
+# A dry run runs the tests and prints the version and the notes; it changes nothing. A run on a
+# develop whose head already carries a version tag finishes that release (steps 2-4) instead of
+# cutting a new one, so a failed run is finished by running the workflow again.
 #
-# A tag pushed from a computer starts only the publish job (path filters do not apply to tags).
-# The merge and the tag the jobs make start no second run: events made with GITHUB_TOKEN start
-# none. Anthropic's directory and the sealoop marketplace both follow develop, so the merge is
-# what reaches their users.
+# Pushes use GITHUB_TOKEN, unless the release environment has a RELEASE_TOKEN secret. GitHub lets
+# GITHUB_TOKEN point a ref only at a commit whose .github/workflows match the default branch's
+# head, which develop's head does; RELEASE_TOKEN (a token with the Workflows permission) is only
+# needed when develop moved on with a workflow change before master did. The tag and the master
+# push made with GITHUB_TOKEN start no other run.
 name: Release
-run-name: ${{ github.event_name == 'workflow_dispatch' && format('{0} {1}', inputs.dry_run && 'Dry run' || 'Release', inputs.version || inputs.bump) || github.ref_type == 'tag' && format('Publish {0}', github.ref_name) || 'Tag and publish the merged release' }}
+run-name: ${{ format('{0} {1}', inputs.dry_run && 'Dry run' || 'Release', inputs.version || inputs.bump) }}
 
 on:
   workflow_dispatch:
@@ -43,11 +45,6 @@ on:
         description: Dry run - run every check and the tests, change nothing
         type: boolean
         default: false
-  push:
-    branches: [develop]
-    # Every release commit changes package.json, so other merges start no run.
-    paths: [package.json]
-    tags: ['v*.*.*']
 
 permissions: {}
 
@@ -57,7 +54,7 @@ concurrency:
 
 jobs:
   release:
-    name: Test, bump, commit and open the release pull request
+    name: Test, tag, merge develop into master and publish
     # IDs survive account renames; the triggering actor covers a re-run started by someone else.
     if: >-
       github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
@@ -68,78 +65,12 @@ jobs:
     environment: release
     permissions:
       contents: write
-      pull-requests: write
-    outputs:
-      tag: ${{ steps.result.outputs.tag }}
+      statuses: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0 # LS-N numbering reads every commit subject; the tag check needs every tag
-
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 24
-
-      - name: Commit as the repository's author
-        run: |
-          git config user.name 'Reywedian'
-          git config user.email '27358836+Reywedian@users.noreply.github.com'
-
-      - name: Test, bump, commit, push the release branch and open its pull request
-        env:
-          KIND: ${{ inputs.version || inputs.bump }}
-          MODE: ${{ inputs.dry_run && '--dry-run' || '--push' }}
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/release.mjs "$KIND" "$MODE"
-
-      # The owner's approval of the release environment is the decision to merge. Only the commit
-      # prepared above is merged (--match-head-commit), by rebase, with no rule bypassed. GitHub
-      # works out whether a new pull request can merge in the background, so a refusal is retried.
-      - name: Merge the release pull request
-        if: ${{ !inputs.dry_run }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          branch="$(git rev-parse --abbrev-ref HEAD)"
-          case "$branch" in
-            release/v*) ;;
-            *) echo "::error::Not on a release branch ($branch): nothing was merged."; exit 1 ;;
-          esac
-          head="$(git rev-parse HEAD)"
-          for pause in 5 10 20 0; do
-            if gh pr merge "$branch" --rebase --match-head-commit "$head"; then exit 0; fi
-            if [ "$(gh pr view "$branch" --json state --jq .state)" = MERGED ]; then exit 0; fi
-            if [ "$pause" -gt 0 ]; then sleep "$pause"; fi
-          done
-          echo "::error::The pull request of $branch is still open: merge it with Rebase and merge, and the tag job finishes the release."
-          exit 1
-
-      # A merge made with GITHUB_TOKEN starts no run, so the tag job would not see it: tag here.
-      - name: Tag the merged release commit and push the tag
-        id: result
-        if: ${{ !inputs.dry_run }}
-        run: |
-          git fetch --quiet origin develop
-          git switch --quiet --detach FETCH_HEAD
-          tag="$(node scripts/tag-release.mjs)"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-
-  tag:
-    name: Tag the merged release
-    # No owner check: develop takes changes only through pull requests, and whoever can merge one
-    # already decides what the marketplace serves; the tag only names a commit that is there.
-    if: >-
-      github.event_name == 'push' && github.ref == 'refs/heads/develop'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: write
-    outputs:
-      tag: ${{ steps.result.outputs.tag }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0 # the release commit is found in the history; the check needs every tag
+          fetch-depth: 0 # the notes read every commit since the last tag; the version reads every tag
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -150,48 +81,72 @@ jobs:
           git config user.name 'Reywedian'
           git config user.email '27358836+Reywedian@users.noreply.github.com'
 
-      - name: Tag the merged release commit and push the tag
-        id: result
+      # An assignment, not `echo "tag=$(...)"`: under bash -e a failing script then fails the step.
+      - name: Test and tag develop's head
+        id: tag
+        env:
+          KIND: ${{ inputs.version || inputs.bump }}
+          MODE: ${{ inputs.dry_run && '--dry-run' || '--push' }}
         run: |
-          tag="$(node scripts/tag-release.mjs)"
+          tag="$(node scripts/release.mjs "$KIND" "$MODE")"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-  publish:
-    name: Publish the GitHub release
-    needs: [release, tag]
-    # After a release or the tag job, or alone for a tag pushed from a computer; a dry run hands
-    # over no tag.
-    if: ${{ !cancelled() && !failure() && (github.ref_type == 'tag' || needs.release.outputs.tag != '' || needs.tag.outputs.tag != '') }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      TAG: ${{ github.ref_type == 'tag' && github.ref_name || needs.release.outputs.tag || needs.tag.outputs.tag }}
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ env.TAG }}
-          persist-credentials: false
+      - name: Mark the tagged commit as a release from develop
+        if: ${{ !inputs.dry_run }}
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha="$(git rev-parse "$TAG^{commit}")"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$sha" \
+            -f state=success -f context='Release from develop' \
+            -f description="The Release workflow tagged this head of develop as $TAG" \
+            --silent
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 24
+      - name: Merge develop into master
+        if: ${{ !inputs.dry_run }}
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          sha="$(git rev-parse "$TAG^{commit}")"
+          git fetch --quiet origin master
+          master="$(git rev-parse FETCH_HEAD)"
+          if git merge-base --is-ancestor "$sha" "$master"; then
+            echo "master already holds $TAG."
+            exit 0
+          fi
+          if ! git merge-base --is-ancestor "$master" "$sha"; then
+            echo "::error::master has commits that $TAG lacks, so it cannot move forward to it: master takes changes only from develop."
+            exit 1
+          fi
+          git push origin "$sha:refs/heads/master"
+          echo "master is at $TAG ($sha)."
 
-      - name: Take the release notes from CHANGELOG.md
-        run: node scripts/release-notes.mjs "$TAG" > "$RUNNER_TEMP/release-notes.md"
+      - name: Take the release notes from the tag
+        if: ${{ !inputs.dry_run }}
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: git tag --list --format='%(contents:body)' "$TAG" > "$RUNNER_TEMP/release-notes.md"
 
       - name: Create the GitHub release unless it exists
+        if: ${{ !inputs.dry_run }}
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "$TAG" > /dev/null 2>&1; then
             echo "The release $TAG already exists; nothing to publish."
           else
-            gh release create "$TAG" --title "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md" --verify-tag
+            gh release create "$TAG" --title "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md" --verify-tag --latest
           fi
 
       # One release per repository, the latest; its predecessors go, their tags stay as the history.
       # Only after GitHub shows the new release as the latest, so a failed publish never leaves none.
       - name: Keep only the latest release, tags stay
+        if: ${{ !inputs.dry_run }}
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           latest="$(gh release view --json tagName --jq .tagName)"
           if [ "$latest" != "$TAG" ]; then

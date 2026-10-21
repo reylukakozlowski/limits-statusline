@@ -1,15 +1,13 @@
-// The release commands against real git: a clone on develop and a bare origin it pushes to.
-// `npm test` and `gh` are stubbed; the unit tests cover what happens when they fail.
+// The release command against real git: a clone on develop and a bare origin it pushes to.
+// `npm test` is stubbed; the unit tests cover what happens when it fails.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runRelease, runTagRelease } from '../../scripts/lib/release-cli.mjs';
-
-const CHANGELOG = '# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n- A bug.\n\n## [0.1.0] - 2026-10-20\n\n### Added\n\n- First.\n';
+import { runRelease } from '../../scripts/lib/release-cli.mjs';
 
 const run = (cwd, command, args) => {
   const result = spawnSync(command, args, { cwd, encoding: 'utf8' });
@@ -29,6 +27,13 @@ const configure = (dir) => {
   }
 };
 
+const commit = (dir, file, subject) => {
+  writeFileSync(join(dir, file), `${subject}\n`);
+  git(dir, 'add', file);
+  git(dir, 'commit', '--quiet', '-m', subject);
+};
+
+/** A clone on develop whose first commit is released as v0.1.0, two commits after it, all at origin. */
 function repository(t) {
   const root = mkdtempSync(join(tmpdir(), 'ls-release-git-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -37,176 +42,92 @@ function repository(t) {
   git(root, 'init', '--quiet', '--bare', '--initial-branch=develop', origin);
   git(root, 'init', '--quiet', '--initial-branch=develop', clone);
   configure(clone);
-  mkdirSync(join(clone, '.claude-plugin'));
-  const json = (path, value) => writeFileSync(join(clone, path), `${JSON.stringify(value, null, 2)}\n`);
-  json('package.json', { name: 'limits-statusline', version: '0.1.0' });
-  json('.claude-plugin/plugin.json', { name: 'limits-statusline', version: '0.1.0' });
-  json('.claude-plugin/marketplace.json', { name: 'sealoop', plugins: [{ name: 'limits-statusline', source: './', version: '0.1.0' }] });
-  writeFileSync(join(clone, 'CHANGELOG.md'), CHANGELOG);
-  git(clone, 'add', '.');
-  git(clone, 'commit', '--quiet', '-m', 'LS-1 feat: first');
+  commit(clone, 'README.md', 'LS-1_feat: first');
+  git(clone, 'tag', '-a', 'v0.1.0', '-m', 'v0.1.0');
+  commit(clone, 'a.txt', 'LS-2_feat: second');
+  commit(clone, 'b.txt', 'LS-3_fix: third');
   git(clone, 'remote', 'add', 'origin', origin);
-  git(clone, 'push', '--quiet', 'origin', 'develop');
-  return { root, origin, clone, pullRequests: [] };
+  git(clone, 'push', '--quiet', '--follow-tags', 'origin', 'develop');
+  return { root, origin, clone };
 }
-
-const capture = () => {
-  const out = [];
-  const err = [];
-  return { stdout: { write: (text) => out.push(text) }, stderr: { write: (text) => err.push(text) }, out, err };
-};
 
 const release = (repo, argv) => {
-  const streams = capture();
-  const exec = (command, args) => {
-    if (command === 'npm') return { status: 0, stdout: '' };
-    if (command === 'gh') {
-      repo.pullRequests.push(args);
-      return { status: 0, stdout: '' };
-    }
-    return run(repo.clone, command, args);
-  };
-  const code = runRelease({ argv, cwd: repo.clone, exec, today: '2026-10-21', ...streams });
-  return { code, text: [...streams.out, ...streams.err].join('') };
+  const out = [];
+  const err = [];
+  const exec = (command, args) => (command === 'npm' ? { status: 0, stdout: '' } : run(repo.clone, command, args));
+  const code = runRelease({ argv, exec, stdout: { write: (text) => out.push(text) }, stderr: { write: (text) => err.push(text) } });
+  return { code, out: out.join(''), text: [...out, ...err].join('') };
 };
 
-/** A fresh clone of origin, as the workflow's checkout makes one, running tag-release. */
-const tagRelease = (repo, name) => {
-  const dir = join(repo.root, name);
-  git(repo.root, 'clone', '--quiet', repo.origin, dir);
-  configure(dir);
-  const streams = capture();
-  const code = runTagRelease({ cwd: dir, exec: (command, args) => run(dir, command, args), ...streams });
-  return { code, out: streams.out.join(''), text: [...streams.out, ...streams.err].join('') };
-};
+/** Every ref at origin, as `<sha> <ref>` lines. */
+const originRefs = (repo) => git(repo.origin, 'for-each-ref', '--format=%(objectname) %(refname)');
 
-/** Another commit lands on develop at origin, through some other clone. */
-function moveDevelopOn(repo) {
-  const other = join(repo.root, 'other');
-  git(repo.root, 'clone', '--quiet', repo.origin, other);
-  configure(other);
-  writeFileSync(join(other, 'NOTES.md'), 'Meanwhile.\n');
-  git(other, 'add', 'NOTES.md');
-  git(other, 'commit', '--quiet', '-m', 'LS-2 docs: meanwhile');
-  git(other, 'push', '--quiet', 'origin', 'develop');
-  return git(other, 'rev-parse', 'HEAD');
-}
-
-/** What Rebase and merge does on GitHub: the release commit, replayed on develop with a new SHA. */
-function rebaseAndMerge(repo, branch) {
-  const merger = join(repo.root, 'merger');
-  git(repo.root, 'clone', '--quiet', repo.origin, merger);
-  configure(merger);
-  git(merger, 'cherry-pick', `origin/${branch}`);
-  git(merger, 'push', '--quiet', 'origin', 'develop');
-  git(merger, 'push', '--quiet', 'origin', '--delete', branch);
-  return git(merger, 'rev-parse', 'HEAD');
-}
-
-const originJson = (repo, ref, path) => JSON.parse(git(repo.origin, 'show', `${ref}:${path}`));
-
-test('a pushed release reaches origin as one commit on release/vX.Y.Z, with develop and the tags untouched', (t) => {
+test('a pushed release is an annotated tag on develop\'s head at origin, listing the commits since the last tag', (t) => {
   const repo = repository(t);
-  const developBefore = git(repo.origin, 'rev-parse', 'develop');
+  const head = git(repo.origin, 'rev-parse', 'develop');
   const result = release(repo, ['patch', '--push']);
-  assert.equal(result.code, 0, result.text);
-
-  const head = git(repo.clone, 'rev-parse', 'HEAD');
-  assert.equal(git(repo.origin, 'rev-parse', 'release/v0.1.1'), head);
-  assert.equal(git(repo.origin, 'rev-parse', 'release/v0.1.1^'), developBefore);
-  assert.equal(git(repo.origin, 'rev-parse', 'develop'), developBefore);
-  assert.equal(git(repo.origin, 'tag', '--list'), '');
-  assert.equal(git(repo.origin, 'log', '-1', '--format=%s', 'release/v0.1.1'), 'LS-2_chore(release): v0.1.1');
-  assert.equal(originJson(repo, 'release/v0.1.1', 'package.json').version, '0.1.1');
-  assert.equal(originJson(repo, 'release/v0.1.1', '.claude-plugin/plugin.json').version, '0.1.1');
-  assert.equal(originJson(repo, 'release/v0.1.1', '.claude-plugin/marketplace.json').plugins[0].version, '0.1.1');
-  assert.match(git(repo.origin, 'show', 'release/v0.1.1:CHANGELOG.md'), /## \[Unreleased\]\n\n## \[0\.1\.1\] - 2026-10-21\n\n### Fixed\n\n- A bug\./);
-  assert.equal(git(repo.clone, 'status', '--porcelain'), '');
-  assert.deepEqual(repo.pullRequests.map((args) => args.slice(0, 8)), [
-    ['pr', 'create', '--base', 'develop', '--head', 'release/v0.1.1', '--title', 'LS-2_chore(release): v0.1.1'],
-  ]);
-});
-
-test('once the pull request is rebased and merged, tag-release tags the merged commit at origin', (t) => {
-  const repo = repository(t);
-  assert.equal(release(repo, ['patch', '--push']).code, 0);
-  const releaseCommit = git(repo.origin, 'rev-parse', 'release/v0.1.1');
-  moveDevelopOn(repo);
-  const merged = rebaseAndMerge(repo, 'release/v0.1.1');
-  assert.notEqual(merged, releaseCommit);
-
-  const result = tagRelease(repo, 'ci');
   assert.equal(result.code, 0, result.text);
   assert.equal(result.out, 'v0.1.1\n');
-  assert.equal(git(repo.origin, 'cat-file', '-t', 'v0.1.1'), 'tag');
-  assert.equal(git(repo.origin, 'rev-parse', 'v0.1.1^{commit}'), merged);
 
-  const again = tagRelease(repo, 'ci-again');
+  assert.equal(git(repo.origin, 'cat-file', '-t', 'v0.1.1'), 'tag');
+  assert.equal(git(repo.origin, 'rev-parse', 'v0.1.1^{commit}'), head);
+  // What the workflow puts in the GitHub release.
+  assert.equal(git(repo.origin, 'tag', '--list', '--format=%(contents:body)', 'v0.1.1'), '- LS-2_feat: second\n- LS-3_fix: third');
+  assert.equal(git(repo.origin, 'tag', '--list', '--format=%(contents:subject)', 'v0.1.1'), 'v0.1.1');
+  // Nothing else changed: no commit, no branch.
+  assert.equal(git(repo.origin, 'rev-parse', 'develop'), head);
+  assert.equal(git(repo.origin, 'for-each-ref', '--format=%(refname)', 'refs/heads'), 'refs/heads/develop');
+  assert.equal(git(repo.clone, 'status', '--porcelain'), '');
+});
+
+test('running the release again on the same head finishes that release: the same tag, no new one', (t) => {
+  const repo = repository(t);
+  assert.equal(release(repo, ['patch', '--push']).code, 0);
+  const refs = originRefs(repo);
+
+  const again = release(repo, ['minor', '--push']);
   assert.equal(again.code, 0, again.text);
   assert.equal(again.out, 'v0.1.1\n');
-  assert.equal(git(repo.origin, 'rev-parse', 'v0.1.1^{commit}'), merged);
+  assert.match(again.text, /already v0\.1\.1/);
+  assert.equal(originRefs(repo), refs);
 });
 
-test('tag-release refuses when develop carries a version no release commit set', (t) => {
+test('a tag pushed from a computer without --push is finished by a later run with --push', (t) => {
   const repo = repository(t);
-  const result = tagRelease(repo, 'ci');
-  assert.equal(result.code, 2);
-  assert.equal(result.out, '');
-  assert.match(result.text, /no "chore\(release\): v0\.1\.0" commit/);
-  assert.equal(git(repo.origin, 'tag', '--list'), '');
+  const local = release(repo, ['patch']);
+  assert.equal(local.code, 0, local.text);
+  assert.match(local.text, /git push origin refs\/tags\/v0\.1\.1/);
+  assert.equal(run(repo.origin, 'git', ['rev-parse', '--quiet', '--verify', 'refs/tags/v0.1.1']).status, 1);
+
+  const pushed = release(repo, ['patch', '--push']);
+  assert.equal(pushed.code, 0, pushed.text);
+  assert.equal(git(repo.origin, 'cat-file', '-t', 'v0.1.1'), 'tag');
 });
 
-test('a release branch already at origin stops the release before anything is written', (t) => {
+test('a tag of the next version on a commit outside develop stops the release before anything is written', (t) => {
   const repo = repository(t);
-  git(repo.clone, 'push', '--quiet', 'origin', 'develop:refs/heads/release/v0.1.1');
-  const head = git(repo.clone, 'rev-parse', 'HEAD');
-
-  const result = release(repo, ['patch', '--push']);
-  assert.equal(result.code, 2);
-  assert.match(result.text, /origin already has release\/v0\.1\.1/);
-  assert.equal(git(repo.clone, 'rev-parse', '--abbrev-ref', 'HEAD'), 'develop');
-  assert.equal(git(repo.clone, 'rev-parse', 'HEAD'), head);
-  assert.equal(git(repo.clone, 'status', '--porcelain'), '');
-  assert.deepEqual(repo.pullRequests, []);
-});
-
-test('an existing tag stops the release before anything is written', (t) => {
-  const repo = repository(t);
+  git(repo.clone, 'switch', '--quiet', '--detach', 'v0.1.0');
+  commit(repo.clone, 'side.txt', 'LS-4_fix: elsewhere');
   git(repo.clone, 'tag', '-a', 'v0.1.1', '-m', 'v0.1.1');
-  const head = git(repo.clone, 'rev-parse', 'HEAD');
+  git(repo.clone, 'switch', '--quiet', 'develop');
+  const refs = originRefs(repo);
 
   const result = release(repo, ['patch', '--push']);
   assert.equal(result.code, 2);
   assert.match(result.text, /tag v0\.1\.1 already exists/);
-  assert.equal(git(repo.clone, 'rev-parse', 'HEAD'), head);
-  assert.equal(git(repo.clone, 'status', '--porcelain'), '');
-  assert.equal(git(repo.origin, 'tag', '--list'), '');
+  assert.equal(originRefs(repo), refs);
 });
 
-test('a dry run leaves the clone, its branches and origin as they were', (t) => {
+test('a dry run leaves the clone and origin as they were', (t) => {
   const repo = repository(t);
-  const head = git(repo.clone, 'rev-parse', 'HEAD');
+  const refs = originRefs(repo);
+  const tags = git(repo.clone, 'tag', '--list');
 
   const result = release(repo, ['minor', '--dry-run', '--push']);
   assert.equal(result.code, 0, result.text);
+  assert.equal(result.out, '');
   assert.match(result.text, /0\.1\.0 → 0\.2\.0/);
-  assert.equal(git(repo.clone, 'rev-parse', 'HEAD'), head);
-  assert.equal(git(repo.clone, 'branch', '--list', 'release/*'), '');
-  assert.equal(git(repo.clone, 'status', '--porcelain'), '');
-  assert.equal(git(repo.origin, 'branch', '--list', 'release/*'), '');
-  assert.equal(git(repo.origin, 'rev-parse', 'develop'), head);
-  assert.deepEqual(repo.pullRequests, []);
-});
-
-test('after a merged release, a second one with nothing new under [Unreleased] is refused', (t) => {
-  const repo = repository(t);
-  assert.equal(release(repo, ['patch', '--push']).code, 0);
-  rebaseAndMerge(repo, 'release/v0.1.1');
-  git(repo.clone, 'switch', '--quiet', 'develop');
-  git(repo.clone, 'pull', '--quiet', '--ff-only', 'origin', 'develop');
-
-  const result = release(repo, ['patch', '--push']);
-  assert.equal(result.code, 2);
-  assert.match(result.text, /\[Unreleased\] section of CHANGELOG\.md is empty/);
-  assert.equal(git(repo.origin, 'branch', '--list', 'release/*'), '');
+  assert.match(result.text, /- LS-3_fix: third/);
+  assert.equal(git(repo.clone, 'tag', '--list'), tags);
+  assert.equal(originRefs(repo), refs);
 });

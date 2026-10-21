@@ -1,18 +1,13 @@
 # Changelog
 
-All notable changes to this project are documented here. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
-[Semantic Versioning](https://semver.org/).
+This file is the history up to 1.0.2. Since then a release is only its tag `vX.Y.Z`: the
+Release workflow writes the release notes, the subjects of the commits since the previous
+release, into the annotated tag and into the GitHub release. Read them with
+`git tag --list --format='%(contents:body)' vX.Y.Z`, or on GitHub under Releases (the latest)
+and Tags (every version).
 
-## [Unreleased]
-
-### Changed
-
-- The `sealoop` marketplace installs the plugin from `master`, the production branch a release
-  moves to its tag, instead of `develop`; Anthropic's directory follows `master` too.
-- PRIVACY.md and the README say which personal data the plugin can read and keep (folder paths,
-  branch names, the setup marker's path and the `settings.json` backup), and that it uses no
-  credentials although it reads `settings.json` whole.
+The sections below follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
+project uses [Semantic Versioning](https://semver.org/).
 
 ## [1.0.2] - 2026-10-20
 

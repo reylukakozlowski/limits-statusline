@@ -1,4 +1,4 @@
-// The repository's own contract: identity, versions, and Anthropic directory requirements
+// The repository's own contract: identity, no pinned version, and Anthropic directory requirements
 // (https://claude.com/docs/plugins/pre-submission-checklist).
 
 import { test } from 'node:test';
@@ -7,7 +7,6 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { extractReleaseNotes } from '../../scripts/lib/release-lib.mjs';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const read = (path) => readFileSync(join(ROOT, path), 'utf8');
@@ -20,9 +19,11 @@ const pkg = json('package.json');
 const plugin = json('.claude-plugin/plugin.json');
 const marketplace = json('.claude-plugin/marketplace.json');
 
-test('the three manifests carry the same version', () => {
-  assert.equal(plugin.version, pkg.version);
-  assert.equal(marketplace.plugins[0].version, pkg.version);
+test('no manifest pins a version: a release is only its tag, and Claude Code tells versions apart by commit', () => {
+  // With a version in plugin.json or the marketplace entry, users would stay on it until it changed.
+  assert.equal('version' in plugin, false);
+  assert.equal('version' in marketplace.plugins[0], false);
+  assert.equal('version' in pkg, false);
 });
 
 test('identity is exactly Luka Kozlowski, his email and SeaLoop', () => {
@@ -192,24 +193,10 @@ test('the mod tests have their own npm script', () => {
   assert.equal(pkg.scripts['test:mod'], 'claude plugin test .');
 });
 
-test('the changelog has release notes for the current version', () => {
-  assert.ok(extractReleaseNotes(read('CHANGELOG.md'), pkg.version).length > 0);
-});
-
-test('a tagged version keeps the notes it was released with: later changes go under [Unreleased]', (t) => {
+test('the changelog is the history up to 1.0.2: later notes live in the tags, so it has no [Unreleased]', () => {
   const changelog = read('CHANGELOG.md');
-  const git = (...args) => spawnSync('git', args, { cwd: ROOT, encoding: 'utf8' });
-  const tagged = [...changelog.matchAll(/^## \[(\d+\.\d+\.\d+)\]/gm)]
-    .map((match) => match[1])
-    .filter((version) => git('rev-parse', '--quiet', '--verify', `refs/tags/v${version}`).status === 0);
-  if (tagged.length === 0) {
-    t.skip('this clone has no version tags');
-    return;
-  }
-  for (const version of tagged) {
-    const atTag = git('show', `v${version}:CHANGELOG.md`);
-    assert.equal(atTag.status, 0, `CHANGELOG.md at v${version}`);
-    assert.equal(extractReleaseNotes(changelog, version), extractReleaseNotes(atTag.stdout, version),
-      `the [${version}] notes changed after v${version} was tagged; move the new entries under [Unreleased]`);
-  }
+  assert.doesNotMatch(changelog, /^## \[Unreleased\]/m);
+  assert.match(changelog, /^## \[1\.0\.2\] - 2026-10-20$/m);
+  assert.equal(changelog.match(/^## \[/m)?.index, changelog.indexOf('## [1.0.2]'), '1.0.2 is the newest section');
+  assert.match(changelog, /git tag --list --format='%\(contents:body\)' vX\.Y\.Z/);
 });
