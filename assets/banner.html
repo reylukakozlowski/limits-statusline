@@ -1,0 +1,57 @@
+<!doctype html>
+<!--
+  Source of banner.png, the README banner and the repository's social preview on GitHub.
+  Open it in a browser with a 1280x640 viewport and save a screenshot of the viewport as PNG.
+  Keep its lines the same as the sample at the top of README.md.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Limits Status Line banner</title>
+<style>
+  :root { --bg: #1f1e1d; --panel: #262523; --cell: #3d3c39; --text: #ecebe8; --muted: #a8a59e;
+          --green: #3fb950; --yellow: #d29922; --red: #f85149; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1280px; height: 640px; background: var(--bg); overflow: hidden; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; color: var(--text);
+         padding: 64px 72px; display: flex; flex-direction: column; gap: 36px; }
+  header { display: flex; align-items: center; gap: 28px; }
+  header svg { width: 112px; height: 112px; flex: none; }
+  h1 { font-size: 60px; font-weight: 700; letter-spacing: -0.5px; }
+  .tagline { font-size: 30px; color: var(--muted); margin-top: 6px; }
+  .tagline b { color: var(--text); font-weight: 600; }
+  pre { background: var(--panel); border: 1px solid var(--cell); border-radius: 18px;
+        padding: 26px 32px; font: 25px/1.5 "Cascadia Mono", Consolas, monospace; color: var(--text); }
+  .g { color: var(--green); } .y { color: var(--yellow); } .m { color: var(--muted); }
+  footer { display: flex; justify-content: space-between; font-size: 24px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <svg viewBox="0 0 512 512" aria-hidden="true">
+    <rect width="512" height="512" rx="112" fill="#1f1e1d" stroke="#3d3c39" stroke-width="10"/>
+    <g fill="#3d3c39">
+      <rect x="61" y="150" width="390" height="40" rx="8"/>
+      <rect x="61" y="236" width="390" height="40" rx="8"/>
+      <rect x="61" y="322" width="390" height="40" rx="8"/>
+    </g>
+    <rect x="61" y="150" width="140" height="40" rx="8" fill="#3fb950"/>
+    <rect x="61" y="236" width="240" height="40" rx="8" fill="#d29922"/>
+    <rect x="61" y="322" width="340" height="40" rx="8" fill="#f85149"/>
+  </svg>
+  <div>
+    <h1>Limits Status Line</h1>
+    <p class="tagline">Claude Code status line for the <b>5-hour and weekly usage limits</b></p>
+  </div>
+</header>
+<pre><span class="m">daily-claude | no git | ✦ Opus 5.5</span>
+    $20.33 · 5h40m · cache 99% 52m · xhigh · +156 -23
+ctx <span class="y">■■■■■■■■■</span><span class="m">□□□□□□□</span> 54%  543k/1.0M  ⣀⡠⠔⠊
+7d  <span class="g">■■■■■■</span><span class="m">□□□□□□□□□□</span> 39% →  71%  ↻ 3d04h Mon 12:10  ↗ 0.4%/h
+5h  <span class="g">■■</span><span class="m">□□□□□□□□□□□□□□</span> 12% →  72%  ↻ 4h10m 12:10      ↗ 14.4%/h</pre>
+<footer>
+  <span>Pace · projection to the reset · warning before a limit runs out</span>
+  <span>Terminal + desktop app · MIT</span>
+</footer>
+</body>
+</html>

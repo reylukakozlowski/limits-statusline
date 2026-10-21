@@ -1,5 +1,7 @@
 # Limits Status Line
 
+![Limits Status Line: a Claude Code status line for the 5-hour and weekly usage limits, with the context, 7-day and 5-hour lines of a sample session](assets/banner.png)
+
 A Claude Code status line plugin for your claude.ai plan's **5-hour and weekly usage limits**. It
 answers, at a glance, "how close am I to my limits, and will I hit them before they reset?": for
 the 5-hour and the weekly (7-day) limit it shows the usage now and where your current pace takes
