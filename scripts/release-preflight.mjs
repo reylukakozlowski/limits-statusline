@@ -1,6 +1,6 @@
 // Entry point: node scripts/release-preflight.mjs, run by the Release workflow before it tags. From
 // a clone with gh signed in:
-//   GITHUB_REPOSITORY=<owner>/<repo> GITHUB_REPOSITORY_OWNER=<owner> node scripts/release-preflight.mjs
+//   GITHUB_REPOSITORY=<owner>/<repo> node scripts/release-preflight.mjs
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { runPreflight } from './lib/release-preflight.mjs';

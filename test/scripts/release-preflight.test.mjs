@@ -7,15 +7,12 @@ const STANDARD_RULES = MASTER_RULES.map((type) => ({ type, ruleset_id: 1 }));
 const PRODUCTION = {
   name: 'production',
   deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
-  protection_rules: [
-    { type: 'required_reviewers', prevent_self_review: false, reviewers: [{ type: 'User', reviewer: { login: 'Owner' } }] },
-    { type: 'branch_policy' },
-  ],
+  protection_rules: [{ type: 'branch_policy' }],
 };
 const DEVELOP_ONLY = [{ id: 7, name: 'develop', type: 'branch' }];
 
 const ready = (overrides = {}) => ({
-  masterRules: STANDARD_RULES, environment: PRODUCTION, branchPolicies: DEVELOP_ONLY, masterBehindHead: true, owner: 'owner', ...overrides,
+  masterRules: STANDARD_RULES, environment: PRODUCTION, branchPolicies: DEVELOP_ONLY, masterBehindHead: true, ...overrides,
 });
 
 test('a repository set up to the production standard, with master behind develop\'s head, is ready', () => {
@@ -64,11 +61,11 @@ test('production has to deploy from develop alone', () => {
   }
 });
 
-test('production has to wait for the owner\'s approval; the login is compared without case', () => {
-  const someoneElse = { ...PRODUCTION, protection_rules: [{ type: 'required_reviewers', reviewers: [{ type: 'User', reviewer: { login: 'other' } }] }] };
-  for (const environment of [{ ...PRODUCTION, protection_rules: [] }, someoneElse]) {
-    const problems = preflightProblems(ready({ environment }));
-    assert.deepEqual(problems, ["the environment production does not wait for owner's approval (CONTRIBUTING.md, master)."]);
+// One approval per release, the release environment's at the start: production needs no reviewer.
+test('production needs no reviewer of its own, and one set there changes nothing', () => {
+  const reviewer = { type: 'required_reviewers', prevent_self_review: false, reviewers: [{ type: 'User', reviewer: { login: 'someone' } }] };
+  for (const protection_rules of [undefined, [], [{ type: 'branch_policy' }], [reviewer, { type: 'branch_policy' }], [{ type: 'wait_timer', wait_timer: 5 }]]) {
+    assert.deepEqual(preflightProblems(ready({ environment: { ...PRODUCTION, protection_rules } })), [], JSON.stringify(protection_rules));
   }
 });
 
@@ -103,7 +100,7 @@ const STANDARD_RESPONSES = {
   [`repos/${REPO}/environments/production/deployment-branch-policies?per_page=100`]: { total_count: 1, branch_policies: DEVELOP_ONLY },
 };
 
-const preflight = (fake, env = { GITHUB_REPOSITORY: REPO, GITHUB_REPOSITORY_OWNER: 'owner' }) => {
+const preflight = (fake, env = { GITHUB_REPOSITORY: REPO }) => {
   const out = [];
   const code = runPreflight({ env, exec: fake.exec, stdout: { write: (text) => out.push(text) } });
   return { code, text: out.join('') };
@@ -139,11 +136,18 @@ test('runPreflight skips the history check while origin has no master', () => {
   assert.ok(!fake.calls.some((call) => call.startsWith('git merge-base')));
 });
 
-test('runPreflight exits 2 when GitHub cannot be read, or the repository is not named', () => {
+test('runPreflight exits 2 when GitHub cannot be read', () => {
   const unreadable = preflight(fakeExec({ ghFailure: 'HTTP 403: Resource not accessible by integration' }));
   assert.equal(unreadable.code, 2);
   assert.match(unreadable.text, /^::error::release preflight: gh api .* failed: HTTP 403/m);
-  const unnamed = preflight(fakeExec({ responses: STANDARD_RESPONSES }), {});
-  assert.equal(unnamed.code, 2);
-  assert.match(unnamed.text, /GITHUB_REPOSITORY and GITHUB_REPOSITORY_OWNER must be set/);
+});
+
+test('runPreflight exits 2 and asks nothing of GitHub without a repository named <owner>/<repo>', () => {
+  for (const env of [{}, { GITHUB_REPOSITORY: '' }, { GITHUB_REPOSITORY: 'repo' }, { GITHUB_REPOSITORY: 'owner/repo/extra' }]) {
+    const fake = fakeExec({ responses: STANDARD_RESPONSES });
+    const result = preflight(fake, env);
+    assert.equal(result.code, 2, JSON.stringify(env));
+    assert.match(result.text, /GITHUB_REPOSITORY must be set as <owner>\/<repo>/);
+    assert.deepEqual(fake.calls, [], JSON.stringify(env));
+  }
 });
