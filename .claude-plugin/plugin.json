@@ -25,7 +25,7 @@
   "documentationUrl": "https://github.com/reylukakozlowski/limits-statusline#readme",
   "supportUrl": "https://github.com/reylukakozlowski/limits-statusline/issues",
   "privacyPolicyUrl": "https://github.com/reylukakozlowski/limits-statusline/blob/develop/PRIVACY.md",
-  "icon": "./assets/icon.png",
+  "icon": "./assets/icon.svg",
   "types": "./types/index.d.ts",
   "userConfig": {
     "band": {

@@ -19,10 +19,11 @@ coverage/
 *.log
 *.tmp
 
-# Secrets and package-manager configuration (a registry setting blocks a directory submission)
+# Secrets and npm's own files: its configuration can hold a token, and a registry setting blocks
+# a directory submission. The plugin has no npm dependencies, so no npm file belongs here.
 .env
 .env.*
-.npmrc
+.npm*
 
 # Claude Code and its tools on this machine
 .claude/worktrees/
@@ -46,4 +47,3 @@ __MACOSX/
 Thumbs.db
 ehthumbs.db
 desktop.ini
-$RECYCLE.BIN/

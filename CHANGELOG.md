@@ -80,8 +80,7 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- An icon for the plugin's listing in Anthropic's directory (`assets/icon.png`, drawn from
-  `assets/icon.svg`).
+- An icon for the plugin's listing in Anthropic's directory, a PNG drawn from an SVG.
 - `SECURITY.md` (private reporting by email) and `CONTRIBUTING.md` (tests, a working copy in every
   session, releases); the README keeps what users need, now with use cases, installing from
   Anthropic's directory, and a support section. `PRIVACY.md` lists what is read and written and for
