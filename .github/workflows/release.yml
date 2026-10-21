@@ -1,6 +1,6 @@
 # Release: publishes develop as a new version. A release is a tag: no commit, no release branch,
-# no pull request. The version lives only in the tag vX.Y.Z; the manifests carry none, so Claude
-# Code tells versions apart by their commit.
+# no pull request. The version is the one in .claude-plugin/plugin.json, the plugin's one version,
+# which a pull request into develop raised; the tag vX.Y.Z names the same version.
 #
 # Started from Actions → Release → Run workflow, on develop. GitHub checks each job's `if` without
 # a runner: a run by anyone but the repository owner, or on any branch but develop, is skipped and
@@ -8,7 +8,8 @@
 #   1. ci (environment `release`): every run, a dry run too, first waits for the owner's approval,
 #      and nothing runs before it. Then, in every run, a release too: the tests, with their counts
 #      on the run's summary page; the dry run of scripts/release.mjs (develop, a clean tree, the
-#      next version, a free tag, the notes); and scripts/release-preflight.mjs, which checks that
+#      version in plugin.json higher than the last release, a free tag, the notes); and
+#      scripts/release-preflight.mjs, which checks that
 #      the run can reach master once it has tagged (master behind develop's head, master's two
 #      rulesets and nothing else, the environment `production` on develop alone). It reads the
 #      repository and writes nothing;
@@ -32,21 +33,14 @@
 # limit, so master catches up even when develop moved on with a workflow change. No workflow here
 # runs on a push, so neither push starts another run.
 name: Release
-run-name: ${{ format('{0} {1}', inputs.dry_run && 'Dry run' || 'Release', inputs.version || inputs.bump) }}
+run-name: ${{ inputs.dry_run && 'Dry run' || 'Release' }}
 
+# The version is the one in .claude-plugin/plugin.json on develop: a pull request raised it, as
+# every change reaches develop. The run tags it and refuses a version that is not higher than the
+# last release.
 on:
   workflow_dispatch:
     inputs:
-      bump:
-        description: Part of the version to raise
-        type: choice
-        options: [patch, minor, major]
-        default: patch
-      version:
-        description: Exact version X.Y.Z instead of the bump (optional)
-        type: string
-        required: false
-        default: ''
       dry_run:
         description: Dry run - run every check and the tests, change nothing
         type: boolean
@@ -104,9 +98,7 @@ jobs:
           exit "$status"
 
       - name: Dry run of the release
-        env:
-          KIND: ${{ inputs.version || inputs.bump }}
-        run: node scripts/release.mjs "$KIND" --dry-run
+        run: node scripts/release.mjs --dry-run
 
       - name: Check that the release can reach master
         env:
@@ -145,10 +137,8 @@ jobs:
       # An assignment, not `echo "tag=$(...)"`: under bash -e a failing script then fails the step.
       - name: Test and tag develop's head
         id: tag
-        env:
-          KIND: ${{ inputs.version || inputs.bump }}
         run: |
-          tag="$(node scripts/release.mjs "$KIND" --push)"
+          tag="$(node scripts/release.mjs --push)"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
   promote:

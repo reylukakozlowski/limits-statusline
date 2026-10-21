@@ -36,9 +36,8 @@ reaches users.
    - Select **Validate** and fix anything marked **Blocking**, then validate again. A result covers
      one commit, so validate again after every push. To check a fix before it is released, type
      its branch here, validate, and set `master` again before you go on.
-   - The report warns that `plugin.json` sets no `version`. That is deliberate and does not block:
-     a release is only its tag, so the directory, like Claude Code, tells versions apart by
-     commit, and each release that moves `master` is a new version.
+   - `plugin.json` carries the plugin's one `version`, which a pull request raises before each
+     release and the release tags as `vX.Y.Z` (CONTRIBUTING.md, Releasing).
 3. **Listing details** come from `.claude-plugin/plugin.json` (`displayName`, `description`, `icon`,
    `author`, the links) and `README.md`. Change them there, not in the portal. **Listed on**: tick
    Claude Code only. The status line and the desktop band are a hook and a mod, which run only in

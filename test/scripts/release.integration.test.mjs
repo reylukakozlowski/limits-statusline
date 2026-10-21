@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runRelease } from '../../scripts/lib/release-cli.mjs';
@@ -27,14 +27,20 @@ const configure = (dir) => {
   }
 };
 
-const commit = (dir, file, subject) => {
-  writeFileSync(join(dir, file), `${subject}\n`);
+const MANIFEST = join('.claude-plugin', 'plugin.json');
+
+const commit = (dir, file, subject, text = `${subject}\n`) => {
+  mkdirSync(join(dir, file, '..'), { recursive: true });
+  writeFileSync(join(dir, file), text);
   git(dir, 'add', file);
   git(dir, 'commit', '--quiet', '-m', subject);
 };
 
-/** A clone on develop whose first commit is released as v0.1.0, two commits after it, all at origin. */
-function repository(t) {
+/**
+ * A clone on develop whose first commit is released as v0.1.0, then a commit and one that sets
+ * plugin.json's version to `version`, as a pull request does, all at origin.
+ */
+function repository(t, { version = '0.1.1' } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'ls-release-git-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const origin = join(root, 'origin.git');
@@ -42,10 +48,12 @@ function repository(t) {
   git(root, 'init', '--quiet', '--bare', '--initial-branch=develop', origin);
   git(root, 'init', '--quiet', '--initial-branch=develop', clone);
   configure(clone);
-  commit(clone, 'README.md', 'LS-1_feat: first');
+  commit(clone, MANIFEST, 'LS-1_feat: first', '{ "name": "demo", "version": "0.1.0" }\n');
   git(clone, 'tag', '-a', 'v0.1.0', '-m', 'v0.1.0');
   commit(clone, 'a.txt', 'LS-2_feat: second');
-  commit(clone, 'b.txt', 'LS-3_fix: third');
+  // The version still the released one: no pull request raised it.
+  if (version === '0.1.0') commit(clone, 'b.txt', 'LS-3_fix: third');
+  else commit(clone, MANIFEST, 'LS-3_fix: third', `{ "name": "demo", "version": "${version}" }\n`);
   git(clone, 'remote', 'add', 'origin', origin);
   git(clone, 'push', '--quiet', '--follow-tags', 'origin', 'develop');
   return { root, origin, clone };
@@ -55,7 +63,10 @@ const release = (repo, argv) => {
   const out = [];
   const err = [];
   const exec = (command, args) => (command === 'npm' ? { status: 0, stdout: '' } : run(repo.clone, command, args));
-  const code = runRelease({ argv, exec, stdout: { write: (text) => out.push(text) }, stderr: { write: (text) => err.push(text) } });
+  const readManifest = () => readFileSync(join(repo.clone, MANIFEST), 'utf8');
+  const code = runRelease({
+    argv, exec, readManifest, stdout: { write: (text) => out.push(text) }, stderr: { write: (text) => err.push(text) },
+  });
   return { code, out: out.join(''), text: [...out, ...err].join('') };
 };
 
@@ -65,7 +76,7 @@ const originRefs = (repo) => git(repo.origin, 'for-each-ref', '--format=%(object
 test('a pushed release is an annotated tag on develop\'s head at origin, listing the commits since the last tag', (t) => {
   const repo = repository(t);
   const head = git(repo.origin, 'rev-parse', 'develop');
-  const result = release(repo, ['patch', '--push']);
+  const result = release(repo, ['--push']);
   assert.equal(result.code, 0, result.text);
   assert.equal(result.out, 'v0.1.1\n');
 
@@ -82,10 +93,10 @@ test('a pushed release is an annotated tag on develop\'s head at origin, listing
 
 test('running the release again on the same head finishes that release: the same tag, no new one', (t) => {
   const repo = repository(t);
-  assert.equal(release(repo, ['patch', '--push']).code, 0);
+  assert.equal(release(repo, ['--push']).code, 0);
   const refs = originRefs(repo);
 
-  const again = release(repo, ['minor', '--push']);
+  const again = release(repo, ['--push']);
   assert.equal(again.code, 0, again.text);
   assert.equal(again.out, 'v0.1.1\n');
   assert.match(again.text, /already v0\.1\.1/);
@@ -94,12 +105,12 @@ test('running the release again on the same head finishes that release: the same
 
 test('a tag pushed from a computer without --push is finished by a later run with --push', (t) => {
   const repo = repository(t);
-  const local = release(repo, ['patch']);
+  const local = release(repo, []);
   assert.equal(local.code, 0, local.text);
   assert.match(local.text, /git push origin refs\/tags\/v0\.1\.1/);
   assert.equal(run(repo.origin, 'git', ['rev-parse', '--quiet', '--verify', 'refs/tags/v0.1.1']).status, 1);
 
-  const pushed = release(repo, ['patch', '--push']);
+  const pushed = release(repo, ['--push']);
   assert.equal(pushed.code, 0, pushed.text);
   assert.equal(git(repo.origin, 'cat-file', '-t', 'v0.1.1'), 'tag');
 });
@@ -112,18 +123,30 @@ test('a tag of the next version on a commit outside develop stops the release be
   git(repo.clone, 'switch', '--quiet', 'develop');
   const refs = originRefs(repo);
 
-  const result = release(repo, ['patch', '--push']);
+  const result = release(repo, ['--push']);
   assert.equal(result.code, 2);
   assert.match(result.text, /tag v0\.1\.1 already exists/);
   assert.equal(originRefs(repo), refs);
 });
 
+test('a plugin.json version that is not higher than the last release stops the release before anything is written', (t) => {
+  for (const version of ['0.1.0', '0.0.9']) {
+    const repo = repository(t, { version });
+    const refs = originRefs(repo);
+    const result = release(repo, ['--push']);
+    assert.equal(result.code, 2, version);
+    assert.match(result.text, /not higher than the released 0\.1\.0/);
+    assert.equal(git(repo.clone, 'tag', '--list'), 'v0.1.0');
+    assert.equal(originRefs(repo), refs);
+  }
+});
+
 test('a dry run leaves the clone and origin as they were', (t) => {
-  const repo = repository(t);
+  const repo = repository(t, { version: '0.2.0' });
   const refs = originRefs(repo);
   const tags = git(repo.clone, 'tag', '--list');
 
-  const result = release(repo, ['minor', '--dry-run', '--push']);
+  const result = release(repo, ['--dry-run', '--push']);
   assert.equal(result.code, 0, result.text);
   assert.equal(result.out, '');
   assert.match(result.text, /0\.1\.0 → 0\.2\.0/);
