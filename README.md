@@ -193,21 +193,38 @@ it from the directory, `-sealoop` when you added it from GitHub.
 - **SessionStart hook**: after setup has run, refreshes the runtime copy after a plugin update and
   rebuilds it if it went missing; before setup it does nothing. On a computer without Node.js it
   cannot run and ends without an error, so sessions start as usual.
-- **Desktop band** (mod): reads the session's figures from Claude Code, runs the same `git status`
-  (or reads `.git/HEAD` where commands are unavailable), reads the `promptCacheTtl` setting and
-  the prompt-cache variables, keeps the effort, cache counts, time of the last response, context
-  history and git state in the state Claude Code holds for the mod, and redraws once a minute so
-  the reset countdowns stay current.
-  - **The one program it runs** is `git status --porcelain=v2 --branch --untracked-files=no`, in
-    the session's folder with `GIT_OPTIONAL_LOCKS=0`, written out in full in
-    `src/desktop/band.mjs`. It only reads the repository, to show the branch and whether there are
-    uncommitted changes. Its output is read on your computer and goes nowhere else.
+- **Desktop band** (mod): draws the same lines above the prompt and redraws once a minute so the
+  reset countdowns stay current. Every call it makes to Claude Code is in `src/desktop/band.mjs`.
+  - **The one program it runs, and why:** `git status --porcelain=v2 --branch --untracked-files=no`,
+    in the session's folder with `GIT_OPTIONAL_LOCKS=0` (so it never takes git's index lock) and a
+    1.5-second time limit, written out whole in the code, options included. It runs when the
+    session starts and each time Claude Code reports new session figures, to show the branch and,
+    with `*`, whether tracked files have uncommitted changes. `git status` only reads the
+    repository on your computer and contacts no remote. Nothing the band reads is passed to it:
+    the command and its options are fixed. Where the command cannot run (no `git`, or Claude Code
+    runs no commands there), the band reads the branch from the repository's `.git/HEAD` file
+    instead.
+  - **What it reads:** the session's figures from Claude Code (context fill, plan limits, cost,
+    runtime, model, working folder, session id and version, and the repository's folder); from each
+    model request (a `turn.step` hook) only the effort level, handing the request and the response
+    on unchanged without looking at their text; from each finished turn only its token counts, for
+    the cache ratio; the plan limit history file and, where `git` cannot run, `.git/HEAD`; the
+    settings, of which it uses only
+    `promptCacheTtl`; and the variables
+    `FORCE_PROMPT_CACHING_5M`, `CLAUDE_CODE_PROMPT_CACHE_TTL` and `ENABLE_PROMPT_CACHING_1H`, to
+    know how long the prompt cache stays warm, and `CLAUDE_CONFIG_DIR`, `USERPROFILE` and `HOME`,
+    only to find the configuration folder.
+  - **What it sends, and where:** nothing, and nowhere. It makes no network requests, and the
+    `git status` above is the only program it starts. What it reads is drawn in the band and kept
+    as described here.
   - **The one file it writes** is the plan limit history above,
-    `~/.claude/limits-statusline/limit-history.json` (in `CLAUDE_CONFIG_DIR` when set): the
-    plugin's own data, which no other tool runs or reads as settings or instructions. It reads
-    `CLAUDE_CONFIG_DIR`, `USERPROFILE` and `HOME` only to find that folder.
-  - **It sends nothing anywhere**: no network requests, and nothing from the conversation leaves
-    your computer. What it reads is drawn in the band and kept as described here.
+    `~/.claude/limits-statusline/limit-history.json` (in `CLAUDE_CONFIG_DIR` when set): JSON with
+    the plugin's own figures, which the status line and the band read as data. It is not a build,
+    start-up, settings or instructions file, and no tool runs it or takes it as settings or
+    instructions. The code names the file in the write itself; only its folder comes from
+    `CLAUDE_CONFIG_DIR` or your home folder, as Claude Code's own configuration folder does.
+  - **What it keeps:** the effort, cache counts, time of the last response, context history and git
+    state, in the state Claude Code holds for the mod during the session.
 
 With `CLAUDE_CONFIG_DIR` set, these folders live there instead of `~/.claude`.
 

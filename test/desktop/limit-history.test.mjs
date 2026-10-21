@@ -1,23 +1,34 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { limitHistoryFileFor, withMeasuredLimits } from '../../src/desktop/limit-history.mjs';
+import { configFolderFor, withMeasuredLimits } from '../../src/desktop/limit-history.mjs';
 import { EMPTY_LIMIT_HISTORY } from '../../src/core/limit-history.mjs';
+import { claudeConfigDir, limitHistoryPath } from '../../src/core/paths.mjs';
 
 const NOW = 1_800_000_000_000;
 const RESET = NOW + 15_000_000;
 
 const fiveHour = (percentUsed, resetsAtMs) => ({ kind: 'five_hour', percentUsed, resetsAt: new Date(resetsAtMs).toISOString() });
 
-test('the shared file sits under the config folder: CLAUDE_CONFIG_DIR, else USERPROFILE, else HOME', () => {
-  assert.equal(limitHistoryFileFor(undefined, 'C:/Users/dev', undefined), 'C:/Users/dev/.claude/limits-statusline/limit-history.json');
-  assert.equal(limitHistoryFileFor('D:/claude', 'C:/Users/dev', undefined), 'D:/claude/limits-statusline/limit-history.json');
-  assert.equal(limitHistoryFileFor(undefined, undefined, '/home/dev/'), '/home/dev/.claude/limits-statusline/limit-history.json');
-  assert.equal(limitHistoryFileFor(undefined, 'C:/Users/dev', '/home/dev'), 'C:/Users/dev/.claude/limits-statusline/limit-history.json');
+test('the config folder is CLAUDE_CONFIG_DIR, else .claude in USERPROFILE, else in HOME', () => {
+  assert.equal(configFolderFor(undefined, 'C:/Users/dev', undefined), 'C:/Users/dev/.claude');
+  assert.equal(configFolderFor('D:/claude', 'C:/Users/dev', undefined), 'D:/claude');
+  assert.equal(configFolderFor(undefined, undefined, '/home/dev/'), '/home/dev/.claude');
+  assert.equal(configFolderFor(undefined, 'C:/Users/dev', '/home/dev'), 'C:/Users/dev/.claude');
 });
 
-test('no file when no configuration folder is known', () => {
-  assert.equal(limitHistoryFileFor(undefined, undefined, undefined), null);
-  assert.equal(limitHistoryFileFor('', '', ''), null);
+// The band writes `${folder}/limits-statusline/limit-history.json` (band.mjs): the file the
+// terminal status line keeps, however the folder is spelled.
+test('the band names the same history file as the terminal, also for a folder ending in a separator', () => {
+  for (const [configDirVariable, home] of [['D:\\claude\\', undefined], ['/srv/claude//', undefined], [undefined, '/home/dev/'], ['/', undefined]]) {
+    const folder = configFolderFor(configDirVariable, undefined, home);
+    assert.equal(`${folder}/limits-statusline/limit-history.json`, limitHistoryPath(claudeConfigDir(configDirVariable, home)));
+  }
+});
+
+test('no folder when no configuration folder is known', () => {
+  assert.equal(configFolderFor(undefined, undefined, undefined), null);
+  assert.equal(configFolderFor('', '', ''), null);
+  assert.equal(configFolderFor('  ', null, ' '), null);
 });
 
 test('a measurement adds the plan figures and the session, and ignores other windows', () => {

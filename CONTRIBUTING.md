@@ -105,7 +105,10 @@ versions apart by their commit (the commit's SHA, cut to 12 characters, is the v
 repository owner can run.
 
 1. Merge the changes into `develop` through pull requests, as usual. Run `npm run test:mod` first
-   when the band changed: the workflow does not run it.
+   when the band changed: the workflow does not run it. A new hook or call on `$` in the band also
+   changes what Anthropic's directory holds for a reviewer: `npm test` fails until the README's
+   Privacy section, `PRIVACY.md` and [the band's policy holds](docs/directory-submission.md#the-bands-policy-holds)
+   describe it.
 2. On GitHub, open **Actions → Release → Run workflow** on `develop` and pick the bump (`patch`,
    `minor` or `major`) or type an exact `X.Y.Z`. Tick **Dry run** to run only the job **CI** of
    step 4. The run is listed as `Dry run patch`, `Release patch` and so on.

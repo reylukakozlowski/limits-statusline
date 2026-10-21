@@ -3,7 +3,6 @@
 // the dirty marker is then unknown. The calls on `$` live in band.mjs, where the directory reads
 // them; this file keeps what is decided from their answers.
 
-export const GIT_TIMEOUT_MS = 1500;
 const SHORT_SHA_LENGTH = 7;
 export const NOT_A_REPO = Object.freeze({ isRepo: false, branch: null, isDirty: false });
 
