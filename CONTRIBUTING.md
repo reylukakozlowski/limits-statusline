@@ -81,7 +81,9 @@ repository owner can run.
    step 4. The run is listed as `Dry run patch`, `Release patch` and so on.
 3. Approve the run: every run, a dry run too, starts by waiting for the owner's approval of the
    `release` environment, and nothing runs before it.
-4. The job **tag** first makes the dry run of the release, in every run, a release too: the checks
+4. The job **tag** first runs the tests in a step of their own, **Run the tests**: their counts,
+   with the name of each failed test, are on the run's summary page. Then it makes the dry run of
+   the release, in every run, a release too: the checks
    of `npm run release -- <bump> --dry-run` (a clean `develop`, the next version, a tag not taken
    yet), `npm test`, and the version and the notes in its log. Then
    `scripts/release-preflight.mjs` checks that the run can reach `master` once it has tagged:
