@@ -108,15 +108,18 @@ test('directory rules: only text files and complete PNG images ship (anything el
   }
 });
 
-test('the directory listing has a PNG icon and https links into this repository', () => {
-  assert.match(plugin.icon, /^\.\/assets\/[\w.-]+\.png$/);
-  const icon = readFileSync(join(ROOT, plugin.icon));
-  const [width, height] = [icon.readUInt32BE(16), icon.readUInt32BE(20)];
-  assert.ok(width === height && width >= 256, `icon is ${width}x${height}`);
+// An SVG icon is text the directory reads like code; a PNG icon is an image it lets through unread,
+// held for a reviewer whenever a script in the plugin names the manifest that names it.
+test('the directory listing has a square, self-contained SVG icon and https links into this repository', () => {
+  assert.match(plugin.icon, /^\.\/assets\/[\w.-]+\.svg$/);
+  const icon = read(plugin.icon);
+  const size = /<svg\b[^>]*\bwidth="(\d+)"[^>]*\bheight="(\d+)"/.exec(icon);
+  assert.ok(size && size[1] === size[2] && Number(size[1]) >= 256, `icon is ${size?.[1]}x${size?.[2]}`);
+  assert.doesNotMatch(icon, /<script|<image|<foreignObject|href=|url\(|@import/i, 'the icon draws itself, with no script or outside file');
   const repository = 'https://github.com/reylukakozlowski/limits-statusline';
   assert.equal(plugin.repository, repository);
-  for (const key of ['homepage', 'documentationUrl', 'supportUrl', 'privacyPolicyUrl']) {
-    assert.ok(plugin[key].startsWith(`${repository}`), `${key}: ${plugin[key]}`);
+  for (const field of ['homepage', 'documentationUrl', 'supportUrl', 'privacyPolicyUrl']) {
+    assert.ok(plugin[field].startsWith(`${repository}`), `${field}: ${plugin[field]}`);
   }
   assert.equal(plugin.supportUrl, `${repository}/issues`);
   assert.equal(plugin.privacyPolicyUrl, `${repository}/blob/develop/PRIVACY.md`);
