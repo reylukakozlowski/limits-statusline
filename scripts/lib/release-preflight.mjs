@@ -1,6 +1,5 @@
-// The Release workflow's last check before the owner approves a release: once its tag is pushed,
-// the run has to reach master, so whatever would stop it there stops it here, before anything is
-// written. It reads what the job's token can read: master's rules, the environment production and
+// The Release workflow's last check before it tags: once the tag is pushed, the run has to reach
+// master, so whatever would stop it there stops it here, before anything is written. It reads what the job's token can read: master's rules, the environment production and
 // the history. GitHub shows the deploy key and the environment's secret to admins only, so those
 // two are not checked.
 //   node scripts/release-preflight.mjs   (GITHUB_REPOSITORY, GITHUB_REPOSITORY_OWNER, GH_TOKEN)
