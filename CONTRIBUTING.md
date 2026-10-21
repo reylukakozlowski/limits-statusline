@@ -118,17 +118,18 @@ repository owner can run.
      `develop`, the next version, a tag not taken yet), and the version and the notes in its log;
    - **Check that the release can reach master** (`scripts/release-preflight.mjs`): `master`
      behind the head of `develop`, its two rulesets and no other rule, and the `production`
-     environment deploying from `develop` alone and waiting for the owner. Whatever would stop the
-     release after its tag stops it here, before anything is written.
+     environment deploying from `develop` alone. Whatever would stop the release after its tag
+     stops it here, before anything is written.
 
    A dry run ends here.
 5. Only when CI passed, the job **CD: tag** runs `npm test` once more, works the version out from
    the newest `vX.Y.Z` tag, and tags the commit the run started from, the one CI checked, with an
    annotated tag whose message lists the subjects of the commits since the previous tag. It pushes
    the tag.
-6. Approve the job **CD: master**: it waits for the owner's approval of the `production`
-   environment, then fast-forwards `master` to the tagged commit with the repository's deploy key:
-   `master` becomes exactly the tagged commit. Nothing else can move `master` (see below).
+6. The job **CD: master**, in the `production` environment, fast-forwards `master` to the tagged
+   commit with the repository's deploy key: `master` becomes exactly the tagged commit. Nothing
+   else can move `master` (see below). It asks for no second approval: the one of step 3 covers
+   the run.
 7. The job **CD: GitHub release** creates the GitHub release from the tag's notes and marks it
    Latest. Once GitHub shows the new release as the latest, it deletes the older releases: the
    repository keeps one release, and the `vX.Y.Z` tags of all versions stay as the history (a tag
@@ -137,7 +138,7 @@ repository owner can run.
 A run that fails or is rejected part way is finished by running the workflow again: when the head
 of `develop` already carries a version tag, the run finishes that release (`master`, GitHub
 release) instead of cutting a new one, and skips what is done. **Re-run failed jobs** after a
-failed tag, `master` or GitHub release job does not ask for the `release` approval again: CI
+failed tag, `master` or GitHub release job asks for no approval again: CI
 already passed in that run.
 
 ### master
@@ -177,10 +178,9 @@ gh secret set PRODUCTION_DEPLOY_KEY --env production -R <owner>/<repo> < product
 rm production-key production-key.pub
 ```
 
-Then add the owner as the required reviewer of `production` (Settings → Environments →
-production), with **Prevent self-review** off: the owner starts the run and approves it. To change
-a ruleset, edit its file and send it with `gh api --method PUT repos/<owner>/<repo>/rulesets/<id>
---input <file>`; `gh api repos/<owner>/<repo>/rulesets` lists the ids.
+To change a ruleset, edit its file and send it with `gh api --method PUT
+repos/<owner>/<repo>/rulesets/<id> --input <file>`; `gh api repos/<owner>/<repo>/rulesets` lists the
+ids.
 
 ### Credentials
 
@@ -196,25 +196,34 @@ stay off.
 ### Who can release
 
 GitHub skips every job, without a runner and without asking for approval, when anyone but the
-repository owner starts the run or when it runs on any branch but `develop`. Two environments
-(Settings → Environments) accept only `develop` and require the owner's approval: `release` before
-CI and the tag, `production` before `master` moves. They guard different things. The first
-decides that the head of `develop` becomes a release, whose tag stays for good. The second guards
-the one credential that can move `master`: GitHub holds every job that names `production`, in any
-workflow and on any event, until the owner approves it. The repository is public, and events that
-anyone can cause, such as an issue comment, run the workflows of `develop`, so accepting only
-`develop` would not keep the key from such a job on its own. Keep both environments: GitHub
+repository owner starts the run or when it runs on any branch but `develop`; only people with
+write access can start it at all. A release has one approval: the owner's, of the `release`
+environment, before CI. Nothing runs before it, and the tag and `master` follow only in a run the
+owner approved. The `production` environment accepts only `develop` and holds the deploy key; it
+asks for no approval of its own. Three things keep the key from any other job: the branch policy
+(`develop` only); the owner-only guard on every job of the Release workflow; and the contract test
+that fails when another workflow names `production` or its key, which the Tests workflow runs on
+every pull request into `develop` once it is ready for review. Events that anyone can cause, such
+as an issue comment, run the workflows of `develop` with `develop` as their ref, so a workflow on
+such an event must never name `production`; a required reviewer on `production` would hold such a
+job as well, at the price of a second approval in every release. Keep both environments: GitHub
 creates a missing environment that a workflow names, without any protection rules. The workflow
 file has to stay on `develop`, the default branch, for **Run workflow** to appear.
+
+So that no stranger runs workflows on the repository's runners, the setting
+**Approval for running fork pull request workflows from contributors** (Settings → Actions →
+General) is **Require approval for all external contributors**: no outside pull request runs a
+workflow before the owner approves it.
 
 ### From a computer
 
 `npm run release -- patch --dry-run` runs the same checks and the tests and prints the version and
-the notes. With `gh` signed in, `GITHUB_REPOSITORY=<owner>/<repo> GITHUB_REPOSITORY_OWNER=<owner>
-node scripts/release-preflight.mjs` makes the Release workflow's check of the way to `master`. On an
-up-to-date, clean `develop`, `npm run release -- patch` tags its head in the clone and prints the
-command that pushes the tag, and `--push` pushes it. A pushed tag is not a release yet: run the
-Release workflow on `develop` to finish it (`master`, GitHub release).
+the notes. With `gh` signed in,
+`GITHUB_REPOSITORY=<owner>/<repo> node scripts/release-preflight.mjs` makes the Release
+workflow's check of the way to `master`. On an up-to-date, clean `develop`,
+`npm run release -- patch` tags its head in the clone and prints the command that pushes the tag,
+and `--push` pushes it. A pushed tag is not a release yet: run the Release workflow on `develop`
+to finish it (`master`, GitHub release).
 
 `CHANGELOG.md` covers the versions up to 1.0.2; the first tagged release is `v0.1.1`, and `0.1.0`
 has a changelog entry but no tag.

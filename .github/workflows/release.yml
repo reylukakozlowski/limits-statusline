@@ -10,14 +10,14 @@
 #      on the run's summary page; the dry run of scripts/release.mjs (develop, a clean tree, the
 #      next version, a free tag, the notes); and scripts/release-preflight.mjs, which checks that
 #      the run can reach master once it has tagged (master behind develop's head, master's two
-#      rulesets and nothing else, the environment `production` on develop alone and waiting for
-#      the owner). It reads the repository and writes nothing;
+#      rulesets and nothing else, the environment `production` on develop alone). It reads the
+#      repository and writes nothing;
 #   2. tag, only when ci passed: scripts/release.mjs runs the tests once more and tags the commit
 #      the run started from, the one ci checked, with the annotated tag vX.Y.Z, its message the
 #      subjects of the commits since the previous tag, and pushes it with GITHUB_TOKEN;
 #   3. promote (environment `production`, which deploys from develop only and holds the secret
-#      PRODUCTION_DEPLOY_KEY; the owner approves it too): fast-forwards master to the tagged commit
-#      with that deploy key. master's rulesets let only a deploy key create or move master and
+#      PRODUCTION_DEPLOY_KEY; no second approval, the one at the start covers the run):
+#      fast-forwards master to the tagged commit with that deploy key. master's rulesets let only a deploy key create or move master and
 #      refuse a deletion, a force push or a merge commit, so master is exactly the latest release
 #      and never moves back. The repository has one deploy key, this one;
 #   4. publish: creates the GitHub release from the tag's notes, marks it Latest and deletes the
@@ -25,7 +25,7 @@
 # A dry run is job 1 alone: it changes nothing and never enters `production`. A run on a develop
 # whose head already carries a version tag finishes that release (jobs 3 and 4) instead of cutting
 # a new one, so a failed run is finished by running the workflow again; "Re-run failed jobs" after
-# a failed tag, promote or publish does not ask for the `release` approval again, ci having passed.
+# a failed tag, promote or publish asks for no approval again, ci having passed.
 #
 # GitHub lets GITHUB_TOKEN point a ref only at a commit whose .github/workflows match the default
 # branch's head; the tag sits on develop's head, which always does. The deploy key has no such
