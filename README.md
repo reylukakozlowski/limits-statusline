@@ -19,7 +19,7 @@ ctx ■■■■■■■■■□□□□□□□ 54%  543k/1.0M  ⣀⡠⠔�
 5h  ■■□□□□□□□□□□□□□□ 12% →  72%  ↻ 4h10m 12:10      ↗ 14.4%/h
 ```
 
-It works in both places Claude Code runs on your computer:
+It works in both places Claude Code runs on your computer, on macOS, Linux and Windows alike:
 
 - **Terminal** — the classic status line at the bottom of the screen; the context history is a
   braille line.
@@ -33,8 +33,10 @@ there.
 
 | Feature | Needs |
 |---|---|
-| Terminal status line | Claude Code with status line support and **Node.js 20+** on `PATH` |
-| Desktop band | Claude Code 2.1.290 or later (the desktop app updates its own copy); the monospaced face from 2.1.299 |
+| Operating system | One that [Claude Code supports](https://code.claude.com/docs/en/setup#system-requirements): macOS 13+, Windows 10 1809+ or Linux. The automated tests run on macOS, Linux (Ubuntu) and Windows ([Tests workflow](.github/workflows/tests.yml)) |
+| Terminal status line | Claude Code with status line support and **Node.js 20+** on `PATH` (on macOS, for example, from [nodejs.org](https://nodejs.org/en/download), Homebrew or nvm) |
+| Branch in the header | `git` on `PATH`; on macOS it comes with the Xcode Command Line Tools (`xcode-select --install`). Without it the terminal line says `no git` |
+| Desktop band | Claude Code 2.1.290 or later (the desktop app updates its own copy); the monospaced face from 2.1.299. No Node.js needed |
 | Weekly (7-day) and 5-hour limits | A claude.ai Pro or Max subscription; the limits appear after the session's first response |
 | Prompt-cache ratio in the terminal | Exact with Claude Code 2.1.251+, estimated from the last request on older versions |
 
@@ -189,7 +191,8 @@ it from the directory, `-sealoop` when you added it from GitHub.
   keeps your previous status line and a copy of the previous `settings.json` in
   `~/.claude/limits-statusline/`. It refuses to touch a settings file that is not valid JSON.
 - **SessionStart hook**: after setup has run, refreshes the runtime copy after a plugin update and
-  rebuilds it if it went missing; before setup it does nothing.
+  rebuilds it if it went missing; before setup it does nothing. On a computer without Node.js it
+  cannot run and ends without an error, so sessions start as usual.
 - **Desktop band** (mod): reads the session's figures from Claude Code, runs the same `git status`
   (or reads `.git/HEAD` where commands are unavailable), reads the `promptCacheTtl` setting and
   the prompt-cache variables, keeps the effort, cache counts, time of the last response, context
@@ -215,8 +218,12 @@ With `CLAUDE_CONFIG_DIR` set, these folders live there instead of `~/.claude`.
   show `limits-statusline@synced` or `limits-statusline@sealoop`; if it does not, follow
   [Install](#install).
 - **The terminal shows nothing** — run `/limits-statusline:setup` and check that `node --version`
-  prints 20 or higher. On Windows the command runs through Git Bash or PowerShell; its paths use
-  forward slashes so both read them.
+  prints 20 or higher. Claude Code runs the command through `sh` on macOS and Linux, and through
+  Git Bash or PowerShell on Windows; its paths use forward slashes, which all of them read.
+- **macOS asks to install the command line developer tools** — until they are installed,
+  macOS's own `git` is only a stand-in that asks for them each time it runs, and the plugin runs
+  `git status` to show the branch. Install them from that dialog or with `xcode-select --install`;
+  the desktop app's isolated sessions need git as well.
 - **The bottom line went blank after the plugin was removed or moved to another source** — run
   `/limits-statusline:setup` again with the plugin installed: it rebuilds the runtime copy and
   points `settings.json` at it, or use `--uninstall` to put your previous status line back.
