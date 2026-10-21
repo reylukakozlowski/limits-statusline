@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/sync-runtime.mjs\""
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/sync-runtime.mjs\"; exit 0"
           }
         ]
       }
