@@ -1,0 +1,43 @@
+# Tests: `npm test` on macOS, Linux and Windows for each pull request into develop, so a change is
+# checked on every system Claude Code runs on before the owner merges it.
+#
+# A draft runs no job (GitHub shows the jobs as skipped and spends no minutes); marking the pull
+# request ready for review runs all three, and so does every push to it after that. One system
+# failing never cancels the others, so the run shows each system's result. The tests need nothing
+# installed: the repository has no dependencies. Nothing here runs on a push, a tag or a schedule,
+# and the token can only read the repository.
+name: Tests
+
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: npm test on ${{ matrix.os }}
+    if: github.event.pull_request.draft == false
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Run the tests
+        run: npm test
