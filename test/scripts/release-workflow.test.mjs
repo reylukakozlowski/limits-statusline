@@ -80,23 +80,27 @@ test('each run is named by what it does, so a dry run never looks like a release
   for (const word of ["'Dry run'", "'Release'", 'inputs.version || inputs.bump']) assert.ok(runName[1].includes(word), word);
 });
 
-test('three jobs in a chain: tag behind the release approval, promote behind production, then publish', () => {
-  assert.deepEqual(JOBS.match(/^ {2}[\w-]+(?=:$)/gm).map((name) => name.trim()), ['tag', 'promote', 'publish']);
-  assert.match(job('tag'), /^ {4}environment: release$/m);
+test('four jobs in a chain: CI behind the release approval, then tag, promote behind production, publish', () => {
+  assert.deepEqual(JOBS.match(/^ {2}[\w-]+(?=:$)/gm).map((name) => name.trim()), ['ci', 'tag', 'promote', 'publish']);
+  assert.match(job('ci'), /^ {4}environment: release$/m);
   assert.match(job('promote'), /^ {4}environment: production$/m);
-  assert.equal(WORKFLOW.match(/^\s+environment:/gm).length, 2, 'publish runs in no environment');
+  assert.equal(WORKFLOW.match(/^\s+environment:/gm).length, 2, 'tag and publish run in no environment');
+  assert.match(job('tag'), /^ {4}needs: \[ci\]$/m);
   assert.match(job('promote'), /^ {4}needs: \[tag\]$/m);
   assert.match(job('publish'), /^ {4}needs: \[tag, promote\]$/m);
+  // The graph on the run's page says which part is CI and which CD.
+  const names = ['ci', 'tag', 'promote', 'publish'].map((name) => /^ {4}name: '(.+)'$/m.exec(job(name))?.[1]);
+  assert.deepEqual(names, ['CI: tests and checks', 'CD: tag', 'CD: master', 'CD: GitHub release']);
 });
 
 test('the approval comes before anything runs: every job that waits for no other is behind the release environment', () => {
   const first = JOBS.match(/^ {2}[\w-]+(?=:$)/gm).map((name) => name.trim()).filter((name) => !/^ {4}needs:/m.test(job(name)));
-  assert.deepEqual(first, ['tag']);
-  assert.match(job('tag'), /^ {4}environment: release$/m);
+  assert.deepEqual(first, ['ci']);
+  assert.match(job('ci'), /^ {4}environment: release$/m);
 });
 
 test('only the repository owner, on develop, gets any job: GitHub skips anyone else before an approval', () => {
-  for (const name of ['tag', 'promote', 'publish']) {
+  for (const name of ['ci', 'tag', 'promote', 'publish']) {
     const condition = guard(name);
     for (const fact of [
       "github.event_name == 'workflow_dispatch'",
@@ -110,28 +114,34 @@ test('only the repository owner, on develop, gets any job: GitHub skips anyone e
   }
 });
 
-test('after the approval every run, a release too, runs the tests, the dry run and the check of the way to master, then tags', () => {
-  assert.deepEqual(stepNames('tag'), [TESTS_STEP, DRY_RUN_STEP, PREFLIGHT_STEP, AUTHOR_STEP, TAG_STEP]);
+test('CI, in every run, a release too: the tests, the dry run and the check of the way to master', () => {
+  assert.deepEqual(stepNames('ci'), [TESTS_STEP, DRY_RUN_STEP, PREFLIGHT_STEP]);
   // The tests in a step of their own, whose counts go to the run's summary page.
-  const tests = script(step('tag', TESTS_STEP));
+  const tests = script(step('ci', TESTS_STEP));
   assert.match(tests, /^npm test 2>&1 \| tee "\$RUNNER_TEMP\/tests\.txt" \|\| status=\$\?$/m);
   assert.match(tests, />> "\$GITHUB_STEP_SUMMARY"$/m);
   assert.match(tests, /^exit "\$status"$/m);
-  const dryRun = step('tag', DRY_RUN_STEP);
+  const dryRun = step('ci', DRY_RUN_STEP);
   assert.match(dryRun, /^ {10}KIND: \$\{\{ inputs\.version \|\| inputs\.bump \}\}$/m);
   assert.match(dryRun, /^ {8}run: node scripts\/release\.mjs "\$KIND" --dry-run$/m);
-  const preflight = step('tag', PREFLIGHT_STEP);
+  const preflight = step('ci', PREFLIGHT_STEP);
   assert.match(preflight, /^ {10}GH_TOKEN: \$\{\{ github\.token \}\}$/m);
   assert.match(preflight, /^ {8}run: node scripts\/release-preflight\.mjs$/m);
-  // The checks always run and a failed one stops the job, so nothing is tagged after it.
-  for (const name of [TESTS_STEP, DRY_RUN_STEP, PREFLIGHT_STEP]) assert.doesNotMatch(step('tag', name), /^ {8}(if|continue-on-error):/m, name);
-  assert.doesNotMatch(job('tag'), /continue-on-error/);
+  // Every check runs and a failed one fails CI, so the tag job never starts.
+  assert.doesNotMatch(job('ci'), /^ {8}(if|continue-on-error):/m);
 });
 
-test('a dry run stops after the checks: it tags nothing, never enters production and publishes nothing', () => {
-  assert.doesNotMatch(guard('tag'), /dry_run/);
-  for (const name of [AUTHOR_STEP, TAG_STEP]) assert.match(step('tag', name), /^ {8}if: \$\{\{ !inputs\.dry_run \}\}$/m, name);
-  for (const name of ['promote', 'publish']) assert.ok(guard(name).endsWith('&& !inputs.dry_run'), name);
+test('CI reads and writes nothing else: a read-only token, no credentials kept, no secret', () => {
+  const ci = job('ci');
+  assert.match(ci, /^ {4}permissions:\n {6}contents: read\n {6}actions: read # .+\n {4}\S/m);
+  assert.match(ci, /^ {10}persist-credentials: false$/m);
+  assert.doesNotMatch(ci, /secrets\.|git push|git tag|gh release/);
+});
+
+test('a dry run is CI alone: it tags nothing, never enters production and publishes nothing', () => {
+  assert.doesNotMatch(guard('ci'), /dry_run/);
+  for (const name of ['tag', 'promote', 'publish']) assert.ok(guard(name).endsWith('&& !inputs.dry_run'), name);
+  assert.deepEqual(stepNames('tag'), [AUTHOR_STEP, TAG_STEP]);
   assert.deepEqual(stepNames('promote'), [PROMOTE_STEP]);
   assert.deepEqual(stepNames('publish'), [NOTES_STEP, CREATE_STEP, KEEP_STEP]);
 });
@@ -155,7 +165,7 @@ test('a release is only a tag: the workflow makes no commit, no branch and no pu
 
 test('each job gets only the token permissions it uses, and one release runs at a time', () => {
   assert.match(WORKFLOW, /^permissions: \{\}$/m);
-  assert.match(job('tag'), /^ {4}permissions:\n {6}contents: write\n {6}actions: read # .+\n {4}\S/m);
+  assert.match(job('tag'), /^ {4}permissions:\n {6}contents: write\n {4}\S/m);
   assert.match(job('promote'), /^ {4}permissions:\n {6}contents: read\n {4}\S/m);
   assert.match(job('publish'), /^ {4}permissions:\n {6}contents: write\n {4}\S/m);
   assert.match(WORKFLOW, /^concurrency:\n {2}group: release\n {2}cancel-in-progress: false$/m);
@@ -187,7 +197,7 @@ test('no other workflow names the production environment or its key', () => {
 
 test('every action is pinned to a full commit SHA', () => {
   const uses = WORKFLOW.match(/^ +(?:- )?uses: .+$/gm).map((line) => line.replace(/^ +(?:- )?/, ''));
-  assert.equal(uses.length, 4);
+  assert.equal(uses.length, 6);
   for (const line of uses) assert.match(line, /^uses: [\w.-]+\/[\w.-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+$/, line);
 });
 
@@ -278,7 +288,7 @@ function testsStep(t, output, status) {
   t.after(() => rmSync(runnerTemp, { recursive: true, force: true }));
   const summary = join(runnerTemp, 'summary.md');
   writeFileSync(summary, '');
-  const run = runStep(t, 'tag', TESTS_STEP, { npm: TESTS_NPM }, {
+  const run = runStep(t, 'ci', TESTS_STEP, { npm: TESTS_NPM }, {
     NPM_OUTPUT: output, NPM_STATUS: String(status), RUNNER_TEMP: runnerTemp, GITHUB_STEP_SUMMARY: summary,
   });
   return { ...run, summary: readFileSync(summary, 'utf8') };
