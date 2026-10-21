@@ -98,42 +98,49 @@ gh repo edit reylukakozlowski/limits-statusline \
 
 ## Releasing
 
-A release is only a tag, `vX.Y.Z` on the head of `develop`. Nothing is committed for it, no
-release branch or pull request is made, and the manifests carry no version: Claude Code tells
-versions apart by their commit (the commit's SHA, cut to 12 characters, is the version
-`claude plugin list` shows). Releases come from the **Release** workflow on GitHub, which only the
-repository owner can run.
+The plugin has one version, `version` in `.claude-plugin/plugin.json` (`X.Y.Z`, SemVer). It
+reaches `develop` the way every change does, through a pull request, and a release tags it:
+`vX.Y.Z` on the head of `develop`. The release commits nothing and makes no release branch or pull
+request. Claude Code takes the version from `plugin.json` and keeps users on it until it changes,
+so each release raises it; the marketplace entry and `package.json` carry none, and a test keeps
+it so. Releases come from the **Release** workflow on GitHub, which only the repository owner can
+run.
 
 1. Merge the changes into `develop` through pull requests, as usual. Run `npm run test:mod` first
    when the band changed: the workflow does not run it. A new hook or call on `$` in the band also
    changes what Anthropic's directory holds for a reviewer: `npm test` fails until the README's
    Privacy section, `PRIVACY.md` and [the band's policy holds](docs/directory-submission.md#the-bands-policy-holds)
    describe it.
-2. On GitHub, open **Actions → Release → Run workflow** on `develop` and pick the bump (`patch`,
-   `minor` or `major`) or type an exact `X.Y.Z`. Tick **Dry run** to run only the job **CI** of
-   step 4. The run is listed as `Dry run patch`, `Release patch` and so on.
-3. Approve the run: every run, a dry run too, starts by waiting for the owner's approval of the
+2. Raise `version` in `.claude-plugin/plugin.json` in a pull request into `develop`, the last one
+   before the release or one of its own: the patch number for fixes, the minor for new features,
+   the major for a change users must act on. The release refuses a version that is not higher
+   than the last `vX.Y.Z` tag.
+3. On GitHub, open **Actions → Release → Run workflow** on `develop`. Tick **Dry run** to run only
+   the job **CI** of step 5. The run is listed as `Release` or `Dry run`.
+4. Approve the run: every run, a dry run too, starts by waiting for the owner's approval of the
    `release` environment, and nothing runs before it.
-4. The job **CI: tests and checks** runs in every run, a release too, and writes nothing:
+5. The job **CI: tests and checks** runs in every run, a release too, and writes nothing:
    - **Run the tests**: `npm test`; the counts, with the name of each failed test, are on the
      run's summary page;
-   - **Dry run of the release**: the checks of `npm run release -- <bump> --dry-run` (a clean
-     `develop`, the next version, a tag not taken yet), and the version and the notes in its log;
+   - **Dry run of the release**: the checks of `npm run release -- --dry-run` (a clean
+     `develop`, the version in `plugin.json` higher than the last tag, a tag not taken yet), and
+     the version and the notes in its log;
    - **Check that the release can reach master** (`scripts/release-preflight.mjs`): `master`
      behind the head of `develop`, its two rulesets and no other rule, and the `production`
      environment deploying from `develop` alone. Whatever would stop the release after its tag
      stops it here, before anything is written.
 
    A dry run ends here.
-5. Only when CI passed, the job **CD: tag** runs `npm test` once more, works the version out from
-   the newest `vX.Y.Z` tag, and tags the commit the run started from, the one CI checked, with an
-   annotated tag whose message lists the subjects of the commits since the previous tag. It pushes
+6. Only when CI passed, the job **CD: tag** runs `npm test` once more, reads the version from
+   `plugin.json`, and tags the commit the run started from, the one CI checked, with an annotated
+   tag `vX.Y.Z` whose message lists the subjects of the commits since the previous tag. It pushes
    the tag.
-6. The job **CD: master**, in the `production` environment, fast-forwards `master` to the tagged
+7. The job **CD: master**, in the `production` environment, fast-forwards `master` to the tagged
    commit with the repository's deploy key: `master` becomes exactly the tagged commit. Nothing
-   else can move `master` (see below). It asks for no second approval: the one of step 3 covers
-   the run.
-7. The job **CD: GitHub release** creates the GitHub release from the tag's notes and marks it
+   else can move `master` (see below). It asks for no second approval: the one of step 4 covers
+   the run. That push is what tells Anthropic's directory about the release, through the push
+   webhook ([docs/directory-submission.md](docs/directory-submission.md#after-the-listing)).
+8. The job **CD: GitHub release** creates the GitHub release from the tag's notes and marks it
    Latest. Once GitHub shows the new release as the latest, it deletes the older releases: the
    repository keeps one release, and the `vX.Y.Z` tags of all versions stay as the history (a tag
    ruleset forbids deleting or moving them).
@@ -220,12 +227,12 @@ workflow before the owner approves it.
 
 ### From a computer
 
-`npm run release -- patch --dry-run` runs the same checks and the tests and prints the version and
-the notes. With `gh` signed in,
+`npm run release -- --dry-run` runs the same checks and the tests and prints the version and the
+notes. With `gh` signed in,
 `GITHUB_REPOSITORY=<owner>/<repo> node scripts/release-preflight.mjs` makes the Release
-workflow's check of the way to `master`. On an up-to-date, clean `develop`,
-`npm run release -- patch` tags its head in the clone and prints the command that pushes the tag,
-and `--push` pushes it. A pushed tag is not a release yet: run the Release workflow on `develop`
+workflow's check of the way to `master`. On an up-to-date, clean `develop`, `npm run release`
+tags its head in the clone with the version in `plugin.json` and prints the command that pushes
+the tag, and `npm run release -- --push` pushes it. A pushed tag is not a release yet: run the Release workflow on `develop`
 to finish it (`master`, GitHub release).
 
 `CHANGELOG.md` covers the versions up to 1.0.2; the first tagged release is `v0.1.1`, and `0.1.0`

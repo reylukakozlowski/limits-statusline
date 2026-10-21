@@ -1,6 +1,7 @@
 {
   "name": "limits-statusline",
   "displayName": "Limits Status Line",
+  "version": "1.0.9",
   "description": "Status line for Claude Code: the 5-hour and weekly plan usage limits with recent pace, usage projected to the reset, reset countdown and a red warning with the time left when a limit would run out first, plus session cost, runtime, prompt cache, effort, project, git and model, and context fill.",
   "author": {
     "name": "Luka Kozlowski",

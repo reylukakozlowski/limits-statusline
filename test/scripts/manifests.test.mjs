@@ -19,9 +19,10 @@ const pkg = json('package.json');
 const plugin = json('.claude-plugin/plugin.json');
 const marketplace = json('.claude-plugin/marketplace.json');
 
-test('no manifest pins a version: a release is only its tag, and Claude Code tells versions apart by commit', () => {
-  // With a version in plugin.json or the marketplace entry, users would stay on it until it changed.
-  assert.equal('version' in plugin, false);
+// Claude Code takes the version from plugin.json first and keeps users on it until it changes, so a
+// release has to raise it (scripts/release.mjs refuses one that is not higher than the last tag).
+test('plugin.json carries the one version, X.Y.Z; the marketplace entry and package.json carry none', () => {
+  assert.match(plugin.version, /^\d+\.\d+\.\d+$/);
   assert.equal('version' in marketplace.plugins[0], false);
   assert.equal('version' in pkg, false);
 });

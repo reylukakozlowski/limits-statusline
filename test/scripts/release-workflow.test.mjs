@@ -67,17 +67,18 @@ const guard = (jobName) => {
   return block[1].replace(/\s+/g, ' ').trim();
 };
 
-test('the workflow is called Release and starts only by hand, with a bump, an exact version or a dry run', () => {
+test('the workflow is called Release and starts only by hand; its one input is the dry run, the version is plugin.json\'s', () => {
   assert.match(WORKFLOW, /^name: Release$/m);
   const triggers = WORKFLOW.slice(WORKFLOW.indexOf('\non:\n'), WORKFLOW.indexOf('\npermissions:'));
   assert.deepEqual(triggers.match(/^ {2}[\w-]+:/gm), ['  workflow_dispatch:']);
-  for (const input of ['bump', 'version', 'dry_run']) assert.match(triggers, new RegExp(`^ {6}${input}:$`, 'm'), input);
+  assert.deepEqual(triggers.match(/^ {6}[\w-]+:$/gm), ['      dry_run:']);
+  assert.doesNotMatch(WORKFLOW, /inputs\.(bump|version)\b/);
 });
 
 test('each run is named by what it does, so a dry run never looks like a release', () => {
   const runName = /^run-name: (.+)$/m.exec(WORKFLOW);
   assert.ok(runName, 'run-name');
-  for (const word of ["'Dry run'", "'Release'", 'inputs.version || inputs.bump']) assert.ok(runName[1].includes(word), word);
+  for (const word of ["'Dry run'", "'Release'", 'inputs.dry_run']) assert.ok(runName[1].includes(word), word);
 });
 
 test('four jobs in a chain: CI behind the release approval, then tag, promote behind production, publish', () => {
@@ -122,8 +123,7 @@ test('CI, in every run, a release too: the tests, the dry run and the check of t
   assert.match(tests, />> "\$GITHUB_STEP_SUMMARY"$/m);
   assert.match(tests, /^exit "\$status"$/m);
   const dryRun = step('ci', DRY_RUN_STEP);
-  assert.match(dryRun, /^ {10}KIND: \$\{\{ inputs\.version \|\| inputs\.bump \}\}$/m);
-  assert.match(dryRun, /^ {8}run: node scripts\/release\.mjs "\$KIND" --dry-run$/m);
+  assert.match(dryRun, /^ {8}run: node scripts\/release\.mjs --dry-run$/m);
   const preflight = step('ci', PREFLIGHT_STEP);
   assert.match(preflight, /^ {10}GH_TOKEN: \$\{\{ github\.token \}\}$/m);
   assert.match(preflight, /^ {8}run: node scripts\/release-preflight\.mjs$/m);
@@ -149,9 +149,8 @@ test('a dry run is CI alone: it tags nothing, never enters production and publis
 test('the tag step runs the release script and hands on only the tag it prints', () => {
   const tag = step('tag', TAG_STEP);
   assert.match(tag, /^ {8}id: tag$/m);
-  assert.match(tag, /^ {10}KIND: \$\{\{ inputs\.version \|\| inputs\.bump \}\}$/m);
   // An assignment, not `echo "tag=$(...)"`: under bash -e a failing script then fails the step.
-  assert.equal(script(tag).trimEnd(), 'tag="$(node scripts/release.mjs "$KIND" --push)"\necho "tag=$tag" >> "$GITHUB_OUTPUT"');
+  assert.equal(script(tag).trimEnd(), 'tag="$(node scripts/release.mjs --push)"\necho "tag=$tag" >> "$GITHUB_OUTPUT"');
   assert.match(job('tag'), /^ {4}outputs:\n {6}tag: \$\{\{ steps\.tag\.outputs\.tag \}\}\n/m);
   for (const [jobName, stepName] of [['promote', PROMOTE_STEP], ['publish', NOTES_STEP], ['publish', CREATE_STEP], ['publish', KEEP_STEP]]) {
     assert.match(step(jobName, stepName), /^ {10}TAG: \$\{\{ needs\.tag\.outputs\.tag \}\}$/m, stepName);
