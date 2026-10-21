@@ -13,7 +13,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { writeFileAtomic } from './fs-atomic.mjs';
-import { SETUP_MARKER, readPluginVersion, runtimeDir, runtimeMainPath, syncRuntime } from './runtime-sync.mjs';
+import { SETUP_MARKER, runtimeDir, runtimeMainPath, syncRuntime } from './runtime-sync.mjs';
 import { buildStatusLineCommand, planInstall, planUninstall } from './settings-plan.mjs';
 
 const NAME = 'limits-statusline';
@@ -87,9 +87,8 @@ function install({ dataDir, settingsPath, stateDir, isDryRun, pluginRoot }, say)
     say('  Nothing was written.');
     return;
   }
-  const version = readPluginVersion(pluginRoot);
-  const { copied } = syncRuntime({ pluginRoot, dataDir, version });
-  writeFileAtomic(join(dataDir, SETUP_MARKER), `${JSON.stringify({ version, settingsPath }, null, 2)}\n`);
+  const { copied } = syncRuntime({ pluginRoot, dataDir });
+  writeFileAtomic(join(dataDir, SETUP_MARKER), `${JSON.stringify({ settingsPath }, null, 2)}\n`);
   if (!plan.changed) {
     say(alreadyEnabledMessage(copied, dataDir));
     return;

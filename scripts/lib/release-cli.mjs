@@ -1,23 +1,19 @@
 // npm run release -- <patch|minor|major|X.Y.Z> [--push] [--dry-run]
-// Prepares a release from develop: checks, tests, version bump in every manifest, changelog stamp
-// and the commit `LS-N_chore(release): vX.Y.Z` on a new branch release/vX.Y.Z. develop is
-// protected (changes only through pull requests), so the release reaches it through one: --push
-// pushes the branch and opens its pull request with gh. Once the owner merges it with Rebase and
-// merge, which gives the commit a new SHA, the Release workflow runs `node scripts/tag-release.mjs`
-// (runTagRelease below): it tags the merged commit and the workflow publishes the GitHub release.
-// --dry-run runs the same checks and tests and writes nothing.
+// A release is a tag: the annotated tag vX.Y.Z on develop's head, whose message lists the subjects
+// of the commits since the previous version tag. Nothing is committed and no branch is made: the
+// manifests carry no version, so Claude Code tells versions apart by their commit. --push pushes
+// the tag; the Release workflow then merges develop into master (fast-forward) and publishes the
+// GitHub release. A head that already carries a version tag is that release, still to finish: its
+// tag is printed (and pushed again with --push) and no new one is made.
+// --dry-run runs the same checks and the tests and writes nothing.
+// stdout holds the tag and nothing else, for the workflow; every report goes to stderr.
 // Exit codes: 0 done (or dry run), 1 usage error, 2 refused or failed.
 
-import fs from 'node:fs';
-import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import {
-  extractReleaseNotes, findReleaseCommit, nextCommitIndex, nextVersion, stampChangelog, withVersion, COMMIT_PREFIX,
-} from './release-lib.mjs';
+import { latestVersion, nextVersion, releaseNotes } from './release-lib.mjs';
 
 const BASE_BRANCH = 'develop';
-const MANIFESTS = Object.freeze(['package.json', '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json']);
-const CHANGELOG = 'CHANGELOG.md';
+const VERSION_TAGS = 'v*.*.*';
 
 class Refusal extends Error {}
 
@@ -27,10 +23,10 @@ class Refusal extends Error {}
  */
 
 /**
- * @param {{ argv: string[], cwd: string, today: string, exec: Exec, stdout: Stream, stderr: Stream }} io
+ * @param {{ argv: string[], exec: Exec, stdout: Stream, stderr: Stream }} io
  * @returns {number}
  */
-export function runRelease({ argv, cwd, exec, today, stdout, stderr }) {
+export function runRelease({ argv, exec, stdout, stderr }) {
   let options;
   try {
     options = parseOptions(argv);
@@ -38,28 +34,9 @@ export function runRelease({ argv, cwd, exec, today, stdout, stderr }) {
     stderr.write(`release: ${error.message}\nUsage: npm run release -- <patch|minor|major|X.Y.Z> [--push] [--dry-run]\n`);
     return 1;
   }
-  return refusalsToExitCode(stderr, () => {
-    release({ ...options, cwd, exec, today, say: (text) => stdout.write(`${text}\n`) });
-  });
-}
-
-/**
- * node scripts/tag-release.mjs, run by the Release workflow after a push to develop. Tags the
- * commit that released the version in package.json, unless that tag exists, and pushes the tag.
- * Prints the tag and nothing else on stdout, for the publish job; reports on stderr.
- * @param {{ cwd: string, exec: Exec, stdout: Stream, stderr: Stream }} io
- * @returns {number} 0 tagged or already tagged, 2 refused or failed
- */
-export function runTagRelease({ cwd, exec, stdout, stderr }) {
-  return refusalsToExitCode(stderr, () => {
-    const tag = tagRelease({ cwd, exec, say: (text) => stderr.write(`${text}\n`) });
-    stdout.write(`${tag}\n`);
-  });
-}
-
-function refusalsToExitCode(stderr, action) {
   try {
-    action();
+    const tag = release({ ...options, exec, say: (text) => stderr.write(`${text}\n`) });
+    if (tag) stdout.write(`${tag}\n`);
     return 0;
   } catch (error) {
     if (!(error instanceof Refusal)) throw error;
@@ -79,103 +56,66 @@ function parseOptions(argv) {
   return { kind: positionals[0], shouldPush: values.push, isDryRun: values['dry-run'] };
 }
 
-function release({ kind, shouldPush, isDryRun, cwd, exec, today, say }) {
+/** @returns {string | null} the release's tag, or null after a dry run */
+function release({ kind, shouldPush, isDryRun, exec, say }) {
   const git = gitRunner(exec);
-  const plan = planRelease({ kind, shouldPush, cwd, exec, git, today });
+  const plan = planRelease({ kind, exec, git });
 
-  if (exec('npm', ['test'], { inherit: true }).status !== 0) throw new Refusal('tests failed; nothing was changed.');
-  const notes = extractReleaseNotes(plan.changelog, plan.version);
+  if (exec('npm', ['test'], { inherit: true }).status !== 0) throw new Refusal('tests failed; nothing was tagged.');
 
   if (isDryRun) {
-    say(`release (dry run): ${plan.current} → ${plan.version}, commit "${plan.subject}" on ${plan.branch}${shouldPush ? `, pull request into ${BASE_BRANCH}` : ''}.`);
-    say(notes);
-    return;
+    say(plan.isFinishing
+      ? `release (dry run): develop's head is already ${plan.tag}; the run would finish that release.`
+      : `release (dry run): ${plan.current} → ${plan.version}, tag ${plan.tag} on develop's head${shouldPush ? ', pushed to origin' : ''}.`);
+    if (plan.notes) say(plan.notes);
+    return null;
   }
 
-  git('switch', '--create', plan.branch);
-  writeRelease(plan, cwd);
-  git('add', ...MANIFESTS, CHANGELOG);
-  git('commit', '-m', plan.subject);
-  if (!shouldPush) {
-    say(`release: "${plan.subject}" committed on ${plan.branch}. Push it and open its pull request with: `
-      + `git push origin ${plan.branch} && gh pr create --base ${BASE_BRANCH} --head ${plan.branch} --fill`);
-    return;
+  if (plan.isFinishing) {
+    say(`release: develop's head is already ${plan.tag}; no new tag, that release is the one to finish.`);
+  } else {
+    git('tag', '-a', plan.tag, '-m', plan.tag, '-m', plan.notes);
+    say(`release: tagged develop's head ${plan.tag}.`);
   }
-  openPullRequest(plan, notes, exec);
-  say(`release: ${plan.branch} pushed and its pull request opened. Merge it with Rebase and merge; `
-    + `the Release workflow then tags ${plan.tag} and publishes the GitHub release.`);
+  if (!shouldPush) {
+    say(`release: push the tag with \`git push origin refs/tags/${plan.tag}\`, then run the Release workflow on `
+      + `${BASE_BRANCH}: it merges ${BASE_BRANCH} into master and publishes the GitHub release.`);
+    return plan.tag;
+  }
+  if (exec('git', ['push', 'origin', `refs/tags/${plan.tag}`], { inherit: true }).status !== 0) {
+    throw new Refusal(`origin refused ${plan.tag}; the tag exists only in this clone.`);
+  }
+  return plan.tag;
 }
 
 /** Reads the repository and works the release out, refusing before anything is written. */
-function planRelease({ kind, shouldPush, cwd, exec, git, today }) {
+function planRelease({ kind, exec, git }) {
   const branch = git('rev-parse', '--abbrev-ref', 'HEAD').trim();
   if (branch !== BASE_BRANCH) throw new Refusal(`releases are cut from ${BASE_BRANCH}, not ${branch}.`);
   if (git('status', '--porcelain').trim() !== '') throw new Refusal('the working tree has uncommitted changes.');
 
-  const current = JSON.parse(readText(cwd, 'package.json')).version;
+  const headVersion = latestVersion(lines(git('tag', '--list', VERSION_TAGS, '--points-at', 'HEAD')));
+  if (headVersion) return { isFinishing: true, tag: `v${headVersion}` };
+
+  const previous = latestVersion(lines(git('tag', '--list', VERSION_TAGS, '--merged', 'HEAD')));
+  const current = previous ?? '0.0.0';
   const version = toRefusal(() => nextVersion(current, kind));
   const tag = `v${version}`;
-  if (hasTag(exec, tag)) throw new Refusal(`tag ${tag} already exists.`);
-  const releaseBranch = `release/${tag}`;
-  // Exit 0: origin has the branch; 2: it has not (any other status lets the push itself decide).
-  if (shouldPush && exec('git', ['ls-remote', '--exit-code', '--heads', 'origin', releaseBranch], {}).status === 0) {
-    throw new Refusal(`origin already has ${releaseBranch}: its pull request is waiting for the merge, `
-      + 'or close it and delete the branch before releasing again.');
+  if (exec('git', ['rev-parse', '--quiet', '--verify', `refs/tags/${tag}`], {}).status === 0) {
+    throw new Refusal(`tag ${tag} already exists.`);
   }
-  const changelog = toRefusal(() => stampChangelog(readText(cwd, CHANGELOG), version, today));
-  const index = nextCommitIndex(git('log', '--format=%s').split('\n'));
-  return { current, version, tag, branch: releaseBranch, changelog, subject: `${COMMIT_PREFIX}-${index}_chore(release): ${tag}` };
+  const range = previous ? `v${previous}..HEAD` : 'HEAD';
+  const notes = toRefusal(() => releaseNotes(lines(git('log', '--reverse', '--format=%s', range))));
+  return { isFinishing: false, current, version, tag, notes };
 }
 
-function writeRelease({ version, changelog }, cwd) {
-  for (const path of MANIFESTS) {
-    fs.writeFileSync(join(cwd, path), `${JSON.stringify(withVersion(JSON.parse(readText(cwd, path)), version), null, 2)}\n`);
-  }
-  fs.writeFileSync(join(cwd, CHANGELOG), changelog);
-}
-
-function openPullRequest({ branch, subject, tag }, notes, exec) {
-  if (exec('git', ['push', '--set-upstream', 'origin', branch], { inherit: true }).status !== 0) {
-    throw new Refusal(`origin refused ${branch}; the release commit exists only in this clone, on ${branch}.`);
-  }
-  const body = `${notes}\n\n---\n\nMerge with **Rebase and merge**: the Release workflow then tags the merged commit `
-    + `${tag} and publishes the GitHub release.\n`;
-  const opened = exec('gh', ['pr', 'create', '--base', BASE_BRANCH, '--head', branch, '--title', subject, '--body', body], { inherit: true });
-  if (opened.status !== 0) {
-    throw new Refusal(`${branch} is on origin, but gh could not open its pull request (on GitHub the repository has to `
-      + 'allow it: Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests"). '
-      + `Open it by hand: gh pr create --base ${BASE_BRANCH} --head ${branch} --fill`);
-  }
-}
-
-function tagRelease({ cwd, exec, say }) {
-  const git = gitRunner(exec);
-  const tag = `v${JSON.parse(readText(cwd, 'package.json')).version}`;
-  if (hasTag(exec, tag)) {
-    say(`release: ${tag} is already tagged.`);
-    return tag;
-  }
-  const commit = findReleaseCommit(git('log', '--first-parent', '--format=%H%x09%s', 'HEAD').split('\n'), tag);
-  if (!commit) {
-    throw new Refusal(`package.json is at ${tag}, but no "chore(release): ${tag}" commit on this branch released it; nothing was tagged.`);
-  }
-  git('tag', '-a', tag, '-m', tag, commit);
-  if (exec('git', ['push', 'origin', `refs/tags/${tag}`], {}).status !== 0) {
-    throw new Refusal(`origin refused ${tag}; the tag exists only in this clone.`);
-  }
-  say(`release: tagged ${commit.slice(0, 7)} as ${tag} and pushed the tag.`);
-  return tag;
-}
-
-const hasTag = (exec, tag) => exec('git', ['rev-parse', '--quiet', '--verify', `refs/tags/${tag}`], {}).status === 0;
+const lines = (text) => text.split('\n').map((line) => line.trim()).filter(Boolean);
 
 const gitRunner = (exec) => (...args) => {
   const result = exec('git', args, {});
   if (result.status !== 0) throw new Refusal(`git ${args.join(' ')} failed (exit ${result.status}).`);
   return result.stdout;
 };
-
-const readText = (cwd, path) => fs.readFileSync(join(cwd, path), 'utf8');
 
 function toRefusal(compute) {
   try {

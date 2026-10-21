@@ -53,7 +53,7 @@ Everything stays on your computer, under `~/.claude` (or `CLAUDE_CONFIG_DIR` whe
 |---|---|---|
 | Context fill history: one list of percentages per session | `plugins/data/limits-statusline-<source>/history/` | Pruned after 7 days |
 | Plan limit history: the 5-hour and 7-day usage percentages with their time and reset time, and each session's id with the last figures it reported, shared by the status line and the desktop band | `limits-statusline/limit-history.json` | Whenever a reading is added, readings older than 1 hour (5-hour) or 48 hours (7-day) are pruned except the newest of them, and sessions not seen for 48 hours or beyond the 64 most recent; the file stays until you delete it |
-| A copy of the plugin's status line code, and a setup marker with the plugin's version and the path of the `settings.json` setup changed | `plugins/data/limits-statusline-<source>/` | Until you uninstall the plugin |
+| A copy of the plugin's status line code with a fingerprint of that code, and a setup marker with the path of the `settings.json` setup changed | `plugins/data/limits-statusline-<source>/` | Until you uninstall the plugin |
 | The desktop band's figures (effort, cache counts, context history, git state with the branch name) | The session state Claude Code holds for the plugin's mod | For the session; the plugin keeps none of it beyond the session |
 | The `statusLine` entry | `settings.json` | Until `/limits-statusline:setup --uninstall` |
 | Your previous status line and an exact copy of the previous `settings.json` | `limits-statusline/` | Until you delete them; `--uninstall` uses the previous status line and removes it |

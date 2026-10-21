@@ -1,8 +1,8 @@
-// Pure release arithmetic: versions, changelog sections, commit numbering, manifest updates.
+// Pure release arithmetic: versions, the latest version tag, release notes.
 
 const SEMVER = /^v?(\d+)\.(\d+)\.(\d+)$/;
+const VERSION_TAG = /^v\d+\.\d+\.\d+$/;
 const BUMPS = Object.freeze(['patch', 'minor', 'major']);
-export const COMMIT_PREFIX = 'LS';
 
 const parse = (version) => {
   const match = SEMVER.exec(String(version).trim());
@@ -28,62 +28,16 @@ export function nextVersion(current, kind) {
   return explicit.join('.');
 }
 
-const UNRELEASED_HEADING = /^## \[Unreleased\][^\n]*\n/m;
-const NEXT_HEADING = /^## \[/m;
-
-/** Moves the [Unreleased] notes under `## [version] - date`, leaving [Unreleased] empty. */
-export function stampChangelog(text, version, isoDate) {
-  const heading = UNRELEASED_HEADING.exec(text);
-  if (!heading) throw new Error('CHANGELOG.md has no [Unreleased] section.');
-  const start = heading.index + heading[0].length;
-  const end = sectionEnd(text, start);
-  const notes = text.slice(start, end).trim();
-  if (!notes) throw new Error('The [Unreleased] section of CHANGELOG.md is empty: describe the release first.');
-  return `${text.slice(0, start)}\n## [${version}] - ${isoDate}\n\n${notes}\n\n${text.slice(end)}`;
+/** The highest X.Y.Z among `vX.Y.Z` tag names, or null when there is none. */
+export function latestVersion(tags) {
+  const versions = tags.filter((tag) => VERSION_TAG.test(tag)).map(parse);
+  if (versions.length === 0) return null;
+  return versions.sort(compare).at(-1).join('.');
 }
 
-/** The body of `## [version]`, for the GitHub release. */
-export function extractReleaseNotes(text, version) {
-  const bare = String(version).replace(/^v/, '');
-  const heading = new RegExp(`^## \\[${bare.replace(/\./g, '\\.')}\\][^\\n]*\\n`, 'm').exec(text);
-  const notes = heading ? text.slice(heading.index + heading[0].length, sectionEnd(text, heading.index + heading[0].length)).trim() : '';
-  if (!notes) throw new Error(`No release notes for ${bare} in CHANGELOG.md.`);
-  return notes;
-}
-
-function sectionEnd(text, start) {
-  const next = text.slice(start).search(NEXT_HEADING);
-  return next === -1 ? text.length : start + next;
-}
-
-/** Next N for `LS-N_…` and the older `LS-N …` commit subjects. */
-export function nextCommitIndex(subjects, prefix = COMMIT_PREFIX) {
-  // Not \b: `_` is a word character, so `LS-12_fix` has no word boundary after the number.
-  const pattern = new RegExp(`^${prefix}-(\\d+)(?!\\d)`);
-  const numbers = subjects.map((subject) => pattern.exec(subject)?.[1]).filter(Boolean).map(Number);
-  return numbers.length ? Math.max(...numbers) + 1 : 1;
-}
-
-/** A manifest with its version (top-level and/or marketplace entries) set to `version`. */
-export function withVersion(manifest, version) {
-  const updated = { ...manifest };
-  if ('version' in manifest) updated.version = version;
-  if (Array.isArray(manifest.plugins)) {
-    updated.plugins = manifest.plugins.map((entry) => ('version' in entry ? { ...entry, version } : entry));
-  }
-  return updated;
-}
-
-/**
- * The commit that released `version`: the newest of `sha<TAB>subject` lines (newest first) whose
- * subject is `LS-N_chore(release): vX.Y.Z` (or the older `LS-N chore(release): …`); null when none did.
- */
-export function findReleaseCommit(lines, version, prefix = COMMIT_PREFIX) {
-  const bare = String(version).replace(/^v/, '').replace(/\./g, '\\.');
-  const subject = new RegExp(`^${prefix}-\\d+[ _]chore\\(release\\): v${bare}$`);
-  for (const line of lines) {
-    const tab = line.indexOf('\t');
-    if (tab > 0 && subject.test(line.slice(tab + 1))) return line.slice(0, tab);
-  }
-  return null;
+/** The release notes: one line per commit subject, in the order given. */
+export function releaseNotes(subjects) {
+  const lines = subjects.map((subject) => subject.trim()).filter(Boolean);
+  if (lines.length === 0) throw new Error('There are no commits to release.');
+  return lines.map((subject) => `- ${subject}`).join('\n');
 }

@@ -38,8 +38,8 @@ test('setup enables the status line, keeps other settings and backs up the file'
   assert.match(settings.statusLine.command, /^node ".+\/runtime\/src\/terminal\/main\.mjs" --data ".+\/data"$/);
   assert.ok(!settings.statusLine.command.includes('\\'));
   assert.equal(readFileSync(join(box.state, 'settings.backup.json'), 'utf8'), '{\n  "theme": "dark"\n}\n');
-  assert.match(readFileSync(join(box.data, 'runtime', 'VERSION'), 'utf8'), /^\d+\.\d+\.\d+$/);
-  assert.match(readJson(join(box.data, 'setup.json')).version, /^\d+\.\d+\.\d+$/);
+  assert.match(readFileSync(join(box.data, 'runtime', 'FINGERPRINT'), 'utf8'), /^[0-9a-f]{16}$/);
+  assert.deepEqual(readJson(join(box.data, 'setup.json')), { settingsPath: box.settings });
   assert.match(result.stdout, /enabled/i);
   assert.match(result.stdout, /--uninstall/);
 });
@@ -163,7 +163,7 @@ test('without --settings and with an empty --data, setup uses CLAUDE_CONFIG_DIR'
   const result = setup(box, ['--data', '']);
   assert.equal(result.status, 0, result.stderr);
   assert.equal(readJson(box.settings).statusLine.type, 'command');
-  assert.ok(existsSync(join(box.dir, 'plugins', 'data', 'limits-statusline-sealoop', 'runtime', 'VERSION')));
+  assert.ok(existsSync(join(box.dir, 'plugins', 'data', 'limits-statusline-sealoop', 'runtime', 'FINGERPRINT')));
 });
 
 test('an unsubstituted ${CLAUDE_PLUGIN_DATA} also falls back to the default data folder', (t) => {

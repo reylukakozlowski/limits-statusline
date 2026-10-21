@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
-  SETUP_MARKER, readPluginVersion, runtimeMainPath, syncFromHookEnv, syncRuntime,
+  SETUP_MARKER, runtimeFingerprint, runtimeMainPath, syncFromHookEnv, syncRuntime,
 } from '../../scripts/lib/runtime-sync.mjs';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
@@ -20,14 +20,37 @@ const tempDir = (t) => {
 
 const busy = (code) => Object.assign(new Error(code), { code });
 
-test('readPluginVersion reads the manifest version', () => {
-  assert.match(readPluginVersion(ROOT), /^\d+\.\d+\.\d+$/);
+/** A plugin root holding a copy of the runtime sources, free to edit. */
+const pluginCopy = (t) => {
+  const root = tempDir(t);
+  for (const part of [['src', 'core'], ['src', 'terminal']]) {
+    fs.cpSync(join(ROOT, ...part), join(root, ...part), { recursive: true });
+  }
+  return root;
+};
+
+test('runtimeFingerprint names the runtime sources: an edit changes it, the rest of the plugin does not', (t) => {
+  const root = pluginCopy(t);
+  const before = runtimeFingerprint(root);
+  assert.match(before, /^[0-9a-f]{16}$/);
+  assert.equal(runtimeFingerprint(root), before);
+  writeFileSync(join(root, 'README.md'), 'Not part of the runtime.\n');
+  assert.equal(runtimeFingerprint(root), before);
+  fs.appendFileSync(join(root, 'src', 'core', 'format.mjs'), '\n// edited\n');
+  assert.notEqual(runtimeFingerprint(root), before);
+});
+
+test('runtimeFingerprint tells a renamed file from the same content under its old name', (t) => {
+  const root = pluginCopy(t);
+  const before = runtimeFingerprint(root);
+  fs.renameSync(join(root, 'src', 'core', 'format.mjs'), join(root, 'src', 'core', 'format2.mjs'));
+  assert.notEqual(runtimeFingerprint(root), before);
 });
 
 test('syncRuntime copies a self-contained runtime that renders the status line', (t) => {
   const data = tempDir(t);
-  assert.deepEqual(syncRuntime({ pluginRoot: ROOT, dataDir: data, version: '9.9.9' }), { copied: true });
-  assert.equal(readFileSync(join(data, 'runtime', 'VERSION'), 'utf8'), '9.9.9');
+  assert.deepEqual(syncRuntime({ pluginRoot: ROOT, dataDir: data }), { copied: true });
+  assert.equal(readFileSync(join(data, 'runtime', 'FINGERPRINT'), 'utf8'), runtimeFingerprint(ROOT));
   const result = spawnSync(process.execPath, [runtimeMainPath(data)], {
     input: FULL, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' },
   });
@@ -37,14 +60,23 @@ test('syncRuntime copies a self-contained runtime that renders the status line',
 
 test('syncRuntime skips an up-to-date runtime and replaces an outdated one', (t) => {
   const data = tempDir(t);
-  syncRuntime({ pluginRoot: ROOT, dataDir: data, version: '1.0.0' });
+  syncRuntime({ pluginRoot: ROOT, dataDir: data, fingerprint: 'aaaa' });
   const stale = join(data, 'runtime', 'src', 'terminal', 'stale.mjs');
   writeFileSync(stale, '');
-  assert.deepEqual(syncRuntime({ pluginRoot: ROOT, dataDir: data, version: '1.0.0' }), { copied: false });
+  assert.deepEqual(syncRuntime({ pluginRoot: ROOT, dataDir: data, fingerprint: 'aaaa' }), { copied: false });
   assert.equal(existsSync(stale), true);
-  assert.deepEqual(syncRuntime({ pluginRoot: ROOT, dataDir: data, version: '1.0.1' }), { copied: true });
+  assert.deepEqual(syncRuntime({ pluginRoot: ROOT, dataDir: data, fingerprint: 'bbbb' }), { copied: true });
   assert.equal(existsSync(stale), false);
   assert.deepEqual(fs.readdirSync(data).sort(), ['runtime']);
+});
+
+test('a runtime copied by an older release, which wrote VERSION, is replaced once', (t) => {
+  const data = tempDir(t);
+  fs.mkdirSync(join(data, 'runtime'));
+  writeFileSync(join(data, 'runtime', 'VERSION'), '1.0.2');
+  assert.deepEqual(syncRuntime({ pluginRoot: ROOT, dataDir: data }), { copied: true });
+  assert.equal(existsSync(join(data, 'runtime', 'VERSION')), false);
+  assert.deepEqual(syncRuntime({ pluginRoot: ROOT, dataDir: data }), { copied: false });
 });
 
 test('syncRuntime retries a rename that Windows refuses for a moment', (t) => {
@@ -54,19 +86,19 @@ test('syncRuntime retries a rename that Windows refuses for a moment', (t) => {
     if (refusals > 0) { refusals -= 1; throw busy('EPERM'); }
     fs.renameSync(from, to);
   };
-  assert.deepEqual(syncRuntime({ pluginRoot: ROOT, dataDir: data, version: '2.0.0', rename }), { copied: true });
-  assert.equal(readFileSync(join(data, 'runtime', 'VERSION'), 'utf8'), '2.0.0');
+  assert.deepEqual(syncRuntime({ pluginRoot: ROOT, dataDir: data, fingerprint: 'cccc', rename }), { copied: true });
+  assert.equal(readFileSync(join(data, 'runtime', 'FINGERPRINT'), 'utf8'), 'cccc');
 });
 
 test('syncRuntime puts the old runtime back when the new one cannot be moved in', (t) => {
   const data = tempDir(t);
-  syncRuntime({ pluginRoot: ROOT, dataDir: data, version: '1.0.0' });
+  syncRuntime({ pluginRoot: ROOT, dataDir: data, fingerprint: 'aaaa' });
   const rename = (from, to) => {
     if (from.includes('staging')) throw busy('EBUSY');
     fs.renameSync(from, to);
   };
-  assert.throws(() => syncRuntime({ pluginRoot: ROOT, dataDir: data, version: '1.0.1', rename }), /EBUSY/);
-  assert.equal(readFileSync(join(data, 'runtime', 'VERSION'), 'utf8'), '1.0.0');
+  assert.throws(() => syncRuntime({ pluginRoot: ROOT, dataDir: data, fingerprint: 'bbbb', rename }), /EBUSY/);
+  assert.equal(readFileSync(join(data, 'runtime', 'FINGERPRINT'), 'utf8'), 'aaaa');
   assert.deepEqual(fs.readdirSync(data).sort(), ['runtime']);
 });
 
