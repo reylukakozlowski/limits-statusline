@@ -36,12 +36,14 @@ All of it stays on your computer, as the next two sections describe.
   (a `turn.step` hook) and hands the request and the response on without looking at their text.
 - The time the session's transcript file was last written (its modification time only, never
   its contents), to stamp a plan limit reading with when it arrived.
-- From local `git`, the current branch and whether tracked files changed (in the desktop app it
-  may read `.git/HEAD` instead).
+- From local `git`, the current branch and whether tracked files changed. In the desktop app,
+  where `git` cannot run, the band instead asks Claude Code whether the session is in a repository
+  (only the answer yes or no is used) and reads the session's own `.git/HEAD`; in a git worktree,
+  its `.git` file and the `HEAD` file in the folder that file names.
 - Your `settings.json` file itself, whole, only when you run `/limits-statusline:setup` (only
   `statusLine` is changed).
 - In the desktop app, on every redraw, the settings as Claude Code has them, whole (only
-  `promptCacheTtl` is used), the session's repository (only its folder is used) and the variables `FORCE_PROMPT_CACHING_5M`,
+  `promptCacheTtl` is used) and the variables `FORCE_PROMPT_CACHING_5M`,
   `CLAUDE_CODE_PROMPT_CACHE_TTL` and `ENABLE_PROMPT_CACHING_1H`, to know how long the prompt
   cache stays warm, and `CLAUDE_CONFIG_DIR`, `USERPROFILE` and `HOME`, to find the limit history
   file.

@@ -13,7 +13,7 @@ import { EMPTY_LIMIT_HISTORY, parseLimitHistory, serializeLimitHistory } from '.
 import { limitHistoryPath } from '../core/paths.mjs';
 import { renderBand } from './band-view.mjs';
 import { cacheTtlFromEngine } from './cache-ttl.mjs';
-import { NOT_A_REPO, gitFromHead } from './git.mjs';
+import { NOT_A_REPO, dotGitPaths, gitDirFromFile, gitFromHead } from './git.mjs';
 import { configFolderFor, withMeasuredLimits } from './limit-history.mjs';
 import { shouldDraw, supportsTypography } from './policy.mjs';
 import { snapshotFromSession } from './snapshot.mjs';
@@ -93,18 +93,34 @@ async function probeGit($) {
   }
 }
 
+// The engine's repository says whether the session is in one, but its root is the main working
+// tree's for a worktree; the session's own `.git` is looked for from its folder up, as git does.
 async function readGitHead($) {
   let repo;
+  let cwd;
   try {
-    repo = await $.session.repo();
+    [repo, cwd] = await Promise.all([$.session.repo(), $.session.cwd()]);
   } catch {
     return null;
   }
   if (!repo?.root) return { ...NOT_A_REPO };
   try {
-    return gitFromHead(await $.fs.read(`${repo.root}/.git/HEAD`));
+    for (const dotGit of dotGitPaths(cwd)) {
+      if (await $.fs.exists(dotGit)) return gitFromHead(await readHead($, dotGit));
+    }
   } catch {
-    return gitFromHead(null);
+    // A HEAD that cannot be read, or a folder the file system refuses: the branch stays unknown.
+  }
+  return gitFromHead(null);
+}
+
+/** A `.git` folder holds HEAD; a `.git` file, a worktree's, names the folder that does. */
+async function readHead($, dotGit) {
+  try {
+    return await $.fs.read(`${dotGit}/HEAD`);
+  } catch {
+    const gitDir = gitDirFromFile(await $.fs.read(dotGit), dotGit);
+    return gitDir === null ? null : $.fs.read(`${gitDir}/HEAD`);
   }
 }
 

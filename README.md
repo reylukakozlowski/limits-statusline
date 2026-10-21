@@ -202,15 +202,17 @@ it from the directory, `-sealoop` when you added it from GitHub.
     with `*`, whether tracked files have uncommitted changes. `git status` only reads the
     repository on your computer and contacts no remote. Nothing the band reads is passed to it:
     the command and its options are fixed. Where the command cannot run (no `git`, or Claude Code
-    runs no commands there), the band reads the branch from the repository's `.git/HEAD` file
-    instead.
+    runs no commands there), the band reads the branch from the session's own `.git/HEAD` file
+    instead, looking for `.git` from the session's folder upward, as git does. In a git worktree
+    `.git` is a file that names the worktree's git folder, and the band reads `HEAD` there.
   - **What it reads:** the session's figures from Claude Code (context fill, plan limits, cost,
-    runtime, model, working folder, session id and version, and the repository's folder); from each
-    model request (a `turn.step` hook) only the effort level, handing the request and the response
-    on unchanged without looking at their text; from each finished turn only its token counts, for
-    the cache ratio; the plan limit history file and, where `git` cannot run, `.git/HEAD`; the
-    settings, of which it uses only
-    `promptCacheTtl`; and the variables
+    runtime, model, working folder, session id and version); from each model request (a
+    `turn.step` hook) only the effort level, handing the request and the response on unchanged
+    without looking at their text; from each finished turn only its token counts, for the cache
+    ratio; the plan limit history file; where `git` cannot run, whether Claude Code has the session
+    in a git repository and the session's `.git/HEAD` (in a worktree, its `.git` file and the
+    `HEAD` file in the folder it names); the settings, of which it uses only `promptCacheTtl`; and
+    the variables
     `FORCE_PROMPT_CACHING_5M`, `CLAUDE_CODE_PROMPT_CACHE_TTL` and `ENABLE_PROMPT_CACHING_1H`, to
     know how long the prompt cache stays warm, and `CLAUDE_CONFIG_DIR`, `USERPROFILE` and `HOME`,
     only to find the configuration folder.

@@ -75,7 +75,7 @@ band**:
 |---|---|---|
 | `MOD_RUNS_PROCESS` (`$.process.run`) | `git status` gives the branch and the `*` for uncommitted changes; no other call tells the band whether files changed | "The one program it runs, and why" |
 | `MOD_PROCESS_COMMAND_COMPUTED` (`$.process.run`) | Raised when the argument vector was already fixed text and the options named a constant (`GIT_TIMEOUT_MS`); the whole call, options included, is now written out, and the README names the command | "The one program it runs, and why" |
-| `MOD_LOCAL_DATA_LEAVES` (`$.fs.read` with `$.process.run`) | The band reads `.git/HEAD` and the limit history file, and runs `git`; nothing it reads is passed to `git` | "What it reads", "What it sends, and where" |
+| `MOD_LOCAL_DATA_LEAVES` (`$.fs.read` with `$.process.run`) | The band reads the session's `.git/HEAD` (in a worktree, its `.git` file and the `HEAD` it names) and the limit history file, and runs `git`; nothing it reads is passed to `git` | "What it reads", "What it sends, and where" |
 | `MOD_SESSION_DATA_LEAVES` (`turn.step` with `$.process.run`) | The effort level is only on `turn.step`; the hook hands the request and response on without looking at their text | "What it reads", "What it sends, and where" |
 | `MOD_WRITES_BUILD_FILE` (`$.fs.write`) | The limit history is shared with the terminal status line; its folder is the configuration folder, so only the file's name can be fixed text, and the call writes it out | "The one file it writes" |
 

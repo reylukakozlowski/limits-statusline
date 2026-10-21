@@ -24,18 +24,27 @@ const HISTORY_FILE = 'C:/Users/dev/.claude/limits-statusline/limit-history.json'
 const fileKey = (path: string) => path.replace(/\\/g, '/')
 const failing = async () => { throw new Error('denied') }
 
-type Answers = { processRun?: ($: any, e: any) => Promise<unknown>, files?: Record<string, string>, refuse?: boolean, writeFails?: boolean }
+type Answers = {
+  processRun?: ($: any, e: any) => Promise<unknown>, files?: Record<string, string>, folders?: string[], cwd?: string,
+  asked?: string[], refuse?: boolean, writeFails?: boolean,
+}
 
-function answerSession(on: any, { processRun, files = {}, refuse = false, writeFails = false }: Answers = {}) {
+function answerSession(on: any, {
+  processRun, files = {}, folders = [], cwd = 'C:/Users/dev/daily-claude', asked = [], refuse = false, writeFails = false,
+}: Answers = {}) {
   on('session.usage', async () => ({ value: USAGE }))
   on('session.model', async () => ({ value: 'claude-opus-5-5' }))
-  on('session.cwd', async () => ({ value: 'C:/Users/dev/daily-claude' }))
+  on('session.cwd', async () => ({ value: cwd }))
   on('session.id', async () => ({ value: 'session-under-test' }))
   on('clock.now', async () => ({ value: NOW }))
   on('session.version', async () => ({ value: { version: '2.1.299' } }))
   on('env.get', refuse ? failing : async ($: any, e: any) => ({ value: e.name === 'USERPROFILE' ? 'C:/Users/dev' : undefined }))
   on('settings.read', refuse ? failing : async () => ({ value: {} }))
-  on('fs.exists', refuse ? failing : async ($: any, e: any) => ({ value: Object.hasOwn(files, fileKey(e.path)) }))
+  on('fs.exists', refuse ? failing : async ($: any, e: any) => {
+    const path = fileKey(e.path)
+    asked.push(path)
+    return { value: Object.hasOwn(files, path) || folders.includes(path) }
+  })
   on('fs.write', writeFails ? failing : async ($: any, e: any) => {
     files[fileKey(e.path)] = e.text
     return { value: undefined }
@@ -125,13 +134,60 @@ test('/clear starts the line over, as a new terminal session would', async ($, o
   await ui.unmount()
 })
 
-test('reads the branch from .git/HEAD when $.process is not available', async ($, on) => {
-  answerSession(on, { processRun: async () => { throw new Error('CLI only') } })
-  on('session.repo', async () => ({ value: { root: 'C:/Users/dev/daily-claude', remote: null, internal: false, name: null } }))
-  on('fs.read', async () => ({ value: 'ref: refs/heads/develop\n' }))
+// Where `git` cannot run, the branch comes from `files` and `folders` alone: a missing file and a
+// folder both refuse to be read, as they do on disk. The engine's repository root is the main
+// working tree's, a worktree's too.
+const MAIN_TREE = 'C:/Users/dev/daily-claude'
+const WORKTREE = `${MAIN_TREE}/.claude/worktrees/feature`
+
+type Disk = { files: Record<string, string>, folders?: string[], cwd: string, asked?: string[], repo?: boolean }
+
+function answerWithoutGit(on: any, { files, folders = [], cwd, asked = [], repo = true }: Disk) {
+  answerSession(on, { files, folders, cwd, asked, processRun: async () => { throw new Error('CLI only') } })
+  on('session.repo', async () => ({ value: repo ? { root: MAIN_TREE, remote: null, internal: false, name: null } : null }))
+  on('fs.read', async ($: any, e: any) => {
+    const text = files[fileKey(e.path)]
+    if (text === undefined) throw new Error(`cannot read ${e.path}`)
+    return { value: text }
+  })
+}
+
+test('reads the branch from .git/HEAD above the session folder when $.process is not available', async ($, on) => {
+  answerWithoutGit(on, {
+    cwd: `${MAIN_TREE}/src`,
+    folders: [`${MAIN_TREE}/.git`],
+    files: { [`${MAIN_TREE}/.git/HEAD`]: 'ref: refs/heads/develop\n' },
+  })
   await measure($, 40)
   const ui = await mount($, 'desktop')
   expect(await ui.find({ type: 'Text', text: /git develop/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test("in a worktree, reads the worktree's own branch through its .git file, not the main tree's", async ($, on) => {
+  answerWithoutGit(on, {
+    cwd: WORKTREE,
+    folders: [`${MAIN_TREE}/.git`, `${MAIN_TREE}/.git/worktrees/feature`],
+    files: {
+      [`${MAIN_TREE}/.git/HEAD`]: 'ref: refs/heads/develop\n',
+      [`${WORKTREE}/.git`]: `gitdir: ${MAIN_TREE}/.git/worktrees/feature\r\n`,
+      [`${MAIN_TREE}/.git/worktrees/feature/HEAD`]: 'ref: refs/heads/feature/LS-45_worktree-head\n',
+    },
+  })
+  await measure($, 40)
+  const ui = await mount($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /git feature\/LS-45_worktree-head/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /git develop/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('outside a repository shows no git and looks for no .git', async ($, on) => {
+  const asked: string[] = []
+  answerWithoutGit(on, { cwd: 'C:/Users/dev/notes', files: {}, asked, repo: false })
+  await measure($, 40)
+  const ui = await mount($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /no git/ })).toBeDefined()
+  expect(asked.filter((path) => path.endsWith('/.git'))).toEqual([])
   await ui.unmount()
 })
 
