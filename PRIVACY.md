@@ -32,7 +32,8 @@ All of it stays on your computer, as the next two sections describe.
 - What Claude Code gives every status line and mod: session cost and duration, lines changed,
   context window fill and size, prompt-cache counts and expiry, effort, model, plan limit usage
   and reset times, and the working folder. It does not read prompts, responses, the conversation
-  history or Claude's memory.
+  history or Claude's memory. In the desktop app the band takes the effort from each model request
+  (a `turn.step` hook) and hands the request and the response on without looking at their text.
 - The time the session's transcript file was last written (its modification time only, never
   its contents), to stamp a plan limit reading with when it arrived.
 - From local `git`, the current branch and whether tracked files changed (in the desktop app it

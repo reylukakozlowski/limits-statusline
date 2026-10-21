@@ -149,7 +149,45 @@ test('runs git status in the session folder without the index lock, and shows th
   expect(await ui.find({ type: 'Text', text: /git develop/ })).toBeDefined()
   expect(calls[0].argv).toEqual(['git', 'status', '--porcelain=v2', '--branch', '--untracked-files=no'])
   expect(calls[0].init?.env?.GIT_OPTIONAL_LOCKS).toBe('0')
+  expect(calls[0].init?.timeoutMs).toBe(1500)
   expect(calls[0].init?.cwd).toBeUndefined()
+  await ui.unmount()
+})
+
+// A model request as the engine raises it, answered beneath the band by `answer`.
+async function step($: any, input: Record<string, unknown>) {
+  const stream = $.turn.step({ turnId: 't1', index: 0, model: 'claude-opus-5-5', messageCount: 1, ...input })
+  const chunks: unknown[] = []
+  for (let piece = await stream.next(); ; piece = await stream.next()) {
+    if (piece.done) return { chunks, result: piece.value }
+    chunks.push(piece.value)
+  }
+}
+
+const answerSteps = (on: any) => on('turn.step', async function* ($: any, e: any) {
+  yield { kind: 'text', index: 0, text: 'the answer' }
+  return { turnId: e.turnId, index: e.index, answer: 'the answer', toolUses: [] }
+})
+
+test('takes only the effort from a model request and hands its response on unchanged', async ($, on) => {
+  answerSession(on)
+  answerSteps(on)
+  const { chunks, result } = await step($, { effort: 'xhigh' })
+  expect(chunks).toEqual([{ kind: 'text', index: 0, text: 'the answer' }])
+  expect(result.answer).toBe('the answer')
+  const ui = await mount($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /xhigh/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test("a subagent's request leaves the session's effort as it was", async ($, on) => {
+  answerSession(on)
+  answerSteps(on)
+  await step($, { effort: 'xhigh' })
+  await step($, { effort: 'low', agentId: 'agent-1' })
+  const ui = await mount($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /xhigh/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /\blow\b/ })).toBeUndefined()
   await ui.unmount()
 })
 

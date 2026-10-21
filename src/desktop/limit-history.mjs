@@ -1,21 +1,23 @@
 // The shared limit history (core/limit-history.mjs) for the band: the same file the terminal
-// status line keeps, found the way Claude Code finds its configuration folder. The band reads and
+// status line keeps, in the folder where Claude Code keeps its configuration. The band reads and
 // writes it through `$` (band.mjs); this file keeps what is decided from the answers.
 
 import { recordLimits } from '../core/limit-history.mjs';
-import { claudeConfigDir, limitHistoryPath } from '../core/paths.mjs';
+import { claudeConfigDir } from '../core/paths.mjs';
 import { limitsFromRateLimits } from './snapshot.mjs';
 
 /**
+ * The configuration folder as Claude Code finds it, with no separator at its end, so that
+ * `${folder}/limits-statusline/limit-history.json` is the terminal's limitHistoryPath(folder).
  * @param {unknown} configDirVariable `CLAUDE_CONFIG_DIR`
  * @param {unknown} userProfile `USERPROFILE`
  * @param {unknown} home `HOME`
  * @returns {string | null} null when no configuration folder is known
  */
-export function limitHistoryFileFor(configDirVariable, userProfile, home) {
+export function configFolderFor(configDirVariable, userProfile, home) {
   // USERPROFILE first: on Windows Node's home folder is USERPROFILE even where HOME is set.
   const configDir = claudeConfigDir(configDirVariable, userProfile || home);
-  return configDir ? limitHistoryPath(configDir) : null;
+  return configDir === null ? null : configDir.replace(/[\\/]+$/, '');
 }
 
 /**

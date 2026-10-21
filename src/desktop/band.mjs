@@ -10,10 +10,11 @@ import { atom, read, update } from 'claude-code';
 import { parseGitStatus } from '../core/git-status.mjs';
 import { buildLines } from '../core/layout.mjs';
 import { EMPTY_LIMIT_HISTORY, parseLimitHistory, serializeLimitHistory } from '../core/limit-history.mjs';
+import { limitHistoryPath } from '../core/paths.mjs';
 import { renderBand } from './band-view.mjs';
 import { cacheTtlFromEngine } from './cache-ttl.mjs';
-import { GIT_TIMEOUT_MS, NOT_A_REPO, gitFromHead } from './git.mjs';
-import { limitHistoryFileFor, withMeasuredLimits } from './limit-history.mjs';
+import { NOT_A_REPO, gitFromHead } from './git.mjs';
+import { configFolderFor, withMeasuredLimits } from './limit-history.mjs';
 import { shouldDraw, supportsTypography } from './policy.mjs';
 import { snapshotFromSession } from './snapshot.mjs';
 import { afterClear, initialTracker, withContext, withEffort, withGit, withTurnUsage } from './tracker.mjs';
@@ -81,13 +82,12 @@ async function refreshGit($) {
 /** @returns {Promise<import('../core/git-status.mjs').GitState | null>} null when nothing could be asked */
 async function probeGit($) {
   try {
-    // The whole command as fixed text, the same as the terminal's GIT_STATUS_ARGS, run in the
-    // session's folder (the default). GIT_OPTIONAL_LOCKS: never take the index lock from the
-    // user's own git.
-    return parseGitStatus(await $.process.run(['git', 'status', '--porcelain=v2', '--branch', '--untracked-files=no'], {
-      timeoutMs: GIT_TIMEOUT_MS,
-      env: { GIT_OPTIONAL_LOCKS: '0' },
-    }));
+    // The whole call as fixed text, options too, so that the directory reads the whole command:
+    // the terminal's GIT_STATUS_ARGS, run in the session's folder (the default), for at most
+    // 1.5 s. GIT_OPTIONAL_LOCKS: never take the index lock from the user's own git.
+    const status = await $.process.run(['git', 'status', '--porcelain=v2', '--branch', '--untracked-files=no'],
+      { timeoutMs: 1500, env: { GIT_OPTIONAL_LOCKS: '0' } });
+    return parseGitStatus(status);
   } catch {
     return readGitHead($);
   }
@@ -136,20 +136,21 @@ async function readCacheTtl($, rateLimits, nowMs) {
 // The shared limit history: every call settles, so a file that cannot be used leaves the band with
 // less to show, never without one.
 
-/** @returns {Promise<string | null>} null when no configuration folder is known */
-async function limitHistoryFile($) {
+/** @returns {Promise<string | null>} the configuration folder, null when none is known */
+async function configFolder($) {
   try {
     // Literal names: the engine lists the variables a module reads from its calls.
     const [configDirVariable, userProfile, home] = await Promise.all([
       $.env.get('CLAUDE_CONFIG_DIR'), $.env.get('USERPROFILE'), $.env.get('HOME'),
     ]);
-    return limitHistoryFileFor(configDirVariable, userProfile, home);
+    return configFolderFor(configDirVariable, userProfile, home);
   } catch {
     return null;
   }
 }
 
-async function readLimitHistory($, file) {
+async function readLimitHistory($, configDir) {
+  const file = limitHistoryPath(configDir);
   try {
     return (await $.fs.exists(file)) ? parseLimitHistory(await $.fs.read(file)) : EMPTY_LIMIT_HISTORY;
   } catch {
@@ -159,19 +160,21 @@ async function readLimitHistory($, file) {
 
 /** @returns {Promise<import('../core/limit-history.mjs').LimitReadings>} the shared readings to draw from */
 async function loadLimitReadings($) {
-  const file = await limitHistoryFile($);
-  return (file ? await readLimitHistory($, file) : EMPTY_LIMIT_HISTORY).readings;
+  const configDir = await configFolder($);
+  return (configDir === null ? EMPTY_LIMIT_HISTORY : await readLimitHistory($, configDir)).readings;
 }
 
 /** Adds this session's plan figures, measured just now, to the shared history. */
 async function recordMeasuredLimits($, rateLimits, nowMs) {
-  const file = await limitHistoryFile($);
-  if (!file) return;
+  const configDir = await configFolder($);
+  if (configDir === null) return;
   try {
-    const history = await readLimitHistory($, file);
+    const history = await readLimitHistory($, configDir);
     const sessionId = await $.session.id();
     const next = withMeasuredLimits(history, { sessionId, rateLimits, nowMs });
-    if (next !== history) await $.fs.write(file, serializeLimitHistory(next));
+    // The file's name as fixed text, so that the directory reads which file the mod writes; only
+    // the folder comes from the environment, as Claude Code's own configuration folder does.
+    if (next !== history) await $.fs.write(`${configDir}/limits-statusline/limit-history.json`, serializeLimitHistory(next));
   } catch {
     // The terminal status line or another session may hold the file for a moment; the next
     // measurement records again.

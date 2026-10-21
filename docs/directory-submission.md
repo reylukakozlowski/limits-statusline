@@ -62,16 +62,48 @@ reaches users.
      (needs admin access to the repository). The directory also checks `master` on a schedule.
    - Auto-publish: on. Only a release moves `master`, so every new commit there is a release.
 
+## The band's policy holds
+
+The directory reads the mod's source and holds a version for a reviewer when the mod can run a
+program, read files or the conversation and send something out, or write a file. A hold is not a
+rejection: an Anthropic reviewer reads the held version before it can go live, and the scan can
+raise the same holds again on each new version. The band keeps every feature, so expect these
+holds to stay; each one asks for something in the README, which answers it in **Privacy → Desktop
+band**:
+
+| Code (line in `band.mjs`) | Why the band has it | Where the README answers |
+|---|---|---|
+| `MOD_RUNS_PROCESS` (`$.process.run`) | `git status` gives the branch and the `*` for uncommitted changes; no other call tells the band whether files changed | "The one program it runs, and why" |
+| `MOD_PROCESS_COMMAND_COMPUTED` (`$.process.run`) | Raised when the argument vector was already fixed text and the options named a constant (`GIT_TIMEOUT_MS`); the whole call, options included, is now written out, and the README names the command | "The one program it runs, and why" |
+| `MOD_LOCAL_DATA_LEAVES` (`$.fs.read` with `$.process.run`) | The band reads `.git/HEAD` and the limit history file, and runs `git`; nothing it reads is passed to `git` | "What it reads", "What it sends, and where" |
+| `MOD_SESSION_DATA_LEAVES` (`turn.step` with `$.process.run`) | The effort level is only on `turn.step`; the hook hands the request and response on without looking at their text | "What it reads", "What it sends, and where" |
+| `MOD_WRITES_BUILD_FILE` (`$.fs.write`) | The limit history is shared with the terminal status line; its folder is the configuration folder, so only the file's name can be fixed text, and the call writes it out | "The one file it writes" |
+
+Whether the now fixed-text calls clear `MOD_PROCESS_COMMAND_COMPUTED` or `MOD_WRITES_BUILD_FILE`
+shows only on the next scan: **Validate** a branch (step 2 of the form) or read the **Versions**
+tab after the release.
+
+While any hold stays, every release waits for a reviewer and auto-publish does not apply. While the
+plugin's status is **In review**, Anthropic acts next and nothing is needed from you. A question
+goes through **Get help** or **Contact Anthropic** in the plugin's menu in the portal, or
+`directory@anthropic.com`.
+
+The holds follow what the band calls, so a change to `src/desktop/band.mjs` that adds a hook or a
+call on `$` fails `test/desktop/directory-review.test.mjs` until the README's Privacy section,
+`PRIVACY.md` and the table above describe it.
+
 ## After the listing
 
 A release tags `vX.Y.Z` and moves `master` to it; the webhook or the scheduled check picks it up,
 the directory validates and scans it, and it is published as the plugin's publish setting says.
 Anthropic applies that setting: by default a reviewer publishes each version, and a version with a
-policy hold (the band runs `git status` and writes the limit history file) waits for a reviewer.
+policy hold ([the band's policy holds](#the-bands-policy-holds)) waits for a reviewer.
 The **Versions** tab on the plugin's page in the portal shows each scanned commit and why a version
 is not live; **Check for new commits** scans at once. People who added the plugin from the
 directory have it in Claude Code as `limits-statusline@synced`.
 
 Sources: [Submit your plugin](https://claude.com/docs/plugins/submit), [Plugin pre-submission
-checklist](https://claude.com/docs/plugins/pre-submission-checklist), [Publish and distribute a
-plugin](https://code.claude.com/docs/en/plugins/publish).
+checklist](https://claude.com/docs/plugins/pre-submission-checklist), [Track your directory
+submission](https://claude.com/docs/directory/submission-status), [Publish and distribute a
+plugin](https://code.claude.com/docs/en/plugins/publish), [Anthropic Software Directory
+Policy](https://support.claude.com/en/articles/13145358-anthropic-software-directory-policy).
