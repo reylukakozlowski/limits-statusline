@@ -13,13 +13,43 @@ claude plugin validate .  # manifest, hooks module and state contract
 npm run simulate:pace    # the Monte Carlo comparison behind the pace look-backs
 ```
 
-`npm run test:mod` needs a `claude` of 2.1.299 or later. When the one on `PATH` is older, the
-desktop app's own copy works too; on Windows it is under
-`%LOCALAPPDATA%Claude-Data<app id>claude-code<version><build>claude.exe`.
+`npm run test:mod` needs a `claude` of 2.1.299 or later. When the one on `PATH` is older, run
+`claude update`; on Windows the desktop app's own copy works too, under
+`%LOCALAPPDATA%\Claude-Data\<app id>\claude-code\<version>\<build>\claude.exe`.
 
 The code is split into a pure `src/core` (snapshot → lines), a terminal adapter
-(`src/terminal`) and a desktop adapter (`src/desktop`). Tests run locally, and the Release
-workflow runs them again before every release.
+(`src/terminal`) and a desktop adapter (`src/desktop`). The code that runs for users (`src`,
+`hooks`, and the setup and sync scripts with `scripts/lib`) never asks which system it runs on:
+what differs on Windows (backslashes in paths, a rename refused for a moment while a scanner holds
+a file) is handled the same way everywhere, the command that setup writes uses forward slashes,
+which `sh`, Git Bash, PowerShell and Node.js all read, and the only program it starts is `git`.
+
+### On macOS, Linux and Windows
+
+The **Tests** workflow ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)) runs
+`npm test` on `macos-latest`, `ubuntu-latest` and `windows-latest`, with Node.js 24, for each pull
+request into `develop`. A draft runs nothing; marking the pull request ready for review runs the
+three systems, and every push after that runs them again. One system failing does not stop the
+others, so each one reports its own result. The workflow can only read the repository and holds
+no secret; `test/scripts/tests-workflow.test.mjs` pins all of that. The Release workflow runs the
+tests once more, on Linux, before it tags.
+
+Some tests depend on the system they run on:
+
+- The SessionStart hook test (`test/scripts/session-start-hook.test.mjs`) runs the command from
+  `hooks/hooks.json` in every shell Claude Code may use for it: `sh` (Claude Code's shell on macOS
+  and Linux; on Windows the `sh` of Git for Windows stands in for Git Bash), and PowerShell 7 and
+  Windows PowerShell on Windows. A shell that is not installed is skipped.
+- The symlinked `settings.json` test is skipped on Windows when the account may not create
+  symbolic links (Developer Mode or admin rights); it runs on macOS and Linux.
+- A Windows checkout may have CRLF line endings (Git for Windows sets `core.autocrlf=true` by
+  default); the tests read files with either line ending, as a run on a CRLF checkout showed.
+
+`npm run test:mod` runs only on a computer with Claude Code, not in the workflow. Nor does the
+workflow show how the lines look: the status line in a macOS terminal (Terminal.app, iTerm2) and
+the desktop band in the macOS app have not been checked by hand yet. To make the three
+`npm test on …` checks required before a merge, the owner adds them to the `develop` ruleset
+(Settings → Rules → Rulesets → protect develop → Require status checks to pass).
 
 ## Run a working copy in every session
 

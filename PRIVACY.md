@@ -18,9 +18,9 @@ The plugin is not built to collect personal data, but some of what it reads and 
 it:
 
 - Folder paths (the working folder, the configuration folder and the transcript's path) usually
-  contain your user folder's name, such as `C:\Users\<name>` or `/home/<name>`, and a repository
-  or branch name can contain a name too. The plugin shows the folder and branch names on your
-  screen.
+  contain your user folder's name, such as `/Users/<name>`, `C:\Users\<name>` or `/home/<name>`,
+  and a repository or branch name can contain a name too. The plugin shows the folder and branch
+  names on your screen.
 - The setup marker stores the path of the `settings.json` it changed, and setup keeps an exact
   copy of your previous `settings.json`, with whatever you put in it.
 - Claude Code also passes the session's name to every status line; the plugin ignores it.

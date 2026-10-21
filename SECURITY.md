@@ -13,7 +13,8 @@ the subject `limits-statusline security`, and include:
 
 - what an attacker could do, and what they need for it;
 - the steps or a file that reproduces it;
-- the plugin version (`claude plugin list`) and Claude Code version (`claude --version`).
+- the plugin version (`claude plugin list`), the Claude Code version (`claude --version`) and your
+  operating system with its version (macOS, Windows or Linux).
 
 You will get a reply within 7 days. Once the problem is confirmed, a fix is released as soon as it
 is ready, and the advisory credits you unless you would rather not be named.

@@ -15,6 +15,8 @@ reaches users.
   `reylukakozlowski`.
 - The repository is public, which publishing needs, and `master` exists: the portal validates the
   branch it will follow.
+- The **Tests** workflow passed on macOS, Linux and Windows for every pull request in the release
+  (it runs `npm test` on each pull request into `develop`; see CONTRIBUTING.md).
 - `npm test` is green. Its `directory rules` tests in `test/scripts/manifests.test.mjs` cover the
   checks of the [pre-submission checklist](https://claude.com/docs/plugins/pre-submission-checklist)
   that can be read from the files: README of 40+ words, license, files under 256 KiB, at most 512
