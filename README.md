@@ -242,7 +242,7 @@ With `CLAUDE_CONFIG_DIR` set, these folders live there instead of `~/.claude`.
 - Questions, bugs and ideas: [GitHub issues](https://github.com/reylukakozlowski/limits-statusline/issues).
 - Security problems: report them privately as [SECURITY.md](SECURITY.md) describes, not in a
   public issue.
-- Contact: Luka Kozlowski (SeaLoop), lukakozlowski@outlook.com.
+- Contact: Luka Kozlowski (SeaLoop), lukakozlowski@sealoop.com.
 
 ## Development
 
@@ -251,4 +251,4 @@ Tests, running a working copy in every session, and releases are described in
 
 ## License
 
-MIT © 2026 Luka Kozlowski (SeaLoop) · lukakozlowski@outlook.com
+MIT © 2026 Luka Kozlowski (SeaLoop) · lukakozlowski@sealoop.com
