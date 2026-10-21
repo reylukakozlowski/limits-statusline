@@ -77,20 +77,20 @@ repository owner can run.
 1. Merge the changes into `develop` through pull requests, as usual. Run `npm run test:mod` first
    when the band changed: the workflow does not run it.
 2. On GitHub, open **Actions → Release → Run workflow** on `develop` and pick the bump (`patch`,
-   `minor` or `major`) or type an exact `X.Y.Z`. Tick **Dry run** to stop after step 3. The run
-   is listed as `Dry run patch`, `Release patch` and so on.
-3. Every run, a release too, starts with the job **verify**, before any approval. It makes the dry
-   run of the release: the checks of `npm run release -- <bump> --dry-run` (a clean `develop`, the
-   next version, a tag not taken yet), `npm test`, and the version and the notes at the end of its
-   log. Then `scripts/release-preflight.mjs` checks that the run can reach `master` once it has
-   tagged: `master` behind the head of `develop`, its two rulesets and no other rule, and the
-   `production` environment deploying from `develop` alone and waiting for the owner. Whatever
-   would stop the release after its tag stops it here, before anything is written. The job reads
-   and writes nothing else, with a read-only token. A dry run ends here, with no approval.
-4. Approve the job **tag**: it waits for the owner's approval of the `release` environment. It
-   runs `npm test` again, works the version out from the newest `vX.Y.Z` tag, and tags the commit
-   the run started from, the one the job verify checked, with an annotated tag whose message lists
-   the subjects of the commits since the previous tag. It pushes the tag.
+   `minor` or `major`) or type an exact `X.Y.Z`. Tick **Dry run** to stop after the checks of
+   step 4. The run is listed as `Dry run patch`, `Release patch` and so on.
+3. Approve the run: every run, a dry run too, starts by waiting for the owner's approval of the
+   `release` environment, and nothing runs before it.
+4. The job **tag** first makes the dry run of the release, in every run, a release too: the checks
+   of `npm run release -- <bump> --dry-run` (a clean `develop`, the next version, a tag not taken
+   yet), `npm test`, and the version and the notes in its log. Then
+   `scripts/release-preflight.mjs` checks that the run can reach `master` once it has tagged:
+   `master` behind the head of `develop`, its two rulesets and no other rule, and the `production`
+   environment deploying from `develop` alone and waiting for the owner. Whatever would stop the
+   release after its tag stops it here, before anything is written; a dry run ends here. Then the
+   job runs `npm test` again, works the version out from the newest `vX.Y.Z` tag, and tags the
+   commit the run started from with an annotated tag whose message lists the subjects of the
+   commits since the previous tag. It pushes the tag.
 5. Approve the job **promote**: it waits for the owner's approval of the `production` environment,
    then fast-forwards `master` to the tagged commit with the repository's deploy key: `master`
    becomes exactly the tagged commit. Nothing else can move `master` (see below).
@@ -158,8 +158,7 @@ to create and approve pull requests** can stay off.
 ### Who can release
 
 GitHub skips every job, without a runner and without asking for approval, when anyone but the
-repository owner starts the run or when it runs on any branch but `develop`. Only the job verify
-runs before an approval: it has no environment, no secret and a read-only token. Two environments
+repository owner starts the run or when it runs on any branch but `develop`. Two environments
 (Settings → Environments) accept only `develop` and require the owner's approval: `release` before
 the tag, `production` before `master` moves. They guard different things. The first decides that
 the head of `develop` becomes a release, whose tag stays for good. The second guards the one
@@ -174,7 +173,7 @@ stay on `develop`, the default branch, for **Run workflow** to appear.
 
 `npm run release -- patch --dry-run` runs the same checks and the tests and prints the version and
 the notes. With `gh` signed in, `GITHUB_REPOSITORY=<owner>/<repo> GITHUB_REPOSITORY_OWNER=<owner>
-node scripts/release-preflight.mjs` makes the job verify's check of the way to `master`. On an
+node scripts/release-preflight.mjs` makes the Release workflow's check of the way to `master`. On an
 up-to-date, clean `develop`, `npm run release -- patch` tags its head in the clone and prints the
 command that pushes the tag, and `--push` pushes it. A pushed tag is not a release yet: run the
 Release workflow on `develop` to finish it (`master`, GitHub release).
