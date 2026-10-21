@@ -22,6 +22,7 @@ const JOBS = WORKFLOW.slice(WORKFLOW.indexOf('\njobs:\n'));
 const RELEASE_ONLY = JSON.parse(read('../../.github/rulesets/master-release-only.json'));
 const HISTORY = JSON.parse(read('../../.github/rulesets/master-history.json'));
 
+const TESTS_STEP = 'Run the tests';
 const DRY_RUN_STEP = 'Dry run of the release';
 const PREFLIGHT_STEP = 'Check that the release can reach master';
 const AUTHOR_STEP = "Tag as the repository's author";
@@ -109,8 +110,13 @@ test('only the repository owner, on develop, gets any job: GitHub skips anyone e
   }
 });
 
-test('after the approval every run, a release too, makes the dry run and the check of the way to master, then tags', () => {
-  assert.deepEqual(stepNames('tag'), [DRY_RUN_STEP, PREFLIGHT_STEP, AUTHOR_STEP, TAG_STEP]);
+test('after the approval every run, a release too, runs the tests, the dry run and the check of the way to master, then tags', () => {
+  assert.deepEqual(stepNames('tag'), [TESTS_STEP, DRY_RUN_STEP, PREFLIGHT_STEP, AUTHOR_STEP, TAG_STEP]);
+  // The tests in a step of their own, whose counts go to the run's summary page.
+  const tests = script(step('tag', TESTS_STEP));
+  assert.match(tests, /^npm test 2>&1 \| tee "\$RUNNER_TEMP\/tests\.txt" \|\| status=\$\?$/m);
+  assert.match(tests, />> "\$GITHUB_STEP_SUMMARY"$/m);
+  assert.match(tests, /^exit "\$status"$/m);
   const dryRun = step('tag', DRY_RUN_STEP);
   assert.match(dryRun, /^ {10}KIND: \$\{\{ inputs\.version \|\| inputs\.bump \}\}$/m);
   assert.match(dryRun, /^ {8}run: node scripts\/release\.mjs "\$KIND" --dry-run$/m);
@@ -118,7 +124,7 @@ test('after the approval every run, a release too, makes the dry run and the che
   assert.match(preflight, /^ {10}GH_TOKEN: \$\{\{ github\.token \}\}$/m);
   assert.match(preflight, /^ {8}run: node scripts\/release-preflight\.mjs$/m);
   // The checks always run and a failed one stops the job, so nothing is tagged after it.
-  for (const name of [DRY_RUN_STEP, PREFLIGHT_STEP]) assert.doesNotMatch(step('tag', name), /^ {8}(if|continue-on-error):/m, name);
+  for (const name of [TESTS_STEP, DRY_RUN_STEP, PREFLIGHT_STEP]) assert.doesNotMatch(step('tag', name), /^ {8}(if|continue-on-error):/m, name);
   assert.doesNotMatch(job('tag'), /continue-on-error/);
 });
 
@@ -252,13 +258,60 @@ function runStep(t, jobName, stepName, stubs, env) {
   writeFileSync(log, '');
   // On Windows the variable is spelled Path; a second PATH key would leave which one wins undefined.
   const pathKey = Object.keys(process.env).find((key) => key.toUpperCase() === 'PATH') ?? 'PATH';
-  const result = spawnSync('bash', ['-c', script(step(jobName, stepName))], {
+  // -e, as GitHub runs a `run:` script on Linux (bash -e {0}).
+  const result = spawnSync('bash', ['-e', '-c', script(step(jobName, stepName))], {
     encoding: 'utf8',
     env: { ...process.env, [pathKey]: `${dir}${delimiter}${process.env[pathKey]}`, STUB_LOG: log, ...env },
   });
   const calls = readFileSync(log, 'utf8').split('\n').filter(Boolean);
   return { status: result.status, output: `${result.stdout}${result.stderr}`, calls };
 }
+
+// npm for the tests step: prints NPM_OUTPUT (node --test's own format) and exits with NPM_STATUS.
+const TESTS_NPM = ['#!/usr/bin/env bash', 'echo "npm $*" >> "$STUB_LOG"', 'printf "%s" "$NPM_OUTPUT"', 'exit "${NPM_STATUS:-0}"'];
+const totals = ({ tests, pass, fail, skipped }) =>
+  `ℹ tests ${tests}\nℹ suites 0\nℹ pass ${pass}\nℹ fail ${fail}\nℹ cancelled 0\nℹ skipped ${skipped}\nℹ todo 0\nℹ duration_ms 2674.88\n`;
+
+/** Runs the tests step against the stand-in npm; returns the run and the summary it wrote. */
+function testsStep(t, output, status) {
+  const runnerTemp = mkdtempSync(join(tmpdir(), 'ls-runner-temp-'));
+  t.after(() => rmSync(runnerTemp, { recursive: true, force: true }));
+  const summary = join(runnerTemp, 'summary.md');
+  writeFileSync(summary, '');
+  const run = runStep(t, 'tag', TESTS_STEP, { npm: TESTS_NPM }, {
+    NPM_OUTPUT: output, NPM_STATUS: String(status), RUNNER_TEMP: runnerTemp, GITHUB_STEP_SUMMARY: summary,
+  });
+  return { ...run, summary: readFileSync(summary, 'utf8') };
+}
+
+test('tests step: the counts go to the run\'s summary page and the full output stays in the log', { skip: NO_BASH }, (t) => {
+  const output = `✔ formatDuration renders hours (4.7ms)\n${totals({ tests: 312, pass: 311, fail: 0, skipped: 1 })}`;
+  const run = testsStep(t, output, 0);
+  assert.equal(run.status, 0, run.output);
+  assert.deepEqual(run.calls, ['npm test']);
+  assert.ok(run.output.includes('✔ formatDuration renders hours'), 'the log keeps every test');
+  assert.match(run.summary, /^### ✅ Tests passed$/m);
+  assert.match(run.summary, /^`npm test`: 311 passed, 0 failed, 1 skipped, 312 in all\.$/m);
+});
+
+test('tests step: failed tests are named once on the summary page, and the step fails before the dry run', { skip: NO_BASH }, (t) => {
+  const failing = '✖ breaks on purpose (0.8ms)';
+  const output = `✔ passes (1.0ms)\n${failing}\n${totals({ tests: 2, pass: 1, fail: 1, skipped: 0 })}`
+    + `✖ failing tests:\n\ntest at a.test.mjs:4:1\n${failing}\n  AssertionError [ERR_ASSERTION]: 1 !== 2\n`;
+  const run = testsStep(t, output, 1);
+  assert.equal(run.status, 1);
+  assert.match(run.summary, /^### ❌ Tests failed$/m);
+  assert.match(run.summary, /^`npm test`: 1 passed, 1 failed, 0 skipped, 2 in all\.$/m);
+  assert.deepEqual(run.summary.match(/^- .+$/gm), ['- breaks on purpose']);
+});
+
+test('tests step: a run that printed no totals says so instead of empty counts', { skip: NO_BASH }, (t) => {
+  const run = testsStep(t, 'npm ERR! missing script: test\n', 1);
+  assert.equal(run.status, 1);
+  assert.match(run.summary, /^### ❌ Tests failed$/m);
+  assert.match(run.summary, /printed no totals/);
+  assert.doesNotMatch(run.summary, / passed, /);
+});
 
 // git for the promote step: the tag is commit 7a9; MASTER says whether origin/master exists, and
 // ANCESTRY lists the `A>B` pairs for which `merge-base --is-ancestor A B` succeeds.

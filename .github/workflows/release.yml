@@ -83,6 +83,28 @@ jobs:
         with:
           node-version: 24
 
+      # A step of its own, so the tests show by name in the job and their counts, with the name of
+      # each failed test, on the run's summary page. The dry run and the tag run them again, as
+      # scripts/release.mjs always does; they take seconds.
+      - name: Run the tests
+        run: |
+          set -o pipefail
+          status=0
+          npm test 2>&1 | tee "$RUNNER_TEMP/tests.txt" || status=$?
+          count() { sed -n "s/^ℹ $1 //p" "$RUNNER_TEMP/tests.txt" | tail -n 1; }
+          {
+            if [ "$status" -eq 0 ]; then echo '### ✅ Tests passed'; else echo '### ❌ Tests failed'; fi
+            echo
+            if [ -n "$(count tests)" ]; then
+              printf '`npm test`: %s passed, %s failed, %s skipped, %s in all.\n' "$(count pass)" "$(count fail)" "$(count skipped)" "$(count tests)"
+            else
+              echo '`npm test` printed no totals; the log of the step "Run the tests" shows why.'
+            fi
+            # No failed test: grep finds nothing and exits 1, which under -e and pipefail would end the step.
+            grep '^✖ ' "$RUNNER_TEMP/tests.txt" | grep -v '^✖ failing tests:' | sed 's/ ([0-9.]*ms)$//; s/^✖ /- /' | awk '!seen[$0]++' || true
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
       - name: Dry run of the release
         env:
           KIND: ${{ inputs.version || inputs.bump }}
