@@ -74,17 +74,30 @@ band**:
 | Code (line in `band.mjs`) | Why the band has it | Where the README answers |
 |---|---|---|
 | `MOD_RUNS_PROCESS` (`$.process.run`) | `git status` gives the branch and the `*` for uncommitted changes; no other call tells the band whether files changed | "The one program it runs, and why" |
-| `MOD_PROCESS_COMMAND_COMPUTED` (`$.process.run`) | Raised when the argument vector was already fixed text and the options named a constant (`GIT_TIMEOUT_MS`); the whole call, options included, is now written out, and the README names the command | "The one program it runs, and why" |
+| `MOD_PROCESS_COMMAND_COMPUTED` (`$.process.run`) | Still raised with the whole call, options included, written out as fixed text; the finding's other way, the README naming what the band runs, is the answer | "The one program it runs, and why" |
 | `MOD_LOCAL_DATA_LEAVES` (`$.fs.read` with `$.process.run`) | The band reads the session's `.git/HEAD` (in a worktree, its `.git` file and the `HEAD` it names) and the limit history file, and runs `git`; nothing it reads is passed to `git` | "What it reads", "What it sends, and where" |
 | `MOD_SESSION_DATA_LEAVES` (`turn.step` with `$.process.run`) | The effort level is only on `turn.step`; the hook hands the request and response on without looking at their text | "What it reads", "What it sends, and where" |
 | `MOD_WRITES_BUILD_FILE` (`$.fs.write`) | The limit history is shared with the terminal status line; its folder is the configuration folder, so only the file's name can be fixed text, and the call writes it out | "The one file it writes" |
+| This plugin includes a mod (`hooks/register.mjs`) | Every plugin with a mod is held; it asks for nothing | The README's introduction and Privacy section describe the band |
 
-Whether the now fixed-text calls clear `MOD_PROCESS_COMMAND_COMPUTED` or `MOD_WRITES_BUILD_FILE`
-shows only on the next scan: **Validate** a branch (step 2 of the form) or read the **Versions**
-tab after the release.
+**Validate** on `develop` @ `522e493` (v1.0.8, 2026-10-21) still raised the five band holds with
+the git call and the written file's name as fixed text, so the README is how the band answers
+them. The calls stay written out, so a reviewer reads the command and the file at the line the
+finding gives.
 
-While any hold stays, every release waits for a reviewer and auto-publish does not apply. While the
-plugin's status is **In review**, Anthropic acts next and nothing is needed from you. A question
+The same report lists two more findings, as warnings in the scan of a version and as policy holds
+in the **Validate** form. Nothing in the plugin reads or runs what they name, so they stay as they
+are and a reviewer confirms it:
+
+- **Image or font file that the plugin's code could run**: `CHANGELOG.md` and `plugin.json` (the
+  listing's `icon`) name `assets/icon.png`, and a test reads both files. No code runs the image.
+- **Uses a credential from the user's machine**: `.gitignore` names `.npmrc` and `$RECYCLE.BIN/`,
+  which it keeps out of the repository, and `test/scripts/manifests.test.mjs` names a claude.com
+  page beside `${CLAUDE_PLUGIN_ROOT}`. The plugin reads no credential and sends nothing.
+
+While any hold stays, every release waits for a reviewer, and the portal says auto-publish
+"doesn't apply for now: no version of this plugin goes live without an Anthropic reviewer". While
+the plugin's status is **In review**, Anthropic acts next and nothing is needed from you. A question
 goes through **Get help** or **Contact Anthropic** in the plugin's menu in the portal, or
 `directory@anthropic.com`.
 
@@ -98,9 +111,17 @@ A release tags `vX.Y.Z` and moves `master` to it; the webhook or the scheduled c
 the directory validates and scans it, and it is published as the plugin's publish setting says.
 Anthropic applies that setting: by default a reviewer publishes each version, and a version with a
 policy hold ([the band's policy holds](#the-bands-policy-holds)) waits for a reviewer.
+
+Until the portal has a new commit, the **Versions** tab still shows the previous one. Without the
+push webhook the scheduled check looks about every 6 hours; **Check for new commits** starts a
+check at once, and the new version is listed when that check ends. The webhook is set up from the
+plugin's **Settings → Updates** in the portal: add it in the repository's **Settings → Webhooks**
+on GitHub with the payload URL and secret the portal gives (admin access needed). The portal says
+"Waiting for GitHub's first delivery" until one arrives.
+
 The **Versions** tab on the plugin's page in the portal shows each scanned commit and why a version
-is not live; **Check for new commits** scans at once. People who added the plugin from the
-directory have it in Claude Code as `limits-statusline@synced`.
+is not live. People who added the plugin from the directory have it in Claude Code as
+`limits-statusline@synced`.
 
 Sources: [Submit your plugin](https://claude.com/docs/plugins/submit), [Plugin pre-submission
 checklist](https://claude.com/docs/plugins/pre-submission-checklist), [Track your directory
