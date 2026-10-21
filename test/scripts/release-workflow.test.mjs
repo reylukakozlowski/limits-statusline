@@ -268,10 +268,14 @@ function runStep(t, jobName, stepName, stubs, env) {
   writeFileSync(log, '');
   // On Windows the variable is spelled Path; a second PATH key would leave which one wins undefined.
   const pathKey = Object.keys(process.env).find((key) => key.toUpperCase() === 'PATH') ?? 'PATH';
+  // Git for Windows' bin\bash.exe, the bash on PATH on GitHub's Windows runners, puts its own
+  // /mingw64/bin, which holds the real git, before the PATH it is given; so the script puts the
+  // stand-ins first again itself (`cd` and `pwd` turn the folder into the shell's own spelling).
+  const standInsFirst = 'PATH="$(cd "$STUB_DIR" && pwd):$PATH"';
   // -e, as GitHub runs a `run:` script on Linux (bash -e {0}).
-  const result = spawnSync('bash', ['-e', '-c', script(step(jobName, stepName))], {
+  const result = spawnSync('bash', ['-e', '-c', `${standInsFirst}\n${script(step(jobName, stepName))}`], {
     encoding: 'utf8',
-    env: { ...process.env, [pathKey]: `${dir}${delimiter}${process.env[pathKey]}`, STUB_LOG: log, ...env },
+    env: { ...process.env, [pathKey]: `${dir}${delimiter}${process.env[pathKey]}`, STUB_DIR: dir, STUB_LOG: log, ...env },
   });
   const calls = readFileSync(log, 'utf8').split('\n').filter(Boolean);
   return { status: result.status, output: `${result.stdout}${result.stderr}`, calls };
