@@ -39,6 +39,26 @@ copy included, so the terminal line goes blank: run `/limits-statusline:setup` a
 rebuilds the runtime and leaves `settings.json` as it is. The plugin is then read from the folder
 itself: after an edit, `/reload-plugins` picks it up with no new version.
 
+## The repository page and search
+
+Search engines reach the repository only through links to it (GitHub's sitemap lists no
+repositories), and the title of the GitHub page, which their results show, carries the
+repository's About text. The About text, the topics and the three listing texts
+(`plugin.json`, the `sealoop` marketplace entry and `package.json`) name the plan limits as
+Anthropic and the people searching for them do, the **5-hour** and the **weekly** limit
+([Use Claude Code with your Pro or Max
+plan](https://support.claude.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan)),
+and say only what the plugin does, with no ranking, endorsement or affiliation words.
+`test/scripts/manifests.test.mjs` checks both in the manifests and the README introduction.
+
+About and topics live on GitHub, not in the repository. Their current values, set with:
+
+```bash
+gh repo edit reylukakozlowski/limits-statusline \
+  --description "Claude Code status line plugin for the 5-hour and weekly usage limits: usage now, pace, projection to the reset and a warning before a limit runs out. Also session cost, cache, effort and context. Terminal and desktop app." \
+  --add-topic claude,claude-code,claude-code-plugin,claude-code-statusline,cli,developer-tools,nodejs,rate-limits,status-line,statusline,terminal,usage-limits,usage-monitor
+```
+
 ## Releasing
 
 A release is only a tag, `vX.Y.Z` on the head of `develop`. Nothing is committed for it, no

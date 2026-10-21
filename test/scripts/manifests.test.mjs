@@ -127,6 +127,39 @@ test('the description says the plugin is for Claude Code (chat and Cowork have n
   assert.ok(plugin.description.length <= 300, `${plugin.description.length} characters`);
 });
 
+// What the directory, /plugin and search results show. Anthropic names the plan limits "a
+// five-hour session limit" and "a weekly limit" (support.claude.com/en/articles/11145838), and so
+// do people searching for them.
+const LISTINGS = {
+  'plugin.json': plugin.description,
+  'marketplace.json': marketplace.plugins[0].description,
+  'package.json': pkg.description,
+};
+
+test('the listings and the README introduction name the 5-hour and weekly limits', () => {
+  const intro = read('README.md').split(/^## /m)[0];
+  for (const [source, text] of Object.entries({ ...LISTINGS, 'README.md': intro })) {
+    assert.match(text, /\b5-hour\b/, source);
+    assert.match(text, /\bweekly\b/, source);
+  }
+});
+
+test('the listings claim nothing the plugin cannot back: no ranking, endorsement or affiliation words', () => {
+  for (const [source, text] of Object.entries(LISTINGS)) {
+    assert.doesNotMatch(text, /\b(best|fastest|leading|official|endorsed|verified|anthropic)\b/i, source);
+  }
+});
+
+test('the keywords are distinct kebab-case tags and include the limits people search for', () => {
+  assert.equal(new Set(plugin.keywords).size, plugin.keywords.length);
+  for (const keyword of plugin.keywords) {
+    assert.match(keyword, /^[a-z0-9]+(-[a-z0-9]+)*$/, keyword);
+  }
+  for (const keyword of ['usage-limits', 'weekly-limit', '5-hour-limit']) {
+    assert.ok(plugin.keywords.includes(keyword), keyword);
+  }
+});
+
 test('setup runs only when the user types it, and may run only its own script', () => {
   const setup = read('commands/setup.md');
   const frontmatter = setup.split(/^---$/m)[1];

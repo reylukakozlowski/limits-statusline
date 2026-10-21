@@ -1,12 +1,13 @@
 # Limits Status Line
 
-A Claude Code status line that answers, at a glance, "how much have I spent and how close am I to
-my plan limits?". It shows the session's cost, runtime, prompt-cache hit ratio and how long the
-cache stays warm, effort and lines changed, the project, git branch and model, how full the
-context window is, and the claude.ai **7-day** and **5-hour** limits: the usage now and where your
-current pace takes it by the reset, the time and clock time of the reset, and the pace itself.
-When that pace would pass 100% before the window resets, the limit turns red and says when it
-runs out.
+A Claude Code status line plugin for your claude.ai plan's **5-hour and weekly usage limits**. It
+answers, at a glance, "how close am I to my limits, and will I hit them before they reset?": for
+the 5-hour and the weekly (7-day) limit it shows the usage now and where your current pace takes
+it by the reset, the time and clock time of the reset, and the pace itself. When that pace would
+pass 100% before the window resets, the limit turns red and says when it runs out. Next to the
+limits it shows the session's cost, runtime, prompt-cache hit ratio and how long the cache stays
+warm, effort and lines changed, the project, git branch and model, and how full the context
+window is.
 
 ```
 daily-claude | no git | ✦ Opus 5.5
@@ -32,7 +33,7 @@ there.
 |---|---|
 | Terminal status line | Claude Code with status line support and **Node.js 20+** on `PATH` |
 | Desktop band | Claude Code 2.1.290 or later (the desktop app updates its own copy); the monospaced face from 2.1.299 |
-| 7-day and 5-hour limits | A claude.ai Pro or Max subscription; the limits appear after the session's first response |
+| Weekly (7-day) and 5-hour limits | A claude.ai Pro or Max subscription; the limits appear after the session's first response |
 | Prompt-cache ratio in the terminal | Exact with Claude Code 2.1.251+, estimated from the last request on older versions |
 
 ## Install
@@ -125,7 +126,7 @@ and the command above restores it as long as the plugin is installed.
 | `xhigh` | `effort.level` | Reasoning effort of the session (desktop: shown after the first request) |
 | `+156 -23` | `cost.total_lines_added`, `total_lines_removed` | Lines of code added and removed in the session (terminal only) |
 | `ctx 54% 543k/1.0M` | `context_window` | Context window fill; the line shows how it moved during the session |
-| `7d` / `5h` | `rate_limits` | Plan usage now `→` projected at the reset, `↻` time and clock time of the reset, `↗` pace, `⚠` when the limit runs out before the reset |
+| `7d` / `5h` | `rate_limits` | The weekly (7-day) and 5-hour plan limits: usage now `→` projected at the reset, `↻` time and clock time of the reset, `↗` pace, `⚠` when the limit runs out before the reset |
 
 **Pace** is how fast the usage grew recently, shown per hour: over the last **30 minutes** for the
 5-hour limit and over the last **24 hours** for the 7-day limit, so the 7-day pace includes your
