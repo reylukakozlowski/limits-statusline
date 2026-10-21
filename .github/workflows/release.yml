@@ -96,12 +96,25 @@ jobs:
         env:
           TAG: ${{ steps.tag.outputs.tag }}
           GH_TOKEN: ${{ github.token }}
+        # GitHub now and then answers this call with an error and an empty body (gh then reports
+        # "unexpected end of JSON input", as in run 39580647887, whose re-run passed). Setting the
+        # same status again is harmless, so a refusal is retried and GitHub's answer is shown.
         run: |
           sha="$(git rev-parse "$TAG^{commit}")"
-          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$sha" \
-            -f state=success -f context='Release from develop' \
-            -f description="The Release workflow tagged this head of develop as $TAG" \
-            --silent
+          answer="$RUNNER_TEMP/status-answer.txt"
+          for pause in 5 10 20 0; do
+            if gh api --include --method POST "repos/$GITHUB_REPOSITORY/statuses/$sha" \
+              -f state=success -f context='Release from develop' \
+              -f description="The Release workflow tagged this head of develop as $TAG" \
+              > "$answer" 2>&1; then
+              exit 0
+            fi
+            grep -m 1 '^HTTP/' "$answer" || true
+            tail -n 1 "$answer"
+            if [ "$pause" -gt 0 ]; then sleep "$pause"; fi
+          done
+          echo "::error::GitHub refused the status \"Release from develop\" four times; run the workflow again to finish $TAG."
+          exit 1
 
       - name: Merge develop into master
         if: ${{ !inputs.dry_run }}

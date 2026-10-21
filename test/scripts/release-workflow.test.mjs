@@ -236,19 +236,60 @@ test('merge step: a master with commits the tag lacks is never overwritten', { s
   assert.match(run.output, /::error::master has commits that v1\.0\.3 lacks/);
 });
 
-test('mark step: the status goes on the tagged commit, successful', { skip: NO_BASH }, (t) => {
-  const stubs = {
-    git: ['#!/usr/bin/env bash', 'echo "git $*" >> "$STUB_LOG"', 'echo 7a9'],
-    gh: ['#!/usr/bin/env bash', 'printf "%s\\n" "$@" > "$STUB_LOG.gh"'],
-  };
-  const run = runStep(t, MARK_STEP, stubs, { TAG: 'v1.0.3', GITHUB_REPOSITORY: 'owner/repo' });
+// gh for the mark step: refuses the first GH_REFUSALS calls the way GitHub did in run 39580647887
+// (an HTTP error with an empty body, which gh reports as a JSON error), then accepts; the
+// arguments of the last call are kept, sleep only records how long it waits.
+const MARK_STUBS = {
+  git: ['#!/usr/bin/env bash', 'echo "git $*" >> "$STUB_LOG"', 'echo 7a9'],
+  gh: [
+    '#!/usr/bin/env bash',
+    'echo "gh call" >> "$STUB_LOG"',
+    'printf "%s\\n" "$@" > "$STUB_LOG.gh"',
+    'count=$(( $(cat "$STUB_LOG.count" 2>/dev/null || echo 0) + 1 ))',
+    'echo "$count" > "$STUB_LOG.count"',
+    'if [ "$count" -le "${GH_REFUSALS:-0}" ]; then',
+    '  echo "HTTP/2.0 502 Bad Gateway"',
+    '  echo "unexpected end of JSON input" >&2',
+    '  exit 1',
+    'fi',
+    'echo "HTTP/2.0 201 Created"',
+  ],
+  sleep: ['#!/usr/bin/env bash', 'echo "sleep $*" >> "$STUB_LOG"'],
+};
+
+const markStep = (t, refusals) => {
+  const runnerTemp = mkdtempSync(join(tmpdir(), 'ls-runner-temp-'));
+  t.after(() => rmSync(runnerTemp, { recursive: true, force: true }));
+  return runStep(t, MARK_STEP, MARK_STUBS, {
+    TAG: 'v1.0.3', GITHUB_REPOSITORY: 'owner/repo', GH_REFUSALS: String(refusals), RUNNER_TEMP: runnerTemp,
+  });
+};
+
+test('mark step: the status goes on the tagged commit, successful, at the first answer', { skip: NO_BASH }, (t) => {
+  const run = markStep(t, 0);
   assert.equal(run.status, 0, run.output);
-  assert.deepEqual(run.calls, ['git rev-parse v1.0.3^{commit}']);
+  assert.deepEqual(run.calls, ['git rev-parse v1.0.3^{commit}', 'gh call']);
   const args = readFileSync(`${run.log}.gh`, 'utf8').split('\n');
-  assert.deepEqual(args.slice(0, 4), ['api', '--method', 'POST', 'repos/owner/repo/statuses/7a9']);
+  assert.deepEqual(args.slice(0, 5), ['api', '--include', '--method', 'POST', 'repos/owner/repo/statuses/7a9']);
   for (const field of ['state=success', `context=${RELEASE_CHECK}`, 'description=The Release workflow tagged this head of develop as v1.0.3']) {
     assert.ok(args.includes(field), field);
   }
+});
+
+test('mark step: a refusal is retried after a pause, and GitHub\'s answer is shown', { skip: NO_BASH }, (t) => {
+  const run = markStep(t, 2);
+  assert.equal(run.status, 0, run.output);
+  assert.deepEqual(run.calls.slice(1), ['gh call', 'sleep 5', 'gh call', 'sleep 10', 'gh call']);
+  assert.equal(run.output.match(/HTTP\/2\.0 502 Bad Gateway/g)?.length, 2);
+  assert.match(run.output, /unexpected end of JSON input/);
+});
+
+test('mark step: after four refusals it stops before master, and says how to finish', { skip: NO_BASH }, (t) => {
+  const run = markStep(t, 99);
+  assert.equal(run.status, 1);
+  assert.equal(run.calls.filter((call) => call === 'gh call').length, 4);
+  assert.deepEqual(run.calls.filter((call) => call.startsWith('sleep')), ['sleep 5', 'sleep 10', 'sleep 20']);
+  assert.match(run.output, /::error::GitHub refused the status "Release from develop" four times; run the workflow again to finish v1\.0\.3\./);
 });
 
 // --- One release per repository, tags kept ----------------------------------------------------
