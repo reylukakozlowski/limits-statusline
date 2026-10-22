@@ -9,15 +9,7 @@ it by the reset, the time and clock time of the reset, and the pace itself. When
 pass 100% before the window resets, the limit turns red and says when it runs out. Next to the
 limits it shows the session's cost, runtime, prompt-cache hit ratio and how long the cache stays
 warm, effort and lines changed, the project, git branch and model, and how full the context
-window is.
-
-```text
-daily-claude | no git | ✦ Opus 5.5
-    $20.33 · 5h40m · cache 99% 52m · xhigh · +156 -23
-ctx ■■■■■■■■■□□□□□□□ 54%  543k/1.0M  ⣀⡠⠔⠊
-7d  ■■■■■■□□□□□□□□□□ 39% →  71%  ↻ 3d04h Mon 12:10  ↗ 0.4%/h
-5h  ■■□□□□□□□□□□□□□□ 12% →  72%  ↻ 4h10m 12:10      ↗ 14.4%/h
-```
+window is. The banner above shows the five lines of a sample session.
 
 It works in both places Claude Code runs on your computer, on macOS, Linux and Windows alike:
 
@@ -123,7 +115,7 @@ and the command above restores it as long as the plugin is installed.
 
 | Item | Source | Meaning |
 |---|---|---|
-| `$20.33` | `cost.total_cost_usd` | Session cost estimated by Claude Code at list price; resets on `/clear` |
+| cost | `cost.total_cost_usd` | Session cost in US dollars with two decimals, estimated by Claude Code at list price; resets on `/clear` |
 | `5h40m` | `cost.total_duration_ms` | How long the session has been running (desktop: since the session first started) |
 | `cache 99%` | `prompt_cache.hit_ratio` | Share of input tokens served from the prompt cache |
 | `52m` / `cold` | `prompt_cache.expires_at` | How long the prompt cache stays warm without a new prompt (yellow in its last 5 minutes), or that it went cold and the next prompt rebuilds it |
