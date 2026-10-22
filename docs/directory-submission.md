@@ -36,8 +36,10 @@ reaches users.
    - Select **Validate** and fix anything marked **Blocking**, then validate again. A result covers
      one commit, so validate again after every push. To check a fix before it is released, type
      its branch here, validate, and set `master` again before you go on.
-   - `plugin.json` carries the plugin's one `version`, which a pull request raises before each
-     release and the release tags as `vX.Y.Z` (CONTRIBUTING.md, Releasing).
+   - The version is in `plugin.json` on `master` only: each release commit sets it there and is
+     tagged `vX.Y.Z`, and `develop` carries none (CONTRIBUTING.md, Releasing). A branch validated
+     before a release therefore gets the warning that `plugin.json` sets no `version`; `master`
+     does not.
 3. **Listing details** come from `.claude-plugin/plugin.json` (`displayName`, `description`, `icon`,
    `author`, the links) and `README.md`. Change them there, not in the portal. **Listed on**: tick
    Claude Code only. The status line and the desktop band are a hook and a mod, which run only in
@@ -93,8 +95,9 @@ call on `$`), gave 5 warnings and 7 policy holds, down from 6 and 10: five band 
 above and `MOD_PROCESS_COMMAND_COMPUTED`, cleared since) and the two findings of the credential
 hold below.
 
-- **No version in plugin.json**: gone. `plugin.json` carries the one version (CONTRIBUTING.md,
-  Releasing).
+- **No version in plugin.json**: gone on `master`, where each release commit writes the version
+  into `plugin.json` (CONTRIBUTING.md, Releasing). A branch off `develop` still shows it when
+  validated before a release, since `develop` carries no version.
 - **Image or font file that the plugin's code could run**: gone. `CHANGELOG.md` and `plugin.json`
   named `assets/icon.png`, an image the validator lets through unread, and a test reads both
   files; the listing's icon is now `assets/icon.svg`, the drawing the PNG came from, which the
@@ -139,7 +142,7 @@ call on `$` fails `test/desktop/directory-review.test.mjs` until the README's Pr
 
 ## After the listing
 
-A release tags `vX.Y.Z` and moves `master` to it; the webhook or the scheduled check picks it up,
+A release adds its release commit to `master` and tags it `vX.Y.Z`; the webhook or the scheduled check picks it up,
 the directory validates and scans it, and it is published as the plugin's publish setting says.
 Anthropic applies that setting: by default a reviewer publishes each version, and a version with a
 policy hold ([the band's policy holds](#the-bands-policy-holds)) waits for a reviewer.

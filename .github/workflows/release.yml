@@ -1,46 +1,46 @@
-# Release: publishes develop as a new version. A release is a tag: no commit, no release branch,
-# no pull request. The version is the one in .claude-plugin/plugin.json, the plugin's one version,
-# which a pull request into develop raised; the tag vX.Y.Z names the same version.
+# Release: publishes develop as a new version, with one click. A release is a commit on master and
+# its tag: the release commit carries develop's files as they are at the run's commit, with
+# .claude-plugin/plugin.json given the release's version, and its parent is the previous release on
+# master, so master moves forward by one commit. develop carries no version and gets nothing from
+# the run. The tag vX.Y.Z names the release commit; its version is the last tag's with the part the
+# owner picked raised (patch by default).
 #
 # Started from Actions → Release → Run workflow, on develop. GitHub checks each job's `if` without
-# a runner: a run by anyone but the repository owner, or on any branch but develop, is skipped and
-# asks for nothing. For the owner the run goes through four jobs, in this order:
-#   1. ci (environment `release`): every run, a dry run too, first waits for the owner's approval,
-#      and nothing runs before it. Then, in every run, a release too: the tests, with their counts
-#      on the run's summary page; the dry run of scripts/release.mjs (develop, a clean tree, the
-#      version in plugin.json higher than the last release, a free tag, the notes); and
-#      scripts/release-preflight.mjs, which checks that
-#      the run can reach master once it has tagged (master behind develop's head, master's two
+# a runner: a run by anyone but the repository owner, or on any branch but develop, is skipped. For
+# the owner the run asks nothing more and goes through three jobs, in this order:
+#   1. ci: the tests, with their counts on the run's summary page; the dry run of
+#      scripts/release.mjs (develop, a clean tree, the next version, a free tag, the notes); and
+#      scripts/release-preflight.mjs, which checks that the run can reach master (master's two
 #      rulesets and nothing else, the environment `production` on develop alone). It reads the
 #      repository and writes nothing;
-#   2. tag, only when ci passed: scripts/release.mjs runs the tests once more and tags the commit
-#      the run started from, the one ci checked, with the annotated tag vX.Y.Z, its message the
-#      subjects of the commits since the previous tag, and pushes it with GITHUB_TOKEN;
-#   3. promote (environment `production`, which deploys from develop only and holds the secret
-#      PRODUCTION_DEPLOY_KEY; no second approval, the one at the start covers the run):
-#      fast-forwards master to the tagged commit with that deploy key. master's rulesets let only a deploy key create or move master and
-#      refuse a deletion, a force push or a merge commit, so master is exactly the latest release
-#      and never moves back. The repository has one deploy key, this one;
-#   4. publish: creates the GitHub release from the tag's notes, marks it Latest and deletes the
+#   2. release (environment `production`, which deploys from develop only and holds the secret
+#      PRODUCTION_DEPLOY_KEY), only when ci passed: scripts/release.mjs runs the tests once more on
+#      the commit ci checked, builds the release commit on master's head, tags it with the
+#      annotated tag vX.Y.Z (the subjects of develop's commits since the previous release), and
+#      pushes the tag, then master, with that deploy key. master's rulesets let only a deploy key
+#      create or move master and refuse a deletion, a force push or a merge commit, so master is
+#      exactly the latest release and only moves forward. The repository has one deploy key;
+#   3. publish: creates the GitHub release from the tag's notes, marks it Latest and deletes the
 #      older releases; their tags stay as the history.
-# A dry run is job 1 alone: it changes nothing and never enters `production`. A run on a develop
-# whose head already carries a version tag finishes that release (jobs 3 and 4) instead of cutting
-# a new one, so a failed run is finished by running the workflow again; "Re-run failed jobs" after
-# a failed tag, promote or publish asks for no approval again, ci having passed.
+# A dry run is job 1 alone: it changes nothing and never enters `production`. When master lacks
+# the latest tag, or develop's head is the commit that release was made from, a run finishes that
+# release (the pushes, the GitHub release) instead of cutting a new one, so a failed run is finished
+# by the next one and master skips no version.
 #
-# GitHub lets GITHUB_TOKEN point a ref only at a commit whose .github/workflows match the default
-# branch's head; the tag sits on develop's head, which always does. The deploy key has no such
-# limit, so master catches up even when develop moved on with a workflow change. No workflow here
-# runs on a push, so neither push starts another run.
+# Both pushes use the deploy key: the release commit is new to origin and may change
+# .github/workflows, which GITHUB_TOKEN may not push. No workflow here runs on a push, so neither
+# push starts another run.
 name: Release
-run-name: ${{ inputs.dry_run && 'Dry run' || 'Release' }}
+run-name: ${{ format('{0} {1}', inputs.dry_run && 'Dry run' || 'Release', inputs.bump) }}
 
-# The version is the one in .claude-plugin/plugin.json on develop: a pull request raised it, as
-# every change reaches develop. The run tags it and refuses a version that is not higher than the
-# last release.
 on:
   workflow_dispatch:
     inputs:
+      bump:
+        description: Part of the version to raise
+        type: choice
+        options: [patch, minor, major]
+        default: patch
       dry_run:
         description: Dry run - run every check and the tests, change nothing
         type: boolean
@@ -62,14 +62,13 @@ jobs:
       && github.triggering_actor == github.repository_owner
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: release
     permissions:
       contents: read
       actions: read # the environment production, for the check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0 # the notes read every commit since the last tag; the version reads every tag
+          fetch-depth: 0 # the notes read every commit since the last release; the version reads every tag
           persist-credentials: false
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -77,7 +76,7 @@ jobs:
           node-version: 24
 
       # The counts, with the name of each failed test, go to the run's summary page. The dry run and
-      # the tag run the tests again, as scripts/release.mjs always does; they take seconds.
+      # the release run the tests again, as scripts/release.mjs always does; they take seconds.
       - name: Run the tests
         run: |
           set -o pipefail
@@ -97,18 +96,21 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
 
+      # The input through the environment, never written into the script.
       - name: Dry run of the release
-        run: node scripts/release.mjs --dry-run
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: node scripts/release.mjs "$BUMP" --dry-run
 
       - name: Check that the release can reach master
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/release-preflight.mjs
 
-  tag:
-    name: 'CD: tag'
+  release:
+    name: 'CD: release commit, tag and master'
     needs: [ci]
-    # Only after ci passed, and never in a dry run.
+    # Only after ci passed, and never in a dry run: a skipped job never sees the deploy key.
     if: >-
       github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
       && github.actor_id == github.repository_owner_id
@@ -116,79 +118,39 @@ jobs:
       && !inputs.dry_run
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    environment: production
     permissions:
-      contents: write
+      contents: read
     outputs:
-      tag: ${{ steps.tag.outputs.tag }}
+      tag: ${{ steps.release.outputs.tag }}
     steps:
+      # The run's commit on the branch develop, the one ci checked; origin/master and the tags with it.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0 # the notes read every commit since the last tag; the version reads every tag
+          fetch-depth: 0
+          ssh-key: ${{ secrets.PRODUCTION_DEPLOY_KEY }}
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
 
-      - name: Tag as the repository's author
+      - name: Commit and tag as the repository's author
         run: |
           git config user.name 'Reywedian'
           git config user.email '27358836+Reywedian@users.noreply.github.com'
 
       # An assignment, not `echo "tag=$(...)"`: under bash -e a failing script then fails the step.
-      - name: Test and tag develop's head
-        id: tag
-        run: |
-          tag="$(node scripts/release.mjs --push)"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-
-  promote:
-    name: 'CD: master'
-    needs: [tag]
-    # Never in a dry run: a skipped job asks for no approval and never sees the deploy key.
-    if: >-
-      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
-      && github.actor_id == github.repository_owner_id
-      && github.triggering_actor == github.repository_owner
-      && !inputs.dry_run
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    environment: production
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: develop
-          fetch-depth: 0 # origin/develop and origin/master, to check where the tag sits
-          ssh-key: ${{ secrets.PRODUCTION_DEPLOY_KEY }}
-
-      - name: Fast-forward master to the release commit
+      - name: Test, build the release commit, tag it and move master
+        id: release
         env:
-          TAG: ${{ needs.tag.outputs.tag }}
+          BUMP: ${{ inputs.bump }}
         run: |
-          git fetch --quiet origin "refs/tags/$TAG:refs/tags/$TAG"
-          sha="$(git rev-parse "$TAG^{commit}")"
-          if ! git merge-base --is-ancestor "$sha" origin/develop; then
-            echo "::error::$TAG is not on develop, so master does not take it."
-            exit 1
-          fi
-          if git rev-parse --quiet --verify refs/remotes/origin/master > /dev/null; then
-            if git merge-base --is-ancestor "$sha" origin/master; then
-              echo "master already holds $TAG."
-              exit 0
-            fi
-            if ! git merge-base --is-ancestor origin/master "$sha"; then
-              echo "::error::master has commits that $TAG lacks, so it cannot move forward to it: master takes changes only from develop."
-              exit 1
-            fi
-          fi
-          # A plain push: master's history ruleset refuses anything but a fast-forward.
-          git push origin "$sha:refs/heads/master"
-          echo "master is at $TAG ($sha)."
+          tag="$(node scripts/release.mjs "$BUMP" --push)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
   publish:
     name: 'CD: GitHub release'
-    needs: [tag, promote]
+    needs: [release]
     if: >-
       github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
       && github.actor_id == github.repository_owner_id
@@ -206,12 +168,12 @@ jobs:
 
       - name: Take the release notes from the tag
         env:
-          TAG: ${{ needs.tag.outputs.tag }}
+          TAG: ${{ needs.release.outputs.tag }}
         run: git tag --list --format='%(contents:body)' "$TAG" > "$RUNNER_TEMP/release-notes.md"
 
       - name: Create the GitHub release unless it exists
         env:
-          TAG: ${{ needs.tag.outputs.tag }}
+          TAG: ${{ needs.release.outputs.tag }}
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "$TAG" > /dev/null 2>&1; then
@@ -224,7 +186,7 @@ jobs:
       # Only after GitHub shows the new release as the latest, so a failed publish never leaves none.
       - name: Keep only the latest release, tags stay
         env:
-          TAG: ${{ needs.tag.outputs.tag }}
+          TAG: ${{ needs.release.outputs.tag }}
           GH_TOKEN: ${{ github.token }}
         run: |
           latest="$(gh release view --json tagName --jq .tagName)"

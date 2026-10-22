@@ -1,5 +1,5 @@
-// The repository's own contract: identity, the one version in plugin.json, and Anthropic directory
-// requirements (the pre-submission checklist, linked in docs/directory-submission.md).
+// The repository's own contract: identity, a version only in master's release commits, and
+// Anthropic directory requirements (the pre-submission checklist, linked in docs/directory-submission.md).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -19,10 +19,11 @@ const pkg = json('package.json');
 const plugin = json('.claude-plugin/plugin.json');
 const marketplace = json('.claude-plugin/marketplace.json');
 
-// Claude Code takes the version from plugin.json first and keeps users on it until it changes, so a
-// release has to raise it (scripts/release.mjs refuses one that is not higher than the last tag).
-test('plugin.json carries the one version, X.Y.Z; the marketplace entry and package.json carry none', () => {
-  assert.match(plugin.version, /^\d+\.\d+\.\d+$/);
+// Claude Code takes the version from plugin.json first and keeps users on it until it changes. The
+// release writes it into plugin.json in the release commit on master (scripts/release.mjs), counted
+// from the last tag, so the version lives in one place per release and develop never holds a stale one.
+test('develop\'s plugin.json carries no version, the release writes it on master; the marketplace entry and package.json carry none', () => {
+  assert.equal('version' in plugin, false);
   assert.equal('version' in marketplace.plugins[0], false);
   assert.equal('version' in pkg, false);
 });

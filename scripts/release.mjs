@@ -1,12 +1,13 @@
-// Entry point: npm run release -- [--push] [--dry-run]
+// Entry point: npm run release -- <patch|minor|major> [--push] [--dry-run]
 // Prints the tag on stdout for the Release workflow; the tests' and git's own output goes to stderr.
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runRelease } from './lib/release-cli.mjs';
 
 const cwd = fileURLToPath(new URL('..', import.meta.url));
+const manifestPath = join(cwd, '.claude-plugin', 'plugin.json');
 
 const exec = (command, args, { inherit = false } = {}) => {
   const result = spawnSync(command, args, {
@@ -22,7 +23,8 @@ const exec = (command, args, { inherit = false } = {}) => {
 process.exitCode = runRelease({
   argv: process.argv.slice(2),
   exec,
-  readManifest: () => readFileSync(join(cwd, '.claude-plugin', 'plugin.json'), 'utf8'),
+  readManifest: () => readFileSync(manifestPath, 'utf8'),
+  writeManifest: (text) => writeFileSync(manifestPath, text),
   stdout: process.stdout,
   stderr: process.stderr,
 });
