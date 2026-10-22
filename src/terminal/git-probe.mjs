@@ -17,8 +17,6 @@ export function probeGit(cwd, { spawn = spawnSync, timeoutMs = GIT_TIMEOUT_MS } 
     timeout: timeoutMs,
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'ignore'],
-    // A status line must never take the index lock away from the user's own git commands.
-    env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
   });
   if (result.error) return null;
   return parseGitStatus({ exitCode: result.status, stdout: result.stdout });

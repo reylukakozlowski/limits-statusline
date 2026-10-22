@@ -21,7 +21,7 @@ const DISCLOSED_CALLS = [
   'session.model', 'session.repo', 'session.usage', 'session.version', 'settings.read', 'ui.invalidate', 'ui.resolve',
 ];
 const GIT_COMMAND = ['git', ...GIT_STATUS_ARGS];
-const GIT_OPTIONS = { timeoutMs: 1500, env: { GIT_OPTIONAL_LOCKS: '0' } };
+const GIT_OPTIONS = { timeoutMs: 1500 };
 
 /**
  * The arguments of each call of `callee` in `source`, as source text split at the top level.
@@ -105,7 +105,7 @@ test('the README and the privacy statement name the command, the file and every 
   const readme = read('README.md');
   const privacy = read('PRIVACY.md');
   assert.ok(readme.includes(`\`${GIT_COMMAND.join(' ')}\``), 'README names the git command');
-  assert.ok(readme.includes('GIT_OPTIONAL_LOCKS=0'), 'README names the variable git runs with');
+  assert.ok(readme.includes('`--no-optional-locks`'), 'README says what keeps git off the index lock');
   assert.ok(readme.includes('limits-statusline/limit-history.json'), 'README names the file');
   assert.ok(readme.includes('`turn.step`'), 'README says what the band reads at each model request');
   const variables = callsOf(BAND, '$.env.get').map(([name]) => valueOf(name));

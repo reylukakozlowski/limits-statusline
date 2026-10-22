@@ -1,6 +1,8 @@
 // Parses `git status --porcelain=v2 --branch` so both adapters share one git question and one answer.
 
-export const GIT_STATUS_ARGS = Object.freeze(['status', '--porcelain=v2', '--branch', '--untracked-files=no']);
+// --no-optional-locks (git 2.15+, the same as GIT_OPTIONAL_LOCKS=0): never take the index lock away
+// from the user's own git commands.
+export const GIT_STATUS_ARGS = Object.freeze(['--no-optional-locks', 'status', '--porcelain=v2', '--branch', '--untracked-files=no']);
 
 const NOT_A_REPO = Object.freeze({ isRepo: false, branch: null, isDirty: false });
 const SHORT_SHA_LENGTH = 7;

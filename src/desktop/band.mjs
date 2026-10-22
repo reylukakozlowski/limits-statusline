@@ -84,9 +84,9 @@ async function probeGit($) {
   try {
     // The whole call as fixed text, options too, so that the directory reads the whole command:
     // the terminal's GIT_STATUS_ARGS, run in the session's folder (the default), for at most
-    // 1.5 s. GIT_OPTIONAL_LOCKS: never take the index lock from the user's own git.
-    const status = await $.process.run(['git', 'status', '--porcelain=v2', '--branch', '--untracked-files=no'],
-      { timeoutMs: 1500, env: { GIT_OPTIONAL_LOCKS: '0' } });
+    // 1.5 s. --no-optional-locks: never take the index lock from the user's own git.
+    const status = await $.process.run(['git', '--no-optional-locks', 'status', '--porcelain=v2', '--branch', '--untracked-files=no'],
+      { timeoutMs: 1500 });
     return parseGitStatus(status);
   } catch {
     return readGitHead($);
