@@ -84,15 +84,35 @@ the git call and the written file's name as fixed text, so the README is how the
 them. The calls stay written out, so a reviewer reads the command and the file at the line the
 finding gives.
 
-The same report lists two more findings, as warnings in the scan of a version and as policy holds
-in the **Validate** form. Nothing in the plugin reads or runs what they name, so they stay as they
-are and a reviewer confirms it:
+That report also held the plugin for two findings that name what the plugin never runs or reads,
+and warned that `plugin.json` sets no `version`. **Validate** on the branch of pull request #38,
+with LS-48 its newest commit (2026-10-22, before LS-45 reached develop; LS-45 adds no new kind of
+call on `$`), gave 5 warnings and 7 policy holds, down from 6 and 10: the five band holds above and
+the two findings of the credential hold below.
 
-- **Image or font file that the plugin's code could run**: `CHANGELOG.md` and `plugin.json` (the
-  listing's `icon`) name `assets/icon.png`, and a test reads both files. No code runs the image.
-- **Uses a credential from the user's machine**: `.gitignore` names `.npmrc` and `$RECYCLE.BIN/`,
-  which it keeps out of the repository, and `test/scripts/manifests.test.mjs` names a claude.com
-  page beside `${CLAUDE_PLUGIN_ROOT}`. The plugin reads no credential and sends nothing.
+- **No version in plugin.json**: gone. `plugin.json` carries the one version (CONTRIBUTING.md,
+  Releasing).
+- **Image or font file that the plugin's code could run**: gone. `CHANGELOG.md` and `plugin.json`
+  named `assets/icon.png`, an image the validator lets through unread, and a test reads both
+  files; the listing's icon is now `assets/icon.svg`, the drawing the PNG came from, which the
+  validator reads as text.
+- **Uses a credential from the user's machine**: still held, on other files each time one is
+  answered. It pairs words, not behaviour: `test/scripts/manifests.test.mjs` names `.npmrc` (a
+  sample the `.gitignore` test checks is ignored) beside a claude.com link, and
+  `scripts/lib/runtime-sync.mjs` reads the hook's environment (`CLAUDE_PLUGIN_ROOT` and
+  `CLAUDE_PLUGIN_DATA` alone) while the README shows `$20.33`, the sample session cost, which the
+  validator reads as a command. The plugin reads no credential and sends nothing anywhere. The
+  finding allows parts that are unrelated to stay for a reviewer to confirm, and they stay:
+  changing the sample would make the README untrue, and renaming what reads the environment would
+  only hide it.
+
+Two warnings stay by design, both marked "No action needed" for the listing fields:
+
+- **Unrecognized field in plugin.json**: `documentationUrl`, `supportUrl` and `privacyPolicyUrl`
+  are the directory's own listing fields, and `types` is the mod's state contract that
+  `claude plugin validate` reads; the [manifest reference](https://code.claude.com/docs/en/plugins/manifest-reference)
+  documents all four, and Claude Code ignores them at load time.
+- **Field from another tool's manifest**: `icon`, which the directory reads for the listing.
 
 While any hold stays, every release waits for a reviewer, and the portal says auto-publish
 "doesn't apply for now: no version of this plugin goes live without an Anthropic reviewer". While

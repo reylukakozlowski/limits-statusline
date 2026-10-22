@@ -138,8 +138,9 @@ run.
 7. The job **CD: master**, in the `production` environment, fast-forwards `master` to the tagged
    commit with the repository's deploy key: `master` becomes exactly the tagged commit. Nothing
    else can move `master` (see below). It asks for no second approval: the one of step 4 covers
-   the run. That push is what tells Anthropic's directory about the release, through the push
-   webhook ([docs/directory-submission.md](docs/directory-submission.md#after-the-listing)).
+   the run. With the directory's push webhook set up, that push is what tells Anthropic's
+   directory about the release; without it the directory finds it at its next scheduled check
+   ([docs/directory-submission.md](docs/directory-submission.md#after-the-listing)).
 8. The job **CD: GitHub release** creates the GitHub release from the tag's notes and marks it
    Latest. Once GitHub shows the new release as the latest, it deletes the older releases: the
    repository keeps one release, and the `vX.Y.Z` tags of all versions stay as the history (a tag
