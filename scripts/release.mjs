@@ -1,4 +1,4 @@
-// Entry point: npm run release -- <patch|minor|major> [--push] [--dry-run]
+// Entry point: npm run release -- <patch|minor|major> [--dry-run]
 // Prints the tag on stdout for the Release workflow; the tests' and git's own output goes to stderr.
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';

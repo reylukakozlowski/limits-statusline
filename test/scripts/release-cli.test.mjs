@@ -14,7 +14,7 @@ const WRITES = ['git add', 'git write-tree', 'git commit-tree', 'git tag -a', 'g
 
 function fakeGit({
   branch = 'develop', status = '', tags = ['v0.0.9', 'v0.1.0'], previousMessage = 'LS-4_docs: released the old way',
-  log = LOG, tagExists = false, master = MASTER, masterHasPrevious = true, testStatus = 0, writeTreeStatus = 0, pushStatus = {},
+  log = LOG, tagExists = false, master = MASTER, masterHasPrevious = true, testStatus = 0, writeTreeStatus = 0,
 } = {}) {
   const calls = [];
   const manifests = [];
@@ -37,7 +37,6 @@ function fakeGit({
     if (args[0] === 'write-tree') return { status: writeTreeStatus, stdout: `${TREE}\n` };
     if (args[0] === 'commit-tree') return { status: 0, stdout: `${RELEASED}\n` };
     if (args[0] === 'tag') return { status: 0, stdout: '' };
-    if (args[0] === 'push') return { status: pushStatus[args[2]] ?? 0, stdout: '' };
     return { status: 64, stdout: '' };
   };
   const writes = () => calls.filter((call) => WRITES.some((write) => call.startsWith(write)));
@@ -72,15 +71,13 @@ test('a release builds one commit on master with develop\'s tree and the version
   assert.ok(git.calls.includes(`git log --reverse --format=%s ${PREVIOUS}..HEAD`));
 });
 
-test('release --push pushes the tag first, then master to the release commit, and makes no branch or pull request', () => {
+// The Release workflow's master job checks the release commit and pushes it with the deploy key.
+test('release pushes nothing and makes no branch or pull request', () => {
   const git = fakeGit();
-  const result = release(git, ['minor', '--push']);
+  const result = release(git, ['minor']);
   assert.equal(result.code, 0, result.text);
   assert.equal(result.out, 'v0.2.0\n');
-  assert.deepEqual(git.writes().filter((call) => call.startsWith('git push')), [
-    'git push origin refs/tags/v0.2.0', `git push origin ${RELEASED}:refs/heads/master`,
-  ]);
-  assert.ok(!git.calls.some((call) => /^git (commit |switch|branch|checkout)|^gh /.test(call)));
+  assert.ok(!git.calls.some((call) => /^git (push|commit |switch|branch|checkout)|^gh /.test(call)), git.calls.join('\n'));
 });
 
 test('the notes start after the develop commit the last release names in its message', () => {
@@ -99,22 +96,22 @@ test('the first release, with no version tag and no master, is a commit of its o
   assert.ok(git.calls.some((call) => call.startsWith(`git commit-tree ${TREE} -m Release v0.0.1`)));
 });
 
-test('a develop head the latest release was made from is that release, finished: no new commit, tag and master pushed again', () => {
+test('a develop head the latest release was made from is that release, to finish: no new commit or tag, its tag printed', () => {
   const git = fakeGit({ previousMessage: `Release v0.1.0\n\nSource: develop@${HEAD}` });
-  const result = release(git, ['patch', '--push']);
+  const result = release(git, ['patch']);
   assert.equal(result.code, 0, result.text);
   assert.equal(result.out, 'v0.1.0\n');
   assert.match(result.text, /finishing v0\.1\.0 .*: develop has nothing new since it/);
-  assert.deepEqual(git.writes(), ['npm test', 'git push origin refs/tags/v0.1.0', `git push origin ${PREVIOUS}:refs/heads/master`]);
+  assert.deepEqual(git.writes(), ['npm test']);
 });
 
 test('a latest release that master lacks is finished before a new one, even after develop moved on', () => {
   const git = fakeGit({ masterHasPrevious: false });
-  const result = release(git, ['minor', '--push']);
+  const result = release(git, ['minor']);
   assert.equal(result.code, 0, result.text);
   assert.equal(result.out, 'v0.1.0\n');
   assert.match(result.text, /finishing v0\.1\.0 .*: master lacks it/);
-  assert.deepEqual(git.writes(), ['npm test', 'git push origin refs/tags/v0.1.0', `git push origin ${PREVIOUS}:refs/heads/master`]);
+  assert.deepEqual(git.writes(), ['npm test']);
   const dry = fakeGit({ masterHasPrevious: false });
   assert.equal(release(dry, ['patch', '--dry-run']).code, 0);
   assert.deepEqual(dry.writes(), ['npm test']);
@@ -123,7 +120,7 @@ test('a latest release that master lacks is finished before a new one, even afte
 test('release refuses off develop, with a dirty tree, or with a taken tag, before the tests and without writing', () => {
   for (const options of [{ branch: 'master' }, { status: ' M README.md\n' }, { tagExists: true }]) {
     const git = fakeGit(options);
-    const result = release(git, ['patch', '--push']);
+    const result = release(git, ['patch']);
     assert.equal(result.code, 2, JSON.stringify(options));
     assert.equal(result.out, '');
     assert.deepEqual(git.writes(), [], JSON.stringify(options));
@@ -132,10 +129,10 @@ test('release refuses off develop, with a dirty tree, or with a taken tag, befor
 
 test('release stops before writing when the tests fail, and a dry run writes nothing either way', () => {
   const failing = fakeGit({ testStatus: 1 });
-  assert.equal(release(failing, ['patch', '--push']).code, 2);
+  assert.equal(release(failing, ['patch']).code, 2);
   assert.deepEqual(failing.writes(), ['npm test']);
   const dry = fakeGit();
-  const result = release(dry, ['major', '--dry-run', '--push']);
+  const result = release(dry, ['major', '--dry-run']);
   assert.equal(result.code, 0, result.text);
   assert.equal(result.out, '');
   assert.match(result.text, /0\.1\.0 → 1\.0\.0/);
@@ -152,17 +149,8 @@ test('a failure while building the tree puts the manifest back as it was', () =>
   assert.ok(!git.calls.some((call) => call.startsWith('git commit-tree') || call.startsWith('git tag -a')));
 });
 
-test('release reports a tag or master that origin refused, printing no tag', () => {
-  for (const [refspec, pattern] of [['refs/tags/v0.1.1', /origin refused v0\.1\.1/], [`${RELEASED}:refs/heads/master`, /refused to move master/]]) {
-    const result = release(fakeGit({ pushStatus: { [refspec]: 1 } }), ['patch', '--push']);
-    assert.equal(result.code, 2, refspec);
-    assert.equal(result.out, '', refspec);
-    assert.match(result.text, pattern, refspec);
-  }
-});
-
 test('release without a part to raise, with another word, or with an unknown option is a usage error that runs nothing', () => {
-  for (const argv of [[], ['bump'], ['0.1.1'], ['patch', 'minor'], ['patch', '--force']]) {
+  for (const argv of [[], ['bump'], ['0.1.1'], ['patch', 'minor'], ['patch', '--force'], ['patch', '--push']]) {
     const git = fakeGit();
     assert.equal(release(git, argv).code, 1, argv.join(' '));
     assert.deepEqual(git.calls, [], argv.join(' '));
