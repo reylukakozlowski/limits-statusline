@@ -12,4 +12,4 @@ const exec = (command, args) => {
   return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr || result.error?.message || '' };
 };
 
-process.exitCode = runPreflight({ env: process.env, exec, stdout: process.stdout });
+process.exitCode = runPreflight({ env: { GITHUB_REPOSITORY: process.env.GITHUB_REPOSITORY }, exec, stdout: process.stdout });
