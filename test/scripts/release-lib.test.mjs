@@ -56,7 +56,9 @@ test('releaseVersion takes any manifest version for the first release', () => {
 });
 
 test('releaseVersion refuses a manifest version that is already released or lower', () => {
-  assert.throws(() => releaseVersion('1.0.8', '1.0.8'), /1\.0\.8 is not higher than the released 1\.0\.8.*pull request/);
+  // The refusal names the way out: the Prepare release workflow, or a pull request of one's own.
+  assert.throws(() => releaseVersion('1.0.8', '1.0.8'),
+    /1\.0\.8 is not higher than the released 1\.0\.8: run the Prepare release workflow \(patch, minor or major\) and merge its pull request first/);
   assert.throws(() => releaseVersion('1.0.7', '1.0.8'), /not higher/);
 });
 
