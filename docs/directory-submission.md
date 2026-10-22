@@ -108,7 +108,7 @@ hold below.
   manifest test and its links. **Validate** on the branch of pull request #39 at LS-52
   (2026-10-22) gave 5 warnings and 5 policy holds, down from 5 and 7, the finding down to one
   pair: `formatTokens` in `src/core/layout.mjs`, which formats the context's token count (`543k`),
-  and `$20.33`, the README's sample session cost, read as a command. The plugin reads no
+  and the README's sample of a session cost (a dollar sign before digits), read as a command. The plugin reads no
   credential and sends nothing anywhere. The finding allows unrelated parts to stay for a reviewer
   to confirm, and these stay: the counts are the model's tokens, and the sample is what the status
   line prints.
