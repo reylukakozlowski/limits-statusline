@@ -65,7 +65,8 @@ export function releaseVersion(manifestVersion, previous) {
   }
   if (previous !== null && compare(parse(manifestVersion), parse(previous)) <= 0) {
     throw new Error(`plugin.json's version ${manifestVersion} is not higher than the released ${previous}: `
-      + 'raise it in plugin.json through a pull request into develop first.');
+      + 'run the Prepare release workflow (patch, minor or major) and merge its pull request first, '
+      + 'or raise it in a pull request of your own.');
   }
   return manifestVersion;
 }
