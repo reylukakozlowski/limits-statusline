@@ -130,15 +130,20 @@ branch or pull request.
      Whatever would stop the release after its tag stops it here, before anything is written.
 
    A dry run ends here.
-4. Only when CI passed, the job **CD: release commit, tag and master**, in the `production`
-   environment, runs `npm test` once more on the commit CI checked, builds the release commit on
-   `master`'s head, and tags it with an annotated tag `vX.Y.Z` whose message, like the commit's,
-   lists the subjects of the `develop` commits since the previous release. It pushes the tag, then
-   `master`, with the repository's deploy key; nothing else can move `master` (see below). With
-   the directory's push webhook set up, that push is what tells Anthropic's directory about the
-   release; without it the directory finds it at its next scheduled check
+4. Only when CI passed, the job **CD: release commit and tag**, which holds no credentials, runs
+   `npm test` once more on the commit CI checked, builds the release commit on `master`'s head,
+   and tags it with an annotated tag `vX.Y.Z` whose message, like the commit's, lists the subjects
+   of the `develop` commits since the previous release. It pushes nothing: the tag goes to the next
+   job as a git bundle.
+5. The job **CD: master**, in the `production` environment, holds the repository's deploy key and
+   runs none of the repository's code. It pushes the tag, then `master`, only when the tag is a
+   release commit: `develop`'s files at a commit `develop` holds, with the manifest's version line
+   added and nothing else changed, on `master`'s head. Anything else stops the run with nothing
+   pushed. Nothing else can move `master` (see below). With the directory's push webhook set up,
+   that push is what tells Anthropic's directory about the release; without it the directory finds
+   it at its next scheduled check
    ([docs/directory-submission.md](docs/directory-submission.md#after-the-listing)).
-5. The job **CD: GitHub release** creates the GitHub release from the tag's notes and marks it
+6. The job **CD: GitHub release** creates the GitHub release from the tag's notes and marks it
    Latest. Once GitHub shows the new release as the latest, it deletes the older releases: the
    repository keeps one release, and the `vX.Y.Z` tags of all versions stay as the history (a tag
    ruleset forbids deleting or moving them).
@@ -169,8 +174,8 @@ Two rulesets guard `master`, and GitHub refuses every other change, the owner's 
 The repository has exactly one deploy key with write access, `production: master (release
 workflow)`: GitHub cannot name a single key as the one that bypasses a ruleset, so every deploy key
 of the repository could move `master`. Its private half is the secret `PRODUCTION_DEPLOY_KEY` of
-the `production` environment, which deploys from `develop` only, and only the job **CD: release
-commit, tag and master** of the Release workflow names it. Do not open pull requests into `master`: Rebase and merge would
+the `production` environment, which deploys from `develop` only, and only the job **CD: master**
+of the Release workflow names it. Do not open pull requests into `master`: Rebase and merge would
 rewrite the commits, and the workflow moves it.
 
 To set this up again, in a fork for example (the first release then creates `master`):
@@ -193,11 +198,14 @@ ids.
 
 ### Credentials
 
-The job **CD: release commit, tag and master** pushes the tag and `master` over SSH with the deploy
-key; its `GITHUB_TOKEN` only reads. GitHub refuses that token a push of a commit that changes
+The job **CD: master** pushes the tag and `master` over SSH with the deploy key; its
+`GITHUB_TOKEN` only reads. GitHub refuses that token a push of a commit that changes
 `.github/workflows`, which a release commit does whenever `develop` changed a workflow since the
-previous release; the deploy key has no such limit. No workflow here runs on a push, so neither
-push starts another run. The Release workflow opens no pull requests, so **Settings → Actions →
+previous release; the deploy key has no such limit. The key is never in a job that runs the
+repository's code: the tests run in **CD: release commit and tag**, which has no credentials, and
+**CD: master** checks what that job hands it before it pushes, so even code that went wrong in the
+tests could not take the key or put anything but a release commit on `master`. No workflow here
+runs on a push, so neither push starts another run. The Release workflow opens no pull requests, so **Settings → Actions →
 General → Workflow permissions → Allow GitHub Actions to create and approve pull requests** can
 stay off.
 

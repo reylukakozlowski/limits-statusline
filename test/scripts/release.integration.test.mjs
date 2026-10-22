@@ -1,6 +1,7 @@
-// The release command against real git: a clone on develop and a bare origin it pushes to, with
-// master at the last release made the old way (v0.1.0 on develop's own commit). `npm test` is
-// stubbed; the unit tests cover what happens when it fails.
+// The release command against real git: a clone on develop and a bare origin, with master at the
+// last release made the old way (v0.1.0 on develop's own commit). The command pushes nothing;
+// `publish` stands for the Release workflow's master job, whose checks run against real git in
+// release-workflow.test.mjs. `npm test` is stubbed; the unit tests cover what happens when it fails.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -73,63 +74,70 @@ const release = (repo, argv) => {
   return { code, out: out.join(''), text: [...out, ...err].join('') };
 };
 
+/** What the Release workflow's master job does once its checks pass: the tag, then master. */
+const publish = (repo, tag) => {
+  git(repo.clone, 'push', '--quiet', 'origin', `refs/tags/${tag}`, `${tag}^{commit}:refs/heads/master`);
+  git(repo.clone, 'fetch', '--quiet', 'origin');
+};
+
 /** Every ref at origin, as `<sha> <ref>` lines. */
 const originRefs = (repo) => git(repo.origin, 'for-each-ref', '--format=%(objectname) %(refname)');
 
-test('a release is one commit on master: develop\'s files with plugin.json at the version, tagged and pushed', (t) => {
+test('a release is one commit on master\'s head: develop\'s files with plugin.json at the version, tagged, nothing pushed', (t) => {
   const repo = repository(t);
-  const develop = git(repo.origin, 'rev-parse', 'develop');
-  const master = git(repo.origin, 'rev-parse', 'master');
-  const result = release(repo, ['patch', '--push']);
+  const develop = git(repo.clone, 'rev-parse', 'develop');
+  const refs = originRefs(repo);
+  const result = release(repo, ['patch']);
   assert.equal(result.code, 0, result.text);
   assert.equal(result.out, 'v0.1.1\n');
 
-  const tagged = git(repo.origin, 'rev-parse', 'v0.1.1^{commit}');
-  assert.equal(git(repo.origin, 'rev-parse', 'master'), tagged);
-  assert.equal(git(repo.origin, 'rev-parse', `${tagged}^`), master, 'the previous release is its parent: master moves forward');
-  assert.equal(git(repo.origin, 'cat-file', '-t', 'v0.1.1'), 'tag');
+  const tagged = git(repo.clone, 'rev-parse', 'v0.1.1^{commit}');
+  assert.equal(git(repo.clone, 'rev-parse', `${tagged}^`), git(repo.clone, 'rev-parse', 'origin/master'), 'master\'s head is its parent');
+  assert.equal(git(repo.clone, 'cat-file', '-t', 'v0.1.1'), 'tag');
   // Its files are develop's, the manifest alone carrying the version.
-  assert.equal(git(repo.origin, 'diff', '--name-only', develop, tagged), '.claude-plugin/plugin.json');
-  assert.equal(JSON.parse(git(repo.origin, 'show', `${tagged}:.claude-plugin/plugin.json`)).version, '0.1.1');
+  assert.equal(git(repo.clone, 'diff', '--name-only', develop, tagged), '.claude-plugin/plugin.json');
+  assert.equal(JSON.parse(git(repo.clone, 'show', `${tagged}:.claude-plugin/plugin.json`)).version, '0.1.1');
   // The message and the tag list develop's commits since the last release; the message names develop's head.
-  assert.equal(git(repo.origin, 'log', '-1', '--format=%s', tagged), 'Release v0.1.1');
-  assert.match(git(repo.origin, 'log', '-1', '--format=%B', tagged), new RegExp(`- LS-2_feat: second\\n- LS-3_fix: third\\n\\nSource: develop@${develop}`));
-  assert.equal(git(repo.origin, 'tag', '--list', '--format=%(contents:body)', 'v0.1.1'), '- LS-2_feat: second\n- LS-3_fix: third');
-  // develop is untouched, and so is the clone.
-  assert.equal(git(repo.origin, 'rev-parse', 'develop'), develop);
+  assert.equal(git(repo.clone, 'log', '-1', '--format=%s', tagged), 'Release v0.1.1');
+  assert.match(git(repo.clone, 'log', '-1', '--format=%B', tagged), new RegExp(`- LS-2_feat: second\\n- LS-3_fix: third\\n\\nSource: develop@${develop}`));
+  assert.equal(git(repo.clone, 'tag', '--list', '--format=%(contents:body)', 'v0.1.1'), '- LS-2_feat: second\n- LS-3_fix: third');
+  // develop, the clone's files and origin are untouched.
+  assert.equal(git(repo.clone, 'rev-parse', 'develop'), develop);
   assert.equal(git(repo.clone, 'status', '--porcelain'), '');
   assert.equal(readFileSync(join(repo.clone, MANIFEST), 'utf8'), DEVELOP_MANIFEST);
+  assert.equal(originRefs(repo), refs);
 });
 
 test('the next release lists only what develop gained since the last one, read from its commit', (t) => {
   const repo = repository(t);
-  assert.equal(release(repo, ['patch', '--push']).code, 0);
+  assert.equal(release(repo, ['patch']).code, 0);
+  publish(repo, 'v0.1.1');
   commit(repo.clone, 'c.txt', 'LS-4_feat: fourth');
   git(repo.clone, 'push', '--quiet', 'origin', 'develop');
   git(repo.clone, 'fetch', '--quiet', 'origin');
 
-  const result = release(repo, ['minor', '--push']);
+  const result = release(repo, ['minor']);
   assert.equal(result.code, 0, result.text);
   assert.equal(result.out, 'v0.2.0\n');
-  assert.equal(git(repo.origin, 'tag', '--list', '--format=%(contents:body)', 'v0.2.0'), '- LS-4_feat: fourth');
+  assert.equal(git(repo.clone, 'tag', '--list', '--format=%(contents:body)', 'v0.2.0'), '- LS-4_feat: fourth');
+  publish(repo, 'v0.2.0');
   assert.equal(git(repo.origin, 'rev-parse', 'master^'), git(repo.origin, 'rev-parse', 'v0.1.1^{commit}'));
   assert.equal(git(repo.origin, 'rev-list', '--count', 'master'), '3', 'master: v0.1.0, v0.1.1, v0.2.0, one after another');
 });
 
 test('running the release again on the same develop head finishes that release: no new tag', (t) => {
   const repo = repository(t);
-  assert.equal(release(repo, ['patch', '--push']).code, 0);
-  git(repo.clone, 'fetch', '--quiet', 'origin');
-  const refs = originRefs(repo);
+  assert.equal(release(repo, ['patch']).code, 0);
+  publish(repo, 'v0.1.1');
 
-  const again = release(repo, ['patch', '--push']);
+  const again = release(repo, ['patch']);
   assert.equal(again.code, 0, again.text);
   assert.equal(again.out, 'v0.1.1\n');
-  assert.match(again.text, /finishing v0\.1\.1/);
-  assert.equal(originRefs(repo), refs);
+  assert.match(again.text, /finishing v0\.1\.1 .*: develop has nothing new since it/);
+  assert.equal(git(repo.clone, 'tag', '--list'), 'v0.1.0\nv0.1.1');
 });
 
-test('a release whose master push failed is finished first even after develop moved on, so master skips no version', (t) => {
+test('a release master never got is finished first, even after develop moved on, so master skips no version', (t) => {
   const repo = repository(t);
   assert.equal(release(repo, ['patch']).code, 0);
   git(repo.clone, 'push', '--quiet', 'origin', 'refs/tags/v0.1.1');
@@ -137,52 +145,37 @@ test('a release whose master push failed is finished first even after develop mo
   git(repo.clone, 'push', '--quiet', 'origin', 'develop');
   git(repo.clone, 'fetch', '--quiet', 'origin');
 
-  const finished = release(repo, ['patch', '--push']);
+  const finished = release(repo, ['patch']);
   assert.equal(finished.code, 0, finished.text);
   assert.equal(finished.out, 'v0.1.1\n');
-  assert.match(finished.text, /master lacks it/);
-  assert.equal(git(repo.origin, 'rev-parse', 'master'), git(repo.origin, 'rev-parse', 'v0.1.1^{commit}'));
+  assert.match(finished.text, /finishing v0\.1\.1 .*: master lacks it/);
+  publish(repo, 'v0.1.1');
 
-  git(repo.clone, 'fetch', '--quiet', 'origin');
-  const next = release(repo, ['patch', '--push']);
+  const next = release(repo, ['patch']);
   assert.equal(next.code, 0, next.text);
   assert.equal(next.out, 'v0.1.2\n');
-  assert.equal(git(repo.origin, 'tag', '--list', '--format=%(contents:body)', 'v0.1.2'), '- LS-4_feat: fourth');
+  assert.equal(git(repo.clone, 'tag', '--list', '--format=%(contents:body)', 'v0.1.2'), '- LS-4_feat: fourth');
+  publish(repo, 'v0.1.2');
   assert.equal(git(repo.origin, 'rev-list', '--count', 'master'), '3', 'master: v0.1.0, v0.1.1, v0.1.2');
 });
 
-test('a release whose master push failed is finished by the next run, which moves master to the tag', (t) => {
-  const repo = repository(t);
-  const local = release(repo, ['patch']);
-  assert.equal(local.code, 0, local.text);
-  git(repo.clone, 'push', '--quiet', 'origin', 'refs/tags/v0.1.1');
-  const master = git(repo.origin, 'rev-parse', 'master');
-
-  const finished = release(repo, ['patch', '--push']);
-  assert.equal(finished.code, 0, finished.text);
-  assert.equal(git(repo.origin, 'rev-parse', 'master'), git(repo.origin, 'rev-parse', 'v0.1.1^{commit}'));
-  assert.equal(git(repo.origin, 'rev-parse', 'master^'), master);
-});
-
-test('the first release of a repository without master makes master with the release commit', (t) => {
+test('the first release of a repository without master is a commit of its own', (t) => {
   const repo = repository(t, { withMaster: false });
-  const result = release(repo, ['minor', '--push']);
+  const result = release(repo, ['minor']);
   assert.equal(result.code, 0, result.text);
-  const tagged = git(repo.origin, 'rev-parse', 'v0.2.0^{commit}');
-  assert.equal(git(repo.origin, 'rev-parse', 'master'), tagged);
-  assert.equal(git(repo.origin, 'rev-list', '--count', 'master'), '1');
+  assert.equal(git(repo.clone, 'rev-list', '--count', 'v0.2.0^{commit}'), '1');
 });
 
 test('a release off develop or with uncommitted changes stops before anything is written', (t) => {
   const repo = repository(t);
   const refs = originRefs(repo);
   writeFileSync(join(repo.clone, 'a.txt'), 'changed\n');
-  const dirty = release(repo, ['patch', '--push']);
+  const dirty = release(repo, ['patch']);
   assert.equal(dirty.code, 2);
   assert.match(dirty.text, /uncommitted changes/);
   git(repo.clone, 'checkout', '--quiet', '--', 'a.txt');
   git(repo.clone, 'switch', '--quiet', '-c', 'feature/x');
-  const offDevelop = release(repo, ['patch', '--push']);
+  const offDevelop = release(repo, ['patch']);
   assert.equal(offDevelop.code, 2);
   assert.match(offDevelop.text, /cut from develop, not feature\/x/);
   assert.equal(git(repo.clone, 'tag', '--list'), 'v0.1.0');
@@ -193,7 +186,7 @@ test('a dry run leaves the clone and origin as they were', (t) => {
   const repo = repository(t);
   const refs = originRefs(repo);
   const tags = git(repo.clone, 'tag', '--list');
-  const result = release(repo, ['major', '--dry-run', '--push']);
+  const result = release(repo, ['major', '--dry-run']);
   assert.equal(result.code, 0, result.text);
   assert.equal(result.out, '');
   assert.match(result.text, /0\.1\.0 → 1\.0\.0/);

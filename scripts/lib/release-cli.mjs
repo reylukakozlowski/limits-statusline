@@ -1,13 +1,15 @@
-// npm run release -- <patch|minor|major> [--push] [--dry-run]
+// npm run release -- <patch|minor|major> [--dry-run]
 // A release is a commit on master and its tag. The release commit carries develop's files as they
 // are at its head, with .claude-plugin/plugin.json given the release's version, and its parent is
 // master's head, the previous release, so master moves forward by one commit and stays linear.
 // develop carries no version: the version is the release's, counted from the last vX.Y.Z tag by
 // the part the owner picked. The commit's message lists the subjects of develop's commits since
 // the previous release and ends with the develop commit it was made from; the annotated tag vX.Y.Z
-// on it holds the same notes. --push pushes the tag, then master. A latest release that master
-// lacks, or that was made from develop's head, is finished instead of cutting a new one: its tag
-// is printed, and --push pushes the tag and master again where origin lacks them.
+// on it holds the same notes. Both stay in this clone and nothing is pushed: the Release
+// workflow's master job checks that the commit is develop's files with the version alone and
+// pushes it with the deploy key, the one key that may move master. A latest release that master
+// lacks, or that was made from develop's head, is the one to finish: its tag is printed and no new
+// one is cut.
 // --dry-run runs the same checks and the tests and writes nothing.
 // stdout holds the tag and nothing else, for the workflow; every report goes to stderr.
 // Exit codes: 0 done (or dry run), 1 usage error, 2 refused or failed.
@@ -19,7 +21,7 @@ const BASE_BRANCH = 'develop';
 const VERSION_TAGS = 'v*.*.*';
 const MANIFEST_PATH = '.claude-plugin/plugin.json';
 const MASTER = 'refs/remotes/origin/master';
-const USAGE = 'Usage: npm run release -- <patch|minor|major> [--push] [--dry-run]';
+const USAGE = 'Usage: npm run release -- <patch|minor|major> [--dry-run]';
 
 /**
  * @typedef {(command: string, args: string[], options?: { inherit?: boolean }) => { status: number, stdout: string }} Exec
@@ -75,16 +77,16 @@ export function runRelease({ argv, exec, readManifest, writeManifest, stdout, st
 function parseOptions(argv) {
   const { values, positionals } = parseArgs({
     args: argv,
-    options: { push: { type: 'boolean', default: false }, 'dry-run': { type: 'boolean', default: false } },
+    options: { 'dry-run': { type: 'boolean', default: false } },
     allowPositionals: true,
     strict: true,
   });
   if (positionals.length !== 1 || !BUMPS.includes(positionals[0])) throw new Error(`give the part to raise: ${BUMPS.join(', ')}`);
-  return { bump: positionals[0], shouldPush: values.push, isDryRun: values['dry-run'] };
+  return { bump: positionals[0], isDryRun: values['dry-run'] };
 }
 
 /** @returns {string | null} the release's tag, or null after a dry run */
-function release({ bump, shouldPush, isDryRun, exec, readManifest, writeManifest, say }) {
+function release({ bump, isDryRun, exec, readManifest, writeManifest, say }) {
   const git = gitRunner(exec);
   const plan = planRelease({ bump, exec, git });
 
@@ -94,26 +96,19 @@ function release({ bump, shouldPush, isDryRun, exec, readManifest, writeManifest
     say(plan.isFinishing
       ? `release (dry run): the run would finish ${plan.tag} instead of cutting a new release: ${plan.reason}.`
       : `release (dry run): ${plan.current} → ${plan.version}, a release commit on master${plan.master ? '' : ' (its first)'} `
-        + `with develop's files at ${plan.head.slice(0, 7)} and plugin.json at ${plan.version}, tag ${plan.tag}`
-        + `${shouldPush ? ', both pushed to origin' : ''}.`);
+        + `with develop's files at ${plan.head.slice(0, 7)} and plugin.json at ${plan.version}, tag ${plan.tag}.`);
     if (plan.notes) say(plan.notes);
     return null;
   }
 
-  let commit = plan.commit;
   if (plan.isFinishing) {
     say(`release: finishing ${plan.tag} instead of cutting a new release: ${plan.reason}.`);
   } else {
-    commit = commitRelease({ plan, git, readManifest, writeManifest });
+    const commit = commitRelease({ plan, git, readManifest, writeManifest });
     git('tag', '-a', plan.tag, commit, '-m', plan.tag, '-m', plan.notes);
     say(`release: ${plan.tag} is ${commit.slice(0, 7)}, develop at ${plan.head.slice(0, 7)} with plugin.json at ${plan.version}.`);
   }
-  if (!shouldPush) {
-    say(`release: the Release workflow pushes ${plan.tag} and moves master to it with the deploy key; only that key may move master.`);
-    return plan.tag;
-  }
-  push(exec, `refs/tags/${plan.tag}`, `origin refused ${plan.tag}; the tag exists only in this clone.`);
-  push(exec, `${commit}:refs/heads/master`, `origin refused to move master to ${plan.tag}; the tag is pushed, and the next run of the Release workflow finishes it.`);
+  say(`release: the Release workflow checks ${plan.tag} and pushes it and master with the deploy key; only that key may move master.`);
   return plan.tag;
 }
 
@@ -136,10 +131,6 @@ function commitRelease({ plan, git, readManifest, writeManifest }) {
   return git('commit-tree', tree, ...parent, '-m', `Release ${plan.tag}`, '-m', plan.notes, '-m', sourceTrailer(plan.head)).trim();
 }
 
-function push(exec, refspec, refusal) {
-  if (exec('git', ['push', 'origin', refspec], { inherit: true }).status !== 0) throw new Refusal(refusal);
-}
-
 /** Reads the repository and works the release out, refusing before anything is written. */
 function planRelease({ bump, exec, git }) {
   const branch = git('rev-parse', '--abbrev-ref', 'HEAD').trim();
@@ -154,7 +145,7 @@ function planRelease({ bump, exec, git }) {
   // Up to v1.0.10 a release tagged develop's own commit; since then the release commit names it.
   const previousSource = previousCommit ? releaseSource(git('log', '-1', '--format=%B', previousCommit)) ?? previousCommit : null;
   const unfinished = unfinishedReason({ exec, previousCommit, previousSource, head, master });
-  if (unfinished) return { isFinishing: true, tag: `v${previous}`, commit: previousCommit, reason: unfinished };
+  if (unfinished) return { isFinishing: true, tag: `v${previous}`, reason: unfinished };
 
   const current = previous ?? '0.0.0';
   const version = toRefusal(() => nextVersion(previous, bump));
