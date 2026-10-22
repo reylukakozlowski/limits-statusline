@@ -111,7 +111,13 @@ hold below.
   and the README's sample of a session cost (a dollar sign before digits), read as a command. The plugin reads no
   credential and sends nothing anywhere. The finding allows unrelated parts to stay for a reviewer
   to confirm, and these stay: the counts are the model's tokens, and the sample is what the status
-  line prints.
+  line prints. The owner then chose to drop the README's sample (LS-56; the banner shows the same
+  lines) and to write the banner source's dollar sign as `&dollar;` (LS-57; drawn the same).
+  **Validate** on the branch of pull request #40 at LS-57 (2026-10-22) named the next pair:
+  `formatTokens` again, and `scripts/lib/release-preflight.mjs`, which asks GitHub's API through
+  `gh` for the Release workflow. That pair stays too: "token" is in the model's own field names
+  across `src`, and the release tooling has to reach GitHub. The tests and fixtures that check the
+  printed cost keep it as printed.
 
 Two warnings stay by design, both marked "No action needed" for the listing fields:
 
