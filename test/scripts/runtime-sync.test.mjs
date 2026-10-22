@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
-  SETUP_MARKER, runtimeFingerprint, runtimeMainPath, syncFromHookEnv, syncRuntime,
+  SETUP_MARKER, runtimeFingerprint, runtimeMainPath, syncFromHook, syncRuntime,
 } from '../../scripts/lib/runtime-sync.mjs';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
@@ -102,12 +102,27 @@ test('syncRuntime puts the old runtime back when the new one cannot be moved in'
   assert.deepEqual(fs.readdirSync(data).sort(), ['runtime']);
 });
 
-test('syncFromHookEnv does nothing until setup has run, then repairs a missing runtime', (t) => {
+test('syncFromHook does nothing until setup has run, then repairs a missing runtime', (t) => {
   const data = tempDir(t);
-  assert.equal(syncFromHookEnv({}), null);
-  assert.equal(syncFromHookEnv({ CLAUDE_PLUGIN_ROOT: ROOT, CLAUDE_PLUGIN_DATA: data }), null);
+  assert.equal(syncFromHook({ pluginRoot: ROOT, dataDir: data }), null);
   assert.equal(existsSync(join(data, 'runtime')), false);
   writeFileSync(join(data, SETUP_MARKER), '{}');
-  assert.deepEqual(syncFromHookEnv({ CLAUDE_PLUGIN_ROOT: ROOT, CLAUDE_PLUGIN_DATA: data }), { copied: true });
+  assert.deepEqual(syncFromHook({ pluginRoot: ROOT, dataDir: data }), { copied: true });
   assert.ok(existsSync(runtimeMainPath(data)));
+});
+
+test('syncFromHook does nothing without the plugin folder or the data folder, and writes nothing', (t) => {
+  const data = tempDir(t);
+  writeFileSync(join(data, SETUP_MARKER), '{}');
+  for (const folders of [{}, { pluginRoot: ROOT }, { dataDir: data }, { pluginRoot: '', dataDir: data }, { pluginRoot: ROOT, dataDir: '' }]) {
+    assert.equal(syncFromHook(folders), null, JSON.stringify(folders));
+  }
+  assert.equal(existsSync(join(data, 'runtime')), false);
+});
+
+// The hook hands on the two variables Claude Code sets for it, never the whole environment.
+test('the SessionStart script reads only CLAUDE_PLUGIN_ROOT and CLAUDE_PLUGIN_DATA', () => {
+  const script = readFileSync(join(ROOT, 'scripts', 'sync-runtime.mjs'), 'utf8');
+  assert.deepEqual([...script.matchAll(/process\.env(\.\w+)?/g)].map((match) => match[0]).sort(),
+    ['process.env.CLAUDE_PLUGIN_DATA', 'process.env.CLAUDE_PLUGIN_ROOT']);
 });

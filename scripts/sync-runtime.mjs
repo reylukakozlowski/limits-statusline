@@ -3,10 +3,11 @@
 // The command in hooks/hooks.json ends with `; exit 0` (read the same by sh, Git Bash and
 // PowerShell), so a computer without Node.js, where this file cannot run, starts sessions without
 // a hook error too.
-import { syncFromHookEnv } from './lib/runtime-sync.mjs';
+import { syncFromHook } from './lib/runtime-sync.mjs';
 
 try {
-  syncFromHookEnv(process.env);
+  // The two variables Claude Code sets for a plugin's hook, and nothing else from the environment.
+  syncFromHook({ pluginRoot: process.env.CLAUDE_PLUGIN_ROOT, dataDir: process.env.CLAUDE_PLUGIN_DATA });
 } catch {
   // The previous runtime keeps working; the next session start tries again.
 }

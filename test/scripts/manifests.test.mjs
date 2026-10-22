@@ -1,5 +1,5 @@
-// The repository's own contract: identity, no pinned version, and Anthropic directory requirements
-// (https://claude.com/docs/plugins/pre-submission-checklist).
+// The repository's own contract: identity, the one version in plugin.json, and Anthropic directory
+// requirements (the pre-submission checklist, linked in docs/directory-submission.md).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -132,8 +132,8 @@ test('the description says the plugin is for Claude Code (chat and Cowork have n
 });
 
 // What the directory, /plugin and search results show. Anthropic names the plan limits "a
-// five-hour session limit" and "a weekly limit" (support.claude.com/en/articles/11145838), and so
-// do people searching for them.
+// five-hour session limit" and "a weekly limit" (its help article on Pro and Max plans, linked in
+// CONTRIBUTING.md), and so do people searching for them.
 const LISTINGS = {
   'plugin.json': plugin.description,
   'marketplace.json': marketplace.plugins[0].description,
