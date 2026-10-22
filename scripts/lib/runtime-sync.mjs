@@ -100,11 +100,10 @@ function renamePatiently(rename, from, to) {
 /**
  * The SessionStart hook's job: after setup has run, keep the runtime current across plugin
  * updates and rebuild it if it went missing. Before setup there is nothing to keep.
- * @param {Record<string, string | undefined>} env
+ * @param {{ pluginRoot?: string, dataDir?: string }} folders the hook's CLAUDE_PLUGIN_ROOT and CLAUDE_PLUGIN_DATA
  * @returns {{ copied: boolean } | null}
  */
-export function syncFromHookEnv(env) {
-  const { CLAUDE_PLUGIN_ROOT: pluginRoot, CLAUDE_PLUGIN_DATA: dataDir } = env;
+export function syncFromHook({ pluginRoot, dataDir }) {
   if (!pluginRoot || !dataDir || !fs.existsSync(join(dataDir, SETUP_MARKER))) return null;
   return syncRuntime({ pluginRoot, dataDir });
 }

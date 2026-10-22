@@ -11,7 +11,7 @@ limits it shows the session's cost, runtime, prompt-cache hit ratio and how long
 warm, effort and lines changed, the project, git branch and model, and how full the context
 window is.
 
-```
+```text
 daily-claude | no git | ✦ Opus 5.5
     $20.33 · 5h40m · cache 99% 52m · xhigh · +156 -23
 ctx ■■■■■■■■■□□□□□□□ 54%  543k/1.0M  ⣀⡠⠔⠊
@@ -70,7 +70,7 @@ shell (2.1.292+). In the desktop app: click **+** next to the prompt box, then *
 
 A plugin cannot switch the status line on by itself, so run this once in Claude Code:
 
-```
+```text
 /limits-statusline:setup
 ```
 
