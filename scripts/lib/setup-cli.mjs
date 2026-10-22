@@ -26,12 +26,12 @@ class Refusal extends Error {}
 
 /**
  * @param {{
- *   argv: string[], pluginRoot: string, env?: Record<string, string | undefined>,
+ *   argv: string[], pluginRoot: string, env?: { CLAUDE_CONFIG_DIR?: string },
  *   stdout: { write(text: string): void }, stderr: { write(text: string): void },
  * }} io
  * @returns {number} exit code
  */
-export function runSetup({ argv, pluginRoot, env = process.env, stdout, stderr }) {
+export function runSetup({ argv, pluginRoot, env = {}, stdout, stderr }) {
   let options;
   try {
     options = parseOptions(argv, env);
