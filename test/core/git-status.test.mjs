@@ -5,8 +5,8 @@ import { GIT_STATUS_ARGS, parseGitStatus } from '../../src/core/git-status.mjs';
 const head = (name, oid = '0123456789abcdef0123456789abcdef01234567') =>
   `# branch.oid ${oid}\n# branch.head ${name}\n`;
 
-test('GIT_STATUS_ARGS asks for porcelain v2 with branch info and no untracked scan', () => {
-  assert.deepEqual(GIT_STATUS_ARGS, ['status', '--porcelain=v2', '--branch', '--untracked-files=no']);
+test('GIT_STATUS_ARGS takes no optional lock and asks for porcelain v2 with branch info and no untracked scan', () => {
+  assert.deepEqual(GIT_STATUS_ARGS, ['--no-optional-locks', 'status', '--porcelain=v2', '--branch', '--untracked-files=no']);
 });
 
 test('parseGitStatus reads a clean branch', () => {

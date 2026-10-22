@@ -14,8 +14,10 @@ test('probeGit asks git about the given folder and parses the answer', () => {
   };
   assert.deepEqual(probeGit('/repo', { spawn }), { isRepo: true, branch: 'develop', isDirty: false });
   assert.equal(calls[0].cmd, 'git');
-  assert.deepEqual(calls[0].args.slice(0, 2), ['-C', '/repo']);
+  assert.deepEqual(calls[0].args.slice(0, 3), ['-C', '/repo', '--no-optional-locks']);
   assert.equal(calls[0].options.timeout, 1000);
+  // The lock is an argument, so git gets the status line's environment as it is.
+  assert.equal(calls[0].options.env, undefined);
 });
 
 test('probeGit returns null when git is missing or times out, and when there is no folder', () => {

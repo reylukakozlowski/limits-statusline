@@ -35,7 +35,7 @@ there.
 |---|---|
 | Operating system | One that [Claude Code supports](https://code.claude.com/docs/en/setup#system-requirements): macOS 13+, Windows 10 1809+ or Linux. The automated tests run on macOS, Linux (Ubuntu) and Windows ([Tests workflow](.github/workflows/tests.yml)) |
 | Terminal status line | Claude Code with status line support and **Node.js 20+** on `PATH` (on macOS, for example, from [nodejs.org](https://nodejs.org/en/download), Homebrew or nvm) |
-| Branch in the header | `git` on `PATH`; on macOS it comes with the Xcode Command Line Tools (`xcode-select --install`). Without it the terminal line says `no git` |
+| Branch in the header | `git` 2.15 or later on `PATH`; on macOS it comes with the Xcode Command Line Tools (`xcode-select --install`). Without it the terminal line says `no git` |
 | Desktop band | Claude Code 2.1.290 or later (the desktop app updates its own copy); the monospaced face from 2.1.299. No Node.js needed |
 | Weekly (7-day) and 5-hour limits | A claude.ai Pro or Max subscription; the limits appear after the session's first response |
 | Prompt-cache ratio in the terminal | Exact with Claude Code 2.1.251+, estimated from the last request on older versions |
@@ -175,9 +175,10 @@ Its data folder is `~/.claude/plugins/data/limits-statusline-<source>/`: `-synce
 it from the directory, `-sealoop` when you added it from GitHub.
 
 - **Status line** (terminal): reads the JSON Claude Code passes on stdin, runs
-  `git status --porcelain=v2 --branch --untracked-files=no` in the working folder (with
-  `GIT_OPTIONAL_LOCKS=0`, so it never takes git's index lock), and keeps a small context history per
-  session, the fill percentages only, in the data folder's `history/` (pruned after 7 days).
+  `git --no-optional-locks status --porcelain=v2 --branch --untracked-files=no` in the working
+  folder (`--no-optional-locks`, so it never takes git's index lock), and keeps a small context
+  history per session, the fill percentages only, in the data folder's `history/` (pruned after 7
+  days).
 - **Plan limit history** (status line and desktop band alike): the 5-hour and 7-day percentages
   with their time and reset time, and each session's last figures, in
   `~/.claude/limits-statusline/limit-history.json`, kept for 1 hour (5-hour) and 48 hours
@@ -195,9 +196,10 @@ it from the directory, `-sealoop` when you added it from GitHub.
   cannot run and ends without an error, so sessions start as usual.
 - **Desktop band** (mod): draws the same lines above the prompt and redraws once a minute so the
   reset countdowns stay current. Every call it makes to Claude Code is in `src/desktop/band.mjs`.
-  - **The one program it runs, and why:** `git status --porcelain=v2 --branch --untracked-files=no`,
-    in the session's folder with `GIT_OPTIONAL_LOCKS=0` (so it never takes git's index lock) and a
-    1.5-second time limit, written out whole in the code, options included. It runs when the
+  - **The one program it runs, and why:**
+    `git --no-optional-locks status --porcelain=v2 --branch --untracked-files=no`, in the session's
+    folder (`--no-optional-locks`, so it never takes git's index lock) with a 1.5-second time
+    limit, written out whole in the code, options included. It runs when the
     session starts and each time Claude Code reports new session figures, to show the branch and,
     with `*`, whether tracked files have uncommitted changes. `git status` only reads the
     repository on your computer and contacts no remote. Nothing the band reads is passed to it:
