@@ -111,9 +111,15 @@ run.
    changes what Anthropic's directory holds for a reviewer: `npm test` fails until the README's
    Privacy section, `PRIVACY.md` and [the band's policy holds](docs/directory-submission.md#the-bands-policy-holds)
    describe it.
-2. Raise `version` in `.claude-plugin/plugin.json` in a pull request into `develop`, the last one
-   before the release or one of its own: the patch number for fixes, the minor for new features,
-   the major for a change users must act on. The release refuses a version that is not higher
+2. Raise `version` in `.claude-plugin/plugin.json`: open **Actions → Prepare release → Run
+   workflow** on `develop` and pick the part to raise, `patch` for fixes, `minor` for new
+   features, `major` for a change users must act on. The run counts the next version from the
+   last `vX.Y.Z` tag and opens a draft pull request into `develop`
+   (`LS-<n>_chore: plugin.json says X.Y.Z, …`) that changes that one line. Mark it ready, which
+   runs the tests, and merge it. It refuses when there is nothing new since the last tag, when
+   `plugin.json` already carries another raised version, and when a pull request for that version
+   is open; when `plugin.json` already says that version it does nothing. A pull request of your
+   own may raise the version by hand instead; the release refuses a version that is not higher
    than the last `vX.Y.Z` tag.
 3. On GitHub, open **Actions → Release → Run workflow** on `develop`. Tick **Dry run** to run only
    the job **CI** of step 5. The run is listed as `Release` or `Dry run`.
@@ -200,9 +206,12 @@ branch or a tag only at a commit whose `.github/workflows` match the head of the
 the tag sits on the head of `develop`, the default branch, which always does. The job
 **CD: master** pushes `master` over SSH with the deploy key, which has no such limit, so `master`
 catches up even when `develop` moved on with a workflow change. No workflow here runs on a push,
-so neither push starts another run. The workflow opens no pull requests, so
-**Settings → Actions → General → Allow GitHub Actions to create and approve pull requests** can
-stay off.
+so neither push starts another run. The Release workflow opens no pull requests. The **Prepare
+release** workflow does, with its own `GITHUB_TOKEN` (`contents` and `pull-requests` write), so
+**Settings → Actions → General → Workflow permissions → Allow GitHub Actions to create and approve
+pull requests** has to be ticked; nothing approves a pull request. A pull request that token opens
+starts no test run of its own, so it opens as a draft and the tests run when the owner marks it
+ready.
 
 ### Who can release
 
@@ -227,6 +236,11 @@ General) is **Require approval for all external contributors**: no outside pull 
 workflow before the owner approves it.
 
 ### From a computer
+
+`node scripts/prepare-release.mjs patch --dry-run` (or `minor`, `major`) shows the version and the
+branch the Prepare release workflow would make; without `--dry-run` it makes the branch and the
+commit in the clone, and with `--push` it also pushes them and opens the draft pull request with
+`gh`.
 
 `npm run release -- --dry-run` runs the same checks and the tests and prints the version and the
 notes. With `gh` signed in,

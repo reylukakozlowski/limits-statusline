@@ -11,16 +11,13 @@
 // Exit codes: 0 done (or dry run), 1 usage error, 2 refused or failed.
 
 import { parseArgs } from 'node:util';
+import { BASE_BRANCH, Refusal, VERSION_TAGS, gitRunner, lines, manifestVersion, toRefusal } from './release-common.mjs';
 import { latestVersion, releaseVersion, releaseNotes } from './release-lib.mjs';
 
-const BASE_BRANCH = 'develop';
-const VERSION_TAGS = 'v*.*.*';
 const USAGE = 'Usage: npm run release -- [--push] [--dry-run]';
 
-class Refusal extends Error {}
-
 /**
- * @typedef {(command: string, args: string[], options?: { inherit?: boolean }) => { status: number, stdout: string }} Exec
+ * @typedef {import('./release-common.mjs').Exec} Exec
  * @typedef {{ write(text: string): void }} Stream
  */
 
@@ -110,31 +107,4 @@ function planRelease({ exec, readManifest, git }) {
   const range = previous ? `v${previous}..HEAD` : 'HEAD';
   const notes = toRefusal(() => releaseNotes(lines(git('log', '--reverse', '--format=%s', range))));
   return { isFinishing: false, current, version, tag, notes };
-}
-
-const lines = (text) => text.split('\n').map((line) => line.trim()).filter(Boolean);
-
-/** The manifest's `version`, whatever it holds; releaseVersion judges it. */
-function manifestVersion(readManifest) {
-  let manifest;
-  try {
-    manifest = JSON.parse(readManifest());
-  } catch (error) {
-    throw new Refusal(`.claude-plugin/plugin.json cannot be read: ${error.message}`);
-  }
-  return manifest?.version;
-}
-
-const gitRunner = (exec) => (...args) => {
-  const result = exec('git', args, {});
-  if (result.status !== 0) throw new Refusal(`git ${args.join(' ')} failed (exit ${result.status}).`);
-  return result.stdout;
-};
-
-function toRefusal(compute) {
-  try {
-    return compute();
-  } catch (error) {
-    throw new Refusal(error.message);
-  }
 }

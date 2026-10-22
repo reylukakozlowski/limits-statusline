@@ -1,0 +1,67 @@
+# Prepare release: the owner picks the part of the version to raise (patch, minor or major), and
+# the run opens the pull request that raises .claude-plugin/plugin.json to the next version, counted
+# from the last vX.Y.Z tag. The version reaches develop through that pull request, as every change
+# does; the owner marks it ready, which runs the tests, merges it, and then runs the Release
+# workflow, which tags the version plugin.json carries.
+#
+# Started from Actions → Prepare release → Run workflow, on develop. GitHub checks the job's `if`
+# without a runner: a run by anyone but the repository owner, or on any branch but develop, is
+# skipped. The job commits as the repository's author on a branch of its own
+# (feature/lko/develop/LS-<n>_version-X.Y.Z), pushes it and opens a draft pull request into
+# develop with GITHUB_TOKEN. It never pushes develop, and it refuses when plugin.json already
+# carries another raised version or a branch for this version is open.
+#
+# GitHub lets GITHUB_TOKEN open the pull request only with Settings → Actions → General → Workflow
+# permissions → "Allow GitHub Actions to create and approve pull requests" ticked; nothing here
+# approves one.
+
+name: Prepare release
+run-name: ${{ format('Prepare {0} release', inputs.bump) }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Part of the version to raise
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+permissions: {}
+
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Open the version pull request
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
+      && github.actor_id == github.repository_owner_id
+      && github.triggering_actor == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the version reads every tag; the change number reads every commit and branch
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Commit as the repository's author
+        run: |
+          git config user.name 'Reywedian'
+          git config user.email '27358836+Reywedian@users.noreply.github.com'
+
+      # The input through the environment, never written into the script.
+      - name: Raise the version and open the pull request
+        env:
+          BUMP: ${{ inputs.bump }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/prepare-release.mjs "$BUMP" --push
