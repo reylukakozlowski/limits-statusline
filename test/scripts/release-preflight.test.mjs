@@ -12,21 +12,11 @@ const PRODUCTION = {
 const DEVELOP_ONLY = [{ id: 7, name: 'develop', type: 'branch' }];
 
 const ready = (overrides = {}) => ({
-  masterRules: STANDARD_RULES, environment: PRODUCTION, branchPolicies: DEVELOP_ONLY, masterBehindHead: true, ...overrides,
+  masterRules: STANDARD_RULES, environment: PRODUCTION, branchPolicies: DEVELOP_ONLY, ...overrides,
 });
 
-test('a repository set up to the production standard, with master behind develop\'s head, is ready', () => {
+test('a repository set up to the production standard is ready', () => {
   assert.deepEqual(preflightProblems(ready()), []);
-});
-
-test('the first release, before master exists, is ready too', () => {
-  assert.deepEqual(preflightProblems(ready({ masterBehindHead: null })), []);
-});
-
-test('a master with commits develop\'s head lacks stops the release before its tag', () => {
-  const [problem, ...rest] = preflightProblems(ready({ masterBehindHead: false }));
-  assert.deepEqual(rest, []);
-  assert.match(problem, /^master has commits that develop's head lacks/);
 });
 
 test('a rule besides the two rulesets, such as a required status check, would refuse the deploy key\'s push', () => {
@@ -61,8 +51,8 @@ test('production has to deploy from develop alone', () => {
   }
 });
 
-// One approval per release, the release environment's at the start: production needs no reviewer.
-test('production needs no reviewer of its own, and one set there changes nothing', () => {
+// One click per release and nothing to approve: production needs no reviewer.
+test('production needs no reviewer, and one set there changes nothing', () => {
   const reviewer = { type: 'required_reviewers', prevent_self_review: false, reviewers: [{ type: 'User', reviewer: { login: 'someone' } }] };
   for (const protection_rules of [undefined, [], [{ type: 'branch_policy' }], [reviewer, { type: 'branch_policy' }], [{ type: 'wait_timer', wait_timer: 5 }]]) {
     assert.deepEqual(preflightProblems(ready({ environment: { ...PRODUCTION, protection_rules } })), [], JSON.stringify(protection_rules));
@@ -70,13 +60,13 @@ test('production needs no reviewer of its own, and one set there changes nothing
 });
 
 test('every problem is reported at once', () => {
-  assert.equal(preflightProblems(ready({ masterBehindHead: false, masterRules: [], environment: null })).length, 3);
+  assert.equal(preflightProblems(ready({ masterRules: [], environment: null })).length, 2);
 });
 
 // --- runPreflight, against stand-ins for gh and git -----------------------------------------------
 
-/** gh answers from `responses` (path → JSON, or null for a 404); git from the two flags. */
-function fakeExec({ responses = {}, hasMaster = true, behind = true, ghFailure = null } = {}) {
+/** gh answers from `responses` (path → JSON, or null for a 404). */
+function fakeExec({ responses = {}, ghFailure = null } = {}) {
   const calls = [];
   const exec = (command, args) => {
     calls.push([command, ...args].join(' '));
@@ -87,8 +77,6 @@ function fakeExec({ responses = {}, hasMaster = true, behind = true, ghFailure =
         ? { status: 1, stdout: '', stderr: 'gh: Not Found (HTTP 404)\n' }
         : { status: 0, stdout: JSON.stringify(body), stderr: '' };
     }
-    if (args[0] === 'rev-parse') return { status: hasMaster ? 0 : 1, stdout: '', stderr: '' };
-    if (args[0] === 'merge-base') return { status: behind ? 0 : 1, stdout: '', stderr: '' };
     return { status: 64, stdout: '', stderr: 'unexpected' };
   };
   return { exec, calls };
@@ -106,34 +94,26 @@ const preflight = (fake, env = { GITHUB_REPOSITORY: REPO }) => {
   return { code, text: out.join('') };
 };
 
-test('runPreflight reads master\'s rules, production and the history, and passes a ready repository', () => {
+test('runPreflight reads master\'s rules and production, and passes a ready repository', () => {
   const fake = fakeExec({ responses: STANDARD_RESPONSES });
   const result = preflight(fake);
   assert.equal(result.code, 0, result.text);
-  assert.match(result.text, /master can move forward/);
+  assert.match(result.text, /can move master to the release commit/);
   assert.deepEqual(fake.calls, [
     `gh api repos/${REPO}/rules/branches/master?per_page=100`,
     `gh api repos/${REPO}/environments/production`,
     `gh api repos/${REPO}/environments/production/deployment-branch-policies?per_page=100`,
-    'git rev-parse --quiet --verify refs/remotes/origin/master',
-    'git merge-base --is-ancestor refs/remotes/origin/master HEAD',
   ]);
 });
 
 test('runPreflight prints each problem as a workflow error and exits 1', () => {
   const responses = { ...STANDARD_RESPONSES, [`repos/${REPO}/environments/production`]: null };
-  const fake = fakeExec({ responses, behind: false });
+  const fake = fakeExec({ responses });
   const result = preflight(fake);
   assert.equal(result.code, 1);
-  assert.equal(result.text.match(/^::error::/gm).length, 2, result.text);
+  assert.equal(result.text.match(/^::error::/gm).length, 1, result.text);
   assert.match(result.text, /nothing was tagged/);
   assert.ok(!fake.calls.some((call) => call.includes('deployment-branch-policies')), 'no branch policies without the environment');
-});
-
-test('runPreflight skips the history check while origin has no master', () => {
-  const fake = fakeExec({ responses: STANDARD_RESPONSES, hasMaster: false });
-  assert.equal(preflight(fake).code, 0);
-  assert.ok(!fake.calls.some((call) => call.startsWith('git merge-base')));
 });
 
 test('runPreflight exits 2 when GitHub cannot be read', () => {

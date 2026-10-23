@@ -98,63 +98,66 @@ gh repo edit reylukakozlowski/limits-statusline \
 
 ## Releasing
 
-The plugin has one version, `version` in `.claude-plugin/plugin.json` (`X.Y.Z`, SemVer). It
-reaches `develop` the way every change does, through a pull request, and a release tags it:
-`vX.Y.Z` on the head of `develop`. The release commits nothing and makes no release branch or pull
-request. Claude Code takes the version from `plugin.json` and keeps users on it until it changes,
-so each release raises it; the marketplace entry and `package.json` carry none, and a test keeps
-it so. Releases come from the **Release** workflow on GitHub, which only the repository owner can
-run.
+A release is a commit on `master` and its tag, made by one click. `develop` carries no version:
+the release commit carries the files of `develop` as they are at the run's commit, with `version`
+in `.claude-plugin/plugin.json` set to the release's (`X.Y.Z`, SemVer), and its parent is the
+previous release, so `master` moves forward by one commit per release and holds nothing else. The
+annotated tag `vX.Y.Z` names that commit. Claude Code takes the version from `plugin.json` and keeps
+users on it until it changes, so each release has a new one, counted from the newest `vX.Y.Z` tag;
+Anthropic's directory reads it from `master`. A test keeps `develop`'s `plugin.json`, the
+marketplace entry and `package.json` without a version. Releases come from the **Release** workflow
+on GitHub, which only the repository owner can run; it commits nothing to `develop` and makes no
+branch or pull request.
 
 1. Merge the changes into `develop` through pull requests, as usual. Run `npm run test:mod` first
    when the band changed: the workflow does not run it. A new hook or call on `$` in the band also
    changes what Anthropic's directory holds for a reviewer: `npm test` fails until the README's
    Privacy section, `PRIVACY.md` and [the band's policy holds](docs/directory-submission.md#the-bands-policy-holds)
    describe it.
-2. Raise `version` in `.claude-plugin/plugin.json` in a pull request into `develop`, the last one
-   before the release or one of its own: the patch number for fixes, the minor for new features,
-   the major for a change users must act on. The release refuses a version that is not higher
-   than the last `vX.Y.Z` tag.
-3. On GitHub, open **Actions → Release → Run workflow** on `develop`. Tick **Dry run** to run only
-   the job **CI** of step 5. The run is listed as `Release` or `Dry run`.
-4. Approve the run: every run, a dry run too, starts by waiting for the owner's approval of the
-   `release` environment, and nothing runs before it.
-5. The job **CI: tests and checks** runs in every run, a release too, and writes nothing:
+2. On GitHub, open **Actions → Release → Run workflow** on `develop` and press **Run workflow**.
+   That click is the whole release, and the run asks for nothing more. It raises the patch part
+   (`1.0.10` → `1.0.11`) unless you pick `minor` for new features or `major` for a change users
+   must act on. Tick **Dry run** to run only the job **CI** of step 3. The run is listed as
+   `Release patch`, `Dry run minor` and so on.
+3. The job **CI: tests and checks** runs in every run, a release too, and writes nothing:
    - **Run the tests**: `npm test`; the counts, with the name of each failed test, are on the
      run's summary page;
-   - **Dry run of the release**: the checks of `npm run release -- --dry-run` (a clean
-     `develop`, the version in `plugin.json` higher than the last tag, a tag not taken yet), and
-     the version and the notes in its log;
-   - **Check that the release can reach master** (`scripts/release-preflight.mjs`): `master`
-     behind the head of `develop`, its two rulesets and no other rule, and the `production`
-     environment deploying from `develop` alone. Whatever would stop the release after its tag
-     stops it here, before anything is written.
+   - **Dry run of the release**: the checks of `npm run release -- <part> --dry-run` (a clean
+     `develop`, commits since the last release, the next version, a tag not taken yet), and the
+     version and the notes in its log;
+   - **Check that the release can reach master** (`scripts/release-preflight.mjs`): `master`'s two
+     rulesets and no other rule, and the `production` environment deploying from `develop` alone.
+     Whatever would stop the release after its tag stops it here, before anything is written.
 
    A dry run ends here.
-6. Only when CI passed, the job **CD: tag** runs `npm test` once more, reads the version from
-   `plugin.json`, and tags the commit the run started from, the one CI checked, with an annotated
-   tag `vX.Y.Z` whose message lists the subjects of the commits since the previous tag. It pushes
-   the tag.
-7. The job **CD: master**, in the `production` environment, fast-forwards `master` to the tagged
-   commit with the repository's deploy key: `master` becomes exactly the tagged commit. Nothing
-   else can move `master` (see below). It asks for no second approval: the one of step 4 covers
-   the run. With the directory's push webhook set up, that push is what tells Anthropic's
-   directory about the release; without it the directory finds it at its next scheduled check
+4. Only when CI passed, the job **CD: release commit and tag**, which holds no credentials, runs
+   `npm test` once more on the commit CI checked, builds the release commit on `master`'s head,
+   and tags it with an annotated tag `vX.Y.Z` whose message, like the commit's, lists the subjects
+   of the `develop` commits since the previous release. It pushes nothing: the tag goes to the next
+   job as a git bundle.
+5. The job **CD: master**, in the `production` environment, holds the repository's deploy key and
+   runs none of the repository's code. It pushes the tag, then `master`, only when the tag is a
+   release commit: `develop`'s files at a commit `develop` holds, with the manifest's version line
+   added and nothing else changed, on `master`'s head. Anything else stops the run with nothing
+   pushed. Nothing else can move `master` (see below). With the directory's push webhook set up,
+   that push is what tells Anthropic's directory about the release; without it the directory finds
+   it at its next scheduled check
    ([docs/directory-submission.md](docs/directory-submission.md#after-the-listing)).
-8. The job **CD: GitHub release** creates the GitHub release from the tag's notes and marks it
+6. The job **CD: GitHub release** creates the GitHub release from the tag's notes and marks it
    Latest. Once GitHub shows the new release as the latest, it deletes the older releases: the
    repository keeps one release, and the `vX.Y.Z` tags of all versions stay as the history (a tag
    ruleset forbids deleting or moving them).
 
-A run that fails or is rejected part way is finished by running the workflow again: when the head
-of `develop` already carries a version tag, the run finishes that release (`master`, GitHub
-release) instead of cutting a new one, and skips what is done. **Re-run failed jobs** after a
-failed tag, `master` or GitHub release job asks for no approval again: CI
-already passed in that run.
+A run that fails part way is finished by the next run, or by **Re-run failed jobs**: when `master`
+lacks the latest tag, or the head of `develop` is the commit the latest release was made from (the
+release commit's message ends with it, `Source: develop@<sha>`), the run finishes that release
+(the pushes, the GitHub release) instead of cutting a new one, and skips what is done. So `master`
+skips no version, even when more was merged into `develop` in between.
 
 ### master
 
-Users get only releases. `master` is the production branch: Anthropic's directory follows it (see
+Users get only releases. `master` is the production branch and holds only release commits, one per
+release: `develop`'s files at that release and the version in `plugin.json`. Anthropic's directory follows it (see
 [docs/directory-submission.md](docs/directory-submission.md)), and the entry in the `sealoop`
 marketplace file, which is read from `develop`, fetches the plugin from it. Users get a new version
 with `claude plugin update limits-statusline@sealoop`, or by themselves when they turned auto-update
@@ -195,31 +198,34 @@ ids.
 
 ### Credentials
 
-The job **CD: tag** pushes the tag with its own `GITHUB_TOKEN`. GitHub lets that token point a
-branch or a tag only at a commit whose `.github/workflows` match the head of the default branch;
-the tag sits on the head of `develop`, the default branch, which always does. The job
-**CD: master** pushes `master` over SSH with the deploy key, which has no such limit, so `master`
-catches up even when `develop` moved on with a workflow change. No workflow here runs on a push,
-so neither push starts another run. The workflow opens no pull requests, so
-**Settings → Actions → General → Allow GitHub Actions to create and approve pull requests** can
+The job **CD: master** pushes the tag and `master` over SSH with the deploy key; its
+`GITHUB_TOKEN` only reads. GitHub refuses that token a push of a commit that changes
+`.github/workflows`, which a release commit does whenever `develop` changed a workflow since the
+previous release; the deploy key has no such limit. The key is never in a job that runs the
+repository's code: the tests run in **CD: release commit and tag**, which has no credentials, and
+**CD: master** checks what that job hands it before it pushes, so even code that went wrong in the
+tests could not take the key or put anything but a release commit on `master`. No workflow here
+runs on a push, so neither push starts another run. The Release workflow opens no pull requests, so **Settings → Actions →
+General → Workflow permissions → Allow GitHub Actions to create and approve pull requests** can
 stay off.
 
 ### Who can release
 
-GitHub skips every job, without a runner and without asking for approval, when anyone but the
-repository owner starts the run or when it runs on any branch but `develop`; only people with
-write access can start it at all. A release has one approval: the owner's, of the `release`
-environment, before CI. Nothing runs before it, and the tag and `master` follow only in a run the
-owner approved. The `production` environment accepts only `develop` and holds the deploy key; it
-asks for no approval of its own. Three things keep the key from any other job: the branch policy
+GitHub skips every job, without a runner, when anyone but the repository owner starts the run or
+when it runs on any branch but `develop`; only people with write access can start it at all. The
+owner's click is the release: the run asks for no approval. The `production` environment accepts
+only `develop` and holds the deploy key; it asks for no approval either. Three things keep the key
+from any other job: the branch policy
 (`develop` only); the owner-only guard on every job of the Release workflow; and the contract test
 that fails when another workflow names `production` or its key, which the Tests workflow runs on
 every pull request into `develop` once it is ready for review. Events that anyone can cause, such
 as an issue comment, run the workflows of `develop` with `develop` as their ref, so a workflow on
 such an event must never name `production`; a required reviewer on `production` would hold such a
-job as well, at the price of a second approval in every release. Keep both environments: GitHub
-creates a missing environment that a workflow names, without any protection rules. The workflow
-file has to stay on `develop`, the default branch, for **Run workflow** to appear.
+job as well, at the price of an approval in every release. Keep the `production` environment:
+GitHub creates a missing environment that a workflow names, without any protection rules (the
+check of step 3 stops a release before that). No workflow names the `release` environment any
+more; it can be deleted. The workflow file has to stay on `develop`, the default branch, for
+**Run workflow** to appear.
 
 So that no stranger runs workflows on the repository's runners, the setting
 **Approval for running fork pull request workflows from contributors** (Settings → Actions →
@@ -228,13 +234,13 @@ workflow before the owner approves it.
 
 ### From a computer
 
-`npm run release -- --dry-run` runs the same checks and the tests and prints the version and the
-notes. With `gh` signed in,
+`npm run release -- patch --dry-run` (or `minor`, `major`) runs the same checks and the tests and
+prints the next version and the notes. With `gh` signed in,
 `GITHUB_REPOSITORY=<owner>/<repo> node scripts/release-preflight.mjs` makes the Release
-workflow's check of the way to `master`. On an up-to-date, clean `develop`, `npm run release`
-tags its head in the clone with the version in `plugin.json` and prints the command that pushes
-the tag, and `npm run release -- --push` pushes it. A pushed tag is not a release yet: run the Release workflow on `develop`
-to finish it (`master`, GitHub release).
+workflow's check of the way to `master`. On an up-to-date, clean `develop`, `npm run release --
+patch` builds the release commit and its tag in the clone only, to look at; `develop` and the
+working tree stay as they were. Releases come from the workflow: only its deploy key can move
+`master`.
 
 `CHANGELOG.md` covers the versions up to 1.0.2; the first tagged release is `v0.1.1`, and `0.1.0`
 has a changelog entry but no tag.

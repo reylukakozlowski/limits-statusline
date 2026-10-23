@@ -1,11 +1,12 @@
 // The Release workflow's last check before it tags: once the tag is pushed, the run has to reach
 // master, so whatever would stop it there stops it here, before anything is written. It reads what
-// the job's token can read: master's rules, the environment production and the history. GitHub
-// shows the deploy key and the environment's secret to admins only, so those two are not checked.
-// production needs no reviewer: a release has one approval, the release environment's at the start.
+// the job's token can read: master's rules and the environment production. GitHub shows the deploy
+// key and the environment's secret to admins only, so those two are not checked. The release commit
+// is built on master's head, so master always moves forward to it. production needs no reviewer:
+// only the owner can start a release, and one click does it.
 //   node scripts/release-preflight.mjs   (GITHUB_REPOSITORY, GH_TOKEN)
 // Problems are printed as workflow errors on stdout.
-// Exit codes: 0 ready, 1 not ready, 2 GitHub or git could not be read.
+// Exit codes: 0 ready, 1 not ready, 2 GitHub could not be read.
 
 /** The rule types on master: the rulesets "master: release only" and "master: history", nothing else. */
 export const MASTER_RULES = Object.freeze(['creation', 'deletion', 'non_fast_forward', 'required_linear_history', 'update']);
@@ -17,15 +18,11 @@ class Unreadable extends Error {}
 
 /**
  * What would stop a release after its tag; [] when nothing would.
- * @param {{ masterRules: { type: string }[], environment: object | null, branchPolicies: { name: string, type?: string }[],
- *   masterBehindHead: boolean | null }} facts masterBehindHead is null while master does not exist yet
+ * @param {{ masterRules: { type: string }[], environment: object | null, branchPolicies: { name: string, type?: string }[] }} facts
  * @returns {string[]}
  */
-export function preflightProblems({ masterRules, environment, branchPolicies, masterBehindHead }) {
+export function preflightProblems({ masterRules, environment, branchPolicies }) {
   const problems = [];
-  if (masterBehindHead === false) {
-    problems.push("master has commits that develop's head lacks, so the release cannot move master forward to it.");
-  }
   const types = masterRules.map((rule) => rule.type).sort();
   if (types.join(' ') !== MASTER_RULES.join(' ')) {
     problems.push(`master's rules are [${types.join(', ')}], not [${MASTER_RULES.join(', ')}]: master takes the rulesets `
@@ -69,7 +66,7 @@ export function runPreflight({ env, exec, stdout }) {
     say('release preflight: the release would stop after its tag, so it stops here; nothing was tagged.');
     return 1;
   }
-  say("release preflight: master can move forward to develop's head through the environment production.");
+  say('release preflight: the deploy key of the environment production can move master to the release commit.');
   return 0;
 }
 
@@ -84,13 +81,5 @@ function readFacts(repo, exec) {
   const masterRules = api(`repos/${repo}/rules/branches/master?per_page=100`) ?? [];
   const environment = api(environmentPath);
   const branchPolicies = environment ? api(`${environmentPath}/deployment-branch-policies?per_page=100`)?.branch_policies ?? [] : [];
-  return { masterRules, environment, branchPolicies, masterBehindHead: masterBehindHead(exec) };
-}
-
-/** null while origin has no master; otherwise whether master is an ancestor of HEAD. */
-function masterBehindHead(exec) {
-  if (exec('git', ['rev-parse', '--quiet', '--verify', 'refs/remotes/origin/master']).status !== 0) return null;
-  const { status, stderr } = exec('git', ['merge-base', '--is-ancestor', 'refs/remotes/origin/master', 'HEAD']);
-  if (status > 1) throw new Unreadable(`git merge-base failed: ${stderr.trim() || `exit ${status}`}`);
-  return status === 0;
+  return { masterRules, environment, branchPolicies };
 }
