@@ -103,7 +103,7 @@ test('four jobs in a chain: CI, the release commit, master behind production, th
   assert.equal(WORKFLOW.match(/^\s+environment:/gm).length, 1, 'only the master job runs in an environment');
   assert.match(job('release'), /^ {4}needs: \[ci\]$/m);
   assert.match(job('promote'), /^ {4}needs: \[release\]$/m);
-  assert.match(job('publish'), /^ {4}needs: \[release, promote\]$/m);
+  assert.match(job('publish'), /^ {4}needs: \[promote\]$/m);
   // The graph on the run's page says which part is CI and which CD.
   const names = JOB_NAMES.map((name) => /^ {4}name: '(.+)'$/m.exec(job(name))?.[1]);
   assert.deepEqual(names, ['CI: tests and checks', 'CD: release commit and tag', 'CD: master', 'CD: GitHub release']);
@@ -169,9 +169,16 @@ test('the release step runs the release script with the part to raise and hands 
   // An assignment, not `echo "tag=$(...)"`: under bash -e a failing script then fails the step.
   assert.equal(script(release).trimEnd(), 'tag="$(node scripts/release.mjs "$BUMP")"\necho "tag=$tag" >> "$GITHUB_OUTPUT"');
   assert.match(job('release'), /^ {4}outputs:\n {6}tag: \$\{\{ steps\.release\.outputs\.tag \}\}\n/m);
-  for (const [jobName, stepName] of [['promote', PROMOTE_STEP], ['publish', NOTES_STEP], ['publish', CREATE_STEP], ['publish', KEEP_STEP]]) {
-    assert.match(step(jobName, stepName), /^ {10}TAG: \$\{\{ needs\.release\.outputs\.tag \}\}$/m, stepName);
+  assert.match(step('promote', PROMOTE_STEP), /^ {10}TAG: \$\{\{ needs\.release\.outputs\.tag \}\}$/m);
+});
+
+test('the GitHub release is made from the tag the master job checked and pushed, never from the release job\'s word', () => {
+  assert.match(step('promote', PROMOTE_STEP), /^ {8}id: promote$/m);
+  assert.match(job('promote'), /^ {4}outputs:\n {6}tag: \$\{\{ steps\.promote\.outputs\.tag \}\}\n/m);
+  for (const stepName of [NOTES_STEP, CREATE_STEP, KEEP_STEP]) {
+    assert.match(step('publish', stepName), /^ {10}TAG: \$\{\{ needs\.promote\.outputs\.tag \}\}$/m, stepName);
   }
+  assert.doesNotMatch(job('publish'), /needs\.release\./);
 });
 
 test('the release commit and its tag reach the master job as a git bundle, kept for a day', () => {
@@ -368,7 +375,10 @@ test('tests step: a run that printed no totals says so instead of empty counts',
 
 const MANIFEST = '.claude-plugin/plugin.json';
 const DEVELOP_MANIFEST = '{\n  "name": "demo",\n  "displayName": "Demo"\n}\n';
-const RELEASE_MANIFEST = '{\n  "name": "demo",\n  "version": "0.1.1",\n  "displayName": "Demo"\n}\n';
+const releaseManifest = (version) => `{\n  "name": "demo",\n  "version": "${version}",\n  "displayName": "Demo"\n}\n`;
+const RELEASE_MANIFEST = releaseManifest('0.1.1');
+// The release notes of develop's one commit after v0.1.0 in promoteRepository.
+const NOTES = '- LS-2_feat: second';
 
 const gitIn = (cwd, args, { input, env } = {}) => {
   const result = spawnSync('git', args, { cwd, input, encoding: 'utf8', env: { ...process.env, ...env } });
@@ -432,20 +442,28 @@ function buildRelease(repo) {
 }
 
 /**
- * A commit made by hand in the builder, tagged v0.1.1 and bundled. By default it is what the release
- * script makes; each test changes one thing about it.
+ * A commit made by hand in the builder, tagged and bundled. By default it is what the release script
+ * makes of develop's head as v0.1.1 (a lightweight tag when `annotation` is null); each test changes
+ * one thing about it.
  */
-function forgeRelease(repo, { files = { [MANIFEST]: RELEASE_MANIFEST }, parent = repo.master, message } = {}) {
+function forgeRelease(repo, {
+  tag = 'v0.1.1',
+  source = repo.head,
+  parent = repo.master,
+  files = { [MANIFEST]: releaseManifest(tag.slice(1)) },
+  message = `Release ${tag}\n\n${NOTES}\n\nSource: develop@${source}`,
+  annotation = `${tag}\n\n${NOTES}`,
+} = {}) {
   const env = { GIT_INDEX_FILE: join(repo.root, 'forge.index') };
-  gitIn(repo.builder, ['read-tree', 'HEAD'], { env });
+  gitIn(repo.builder, ['read-tree', source], { env });
   for (const [path, text] of Object.entries(files)) {
     const blob = gitIn(repo.builder, ['hash-object', '-w', '--stdin'], { input: text });
     gitIn(repo.builder, ['update-index', '--add', '--cacheinfo', `100644,${blob},${path}`], { env });
   }
   const tree = gitIn(repo.builder, ['write-tree'], { env });
-  const commit = gitIn(repo.builder, ['commit-tree', tree, ...(parent ? ['-p', parent] : []), '-m', message ?? `Release v0.1.1\n\nSource: develop@${repo.head}`]);
-  gitIn(repo.builder, ['tag', '-a', 'v0.1.1', commit, '-m', 'v0.1.1']);
-  bundle(repo, 'v0.1.1');
+  const commit = gitIn(repo.builder, ['commit-tree', tree, ...(parent ? ['-p', parent] : []), '-m', message]);
+  gitIn(repo.builder, ['tag', ...(annotation === null ? [] : ['-a', '-m', annotation]), tag, commit]);
+  bundle(repo, tag);
   return commit;
 }
 
@@ -453,12 +471,25 @@ let promoters = 0;
 
 /** The master job: a fresh clone of origin, as its checkout makes, then the check step in bash. */
 function promote(repo, tag) {
-  const promoter = join(repo.root, `promoter-${promoters += 1}`);
+  promoters += 1;
+  const promoter = join(repo.root, `promoter-${promoters}`);
+  const outputs = join(repo.root, `outputs-${promoters}`);
+  writeFileSync(outputs, '');
   gitIn(repo.root, ['clone', '--quiet', repo.origin, promoter]);
   const result = spawnSync('bash', ['-e', '-c', script(step('promote', PROMOTE_STEP))], {
-    cwd: promoter, encoding: 'utf8', env: { ...process.env, TAG: tag, RUNNER_TEMP: repo.runnerTemp },
+    cwd: promoter, encoding: 'utf8', env: { ...process.env, TAG: tag, RUNNER_TEMP: repo.runnerTemp, GITHUB_OUTPUT: outputs },
   });
-  return { status: result.status, output: `${result.stdout}${result.stderr}` };
+  return { status: result.status, output: `${result.stdout}${result.stderr}`, outputs: readFileSync(outputs, 'utf8') };
+}
+
+/** The next release made by the release job once master holds the last one and develop gained a commit. */
+function buildNextRelease(repo) {
+  writeFileSync(join(repo.builder, 'c.txt'), 'third\n');
+  gitIn(repo.builder, ['add', 'c.txt']);
+  gitIn(repo.builder, ['commit', '--quiet', '-m', 'LS-3_fix: third']);
+  gitIn(repo.builder, ['push', '--quiet', 'origin', 'develop']);
+  gitIn(repo.builder, ['fetch', '--quiet', 'origin']);
+  return buildRelease(repo);
 }
 
 const originRefs = (repo) => gitIn(repo.origin, ['for-each-ref', '--format=%(objectname) %(refname)']);
@@ -478,6 +509,19 @@ test('master job: the release script\'s commit moves master forward to it, the t
   assert.equal(gitIn(repo.origin, ['rev-parse', 'master']), released);
   assert.equal(gitIn(repo.origin, ['rev-parse', 'master^']), repo.master);
   assert.match(run.output, /master is at v0\.1\.1/);
+  assert.equal(run.outputs, 'tag=v0.1.1\n', 'the tag for the GitHub release');
+});
+
+test('master job: the next release is checked against the develop commit the last one names, and moves master on', { skip: NO_BASH }, (t) => {
+  const repo = promoteRepository(t);
+  assert.equal(promote(repo, buildRelease(repo)).status, 0);
+  const tag = buildNextRelease(repo);
+  assert.equal(gitIn(repo.builder, ['tag', '--list', '--format=%(contents:body)', tag]), '- LS-3_fix: third');
+  const run = promote(repo, tag);
+  assert.equal(run.status, 0, run.output);
+  assert.equal(run.outputs, 'tag=v0.1.2\n');
+  assert.equal(gitIn(repo.origin, ['rev-parse', 'master']), gitIn(repo.origin, ['rev-parse', 'v0.1.2^{commit}']));
+  assert.equal(gitIn(repo.origin, ['rev-parse', 'master^']), gitIn(repo.origin, ['rev-parse', 'v0.1.1^{commit}']));
 });
 
 test('master job: a run again once master holds the release pushes nothing', { skip: NO_BASH }, (t) => {
@@ -488,7 +532,24 @@ test('master job: a run again once master holds the release pushes nothing', { s
   const again = promote(repo, tag);
   assert.equal(again.status, 0, again.output);
   assert.match(again.output, /master already holds v0\.1\.1/);
+  assert.equal(again.outputs, 'tag=v0.1.1\n', 'the GitHub release is still made');
   assert.equal(originRefs(repo), refs);
+});
+
+test('master job: a release whose tag origin already has, but master lacks, is finished', { skip: NO_BASH }, (t) => {
+  const repo = promoteRepository(t);
+  const tag = buildRelease(repo);
+  gitIn(repo.builder, ['push', '--quiet', 'origin', `refs/tags/${tag}`]);
+  const run = promote(repo, tag);
+  assert.equal(run.status, 0, run.output);
+  assert.equal(gitIn(repo.origin, ['rev-parse', 'master']), gitIn(repo.origin, ['rev-parse', `${tag}^{commit}`]));
+});
+
+test('master job: a tag that is no release, such as v0.2.0-rc.1, is not a later release', { skip: NO_BASH }, (t) => {
+  const repo = promoteRepository(t);
+  gitIn(repo.builder, ['push', '--quiet', 'origin', `${repo.head}:refs/tags/v0.2.0-rc.1`]);
+  const run = promote(repo, buildRelease(repo));
+  assert.equal(run.status, 0, run.output);
 });
 
 test('master job: a hand-made commit that is exactly develop\'s files and the version passes the same check', { skip: NO_BASH }, (t) => {
@@ -507,18 +568,61 @@ const REFUSALS = [
   ['no parent at all', () => ({ parent: null }), /its parent is not master's head/],
   ['a message that names no develop commit', () => ({ message: 'Release v0.1.1' }), /its message names no develop commit/],
   ['a develop commit develop does not hold', () => ({ message: `Release v0.1.1\n\nSource: develop@${'1'.repeat(40)}` }), /develop does not hold 1{40}/],
+  ['a message whose notes are not develop\'s commits since the last release', (repo) => ({ message: `Release v0.1.1\n\n- LS-9_feat: invented\n\nSource: develop@${repo.head}` }), /its message is not/],
+  ['a message whose subject names another version', (repo) => ({ message: `Release v0.1.2\n\n${NOTES}\n\nSource: develop@${repo.head}` }), /its message is not/],
+  ['a tag without an annotation', () => ({ annotation: null }), /its tag is not annotated with the release notes/],
+  ['an annotation that is not the release notes', () => ({ annotation: 'v0.1.1\n\n- [Download the fix](https://example.com/fix)' }), /its tag is not annotated with the release notes/],
 ];
+
+/** The master job refused the tag: it says why, writes no output and pushes nothing. */
+function assertRefused(repo, run, tag, reason, refs) {
+  assert.equal(run.status, 1, run.output);
+  assert.ok(run.output.includes(`::error::${tag} is not a release commit of develop: `), run.output);
+  assert.match(run.output, reason);
+  assert.equal(run.outputs, '');
+  assert.equal(originRefs(repo), refs);
+}
 
 for (const [what, options, reason] of REFUSALS) {
   test(`master job: ${what} is refused and nothing is pushed`, { skip: NO_BASH }, (t) => {
     const repo = promoteRepository(t);
     forgeRelease(repo, options(repo));
     const refs = originRefs(repo);
-    const run = promote(repo, 'v0.1.1');
-    assert.equal(run.status, 1, run.output);
-    assert.match(run.output, /::error::v0\.1\.1 is not a release commit of develop: /);
-    assert.match(run.output, reason);
-    assert.equal(originRefs(repo), refs);
+    assertRefused(repo, promote(repo, 'v0.1.1'), 'v0.1.1', reason, refs);
+  });
+}
+
+test('master job: a tag named anything but vX.Y.Z is refused before it is fetched', { skip: NO_BASH }, (t) => {
+  const repo = promoteRepository(t);
+  const refs = originRefs(repo);
+  for (const tag of ['0.1.1', 'v0.1', 'v01.1.1', 'v0.1.1-rc.1', 'master']) {
+    assertRefused(repo, promote(repo, tag), tag, /its name is not vX\.Y\.Z/, refs);
+  }
+});
+
+test('master job: a release older than a version origin has tagged already is refused', { skip: NO_BASH }, (t) => {
+  const repo = promoteRepository(t);
+  gitIn(repo.builder, ['push', '--quiet', 'origin', `${repo.head}:refs/tags/v0.2.0`]);
+  forgeRelease(repo);
+  const refs = originRefs(repo);
+  assertRefused(repo, promote(repo, 'v0.1.1'), 'v0.1.1', /v0\.2\.0 is a later release/, refs);
+});
+
+// After v0.1.1, made from develop's head: a v0.1.2 made from the same or an older develop commit
+// would put files on master as old as the last release's, or older, under a new version.
+const STALE_SOURCES = [
+  ['the develop commit the last release was made from', (repo) => repo.head],
+  ['an older develop commit', (repo) => repo.master],
+];
+
+for (const [what, source] of STALE_SOURCES) {
+  test(`master job: a release made from ${what} is refused`, { skip: NO_BASH }, (t) => {
+    const repo = promoteRepository(t);
+    assert.equal(promote(repo, buildRelease(repo)).status, 0);
+    gitIn(repo.builder, ['fetch', '--quiet', 'origin']);
+    forgeRelease(repo, { tag: 'v0.1.2', source: source(repo), parent: gitIn(repo.origin, ['rev-parse', 'master']) });
+    const refs = originRefs(repo);
+    assertRefused(repo, promote(repo, 'v0.1.2'), 'v0.1.2', new RegExp(`it is not made from a develop commit after ${repo.head}, the one v0\\.1\\.1 was made from`), refs);
   });
 }
 
@@ -529,10 +633,8 @@ test('master job: a bundle whose tag differs from the one origin has is refused 
   buildRelease(repo);
   const refs = originRefs(repo);
   const run = promote(repo, 'v0.1.1');
-  assert.equal(run.status, 1, run.output);
   assert.match(run.output, /would clobber existing tag/);
-  assert.match(run.output, /::error::v0\.1\.1 is not a release commit of develop: the bundle lacks it, or origin has v0\.1\.1 on another commit/);
-  assert.equal(originRefs(repo), refs);
+  assertRefused(repo, run, 'v0.1.1', /the bundle lacks it, or origin has v0\.1\.1 on another commit/, refs);
 });
 
 // --- One release per repository, tags kept ----------------------------------------------------
