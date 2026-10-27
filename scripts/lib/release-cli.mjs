@@ -6,7 +6,8 @@
 // the part the owner picked. The commit's message lists the subjects of develop's commits since
 // the previous release and ends with the develop commit it was made from; the annotated tag vX.Y.Z
 // on it holds the same notes. Both stay in this clone and nothing is pushed: the Release
-// workflow's master job checks that the commit is develop's files with the version alone and
+// workflow's master job checks that the commit is exactly this one (develop's files, later than
+// the previous release's, with the version alone, and these notes) and
 // pushes it with the deploy key, the one key that may move master. A latest release that master
 // lacks, or that was made from develop's head, is the one to finish: its tag is printed and no new
 // one is cut.

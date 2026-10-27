@@ -19,13 +19,15 @@
 #      pushes nothing; the tag goes to the next job as a git bundle;
 #   3. promote (environment `production`, which deploys from develop only and holds the secret
 #      PRODUCTION_DEPLOY_KEY) runs none of the repository's code: it checks that the bundle's tag is
-#      a release commit (develop's files with the version line added, on master's head, naming a
-#      develop commit) and pushes the tag, then master, with that deploy key. master's rulesets let
+#      a release commit exactly as job 2 makes one (the highest vX.Y.Z tag; develop's files at a
+#      develop commit after the previous release's, with the version line added, on master's head;
+#      the subjects of develop's commits since that release in its message and its annotated tag)
+#      and pushes the tag, then master, with that deploy key. master's rulesets let
 #      only a deploy key create or move master and refuse a deletion, a force push or a merge
 #      commit, so master is exactly the latest release and only moves forward. The repository has
 #      one deploy key;
-#   4. publish: creates the GitHub release from the tag's notes, marks it Latest and deletes the
-#      older releases; their tags stay as the history.
+#   4. publish: creates the GitHub release from the notes of the tag job 3 checked and pushed,
+#      marks it Latest and deletes the older releases; their tags stay as the history.
 # A dry run is job 1 alone: it changes nothing and never enters `production`. When master lacks
 # the latest tag, or develop's head is the commit that release was made from, a run finishes that
 # release (the pushes, the GitHub release) instead of cutting a new one, so a failed run is finished
@@ -179,6 +181,8 @@ jobs:
     environment: production
     permissions:
       contents: read
+    outputs:
+      tag: ${{ steps.promote.outputs.tag }}
     steps:
       # The deploy key, with develop at the run's commit, master and the tags as origin has them.
       # This job runs none of the repository's code: only the check below and git.
@@ -193,39 +197,66 @@ jobs:
           path: ${{ runner.temp }}
 
       # The bundle comes from a job that ran the repository's code, so only a release commit leaves
-      # it: develop's files with the manifest's version line added (the line the release script
-      # writes after "name"), on master's head, naming a develop commit. A tag that origin already
+      # it, exactly as the release job makes one: the tag vX.Y.Z, the highest release tag, on
+      # develop's files at a develop commit after the one the previous release was made from, with
+      # the manifest's version line added (the line the release script writes after "name"), on
+      # master's head; its message and its annotated tag hold the subjects of develop's commits
+      # since that previous release, the notes the GitHub release shows. A tag that origin already
       # has under another commit is refused by the fetch. Anything else pushes nothing.
       - name: Check the release commit and push it and its tag
+        id: promote
         env:
           TAG: ${{ needs.release.outputs.tag }}
         run: |
           refuse() { echo "::error::$TAG is not a release commit of develop: $1. Nothing was pushed."; exit 1; }
+          release_tag='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          [[ "$TAG" =~ $release_tag ]] || refuse 'its name is not vX.Y.Z'
           git fetch "$RUNNER_TEMP/release.bundle" "refs/tags/$TAG:refs/tags/$TAG" \
             || refuse "the bundle lacks it, or origin has $TAG on another commit"
           sha="$(git rev-parse "$TAG^{commit}")"
           master="$(git rev-parse --quiet --verify refs/remotes/origin/master || true)"
           if [ "$sha" = "$master" ]; then
             echo "master already holds $TAG ($sha)."
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          manifest=.claude-plugin/plugin.json
-          version_line="  \"version\": \"${TAG#v}\","
-          source="$(git log -1 --format=%B "$sha" | sed -n 's/^Source: develop@\([0-9a-f]\{40\}\)$/\1/p')"
+          releases="$(git tag --list --sort=-version:refname | grep -E "$release_tag" || true)"
+          latest="$(echo "$releases" | head -n 1)"
+          [ "$latest" = "$TAG" ] || refuse "$latest is a later release"
+          previous="$(echo "$releases" | sed -n 2p)"
+          # The develop commit a release was made from; up to v1.0.10 a release was that commit.
+          source_of() { git log -1 --format=%B "$1" | sed -n 's/^Source: develop@\([0-9a-f]\{40\}\)$/\1/p'; }
+          source="$(source_of "$sha")"
           [ -n "$source" ] || refuse 'its message names no develop commit'
           git merge-base --is-ancestor "$source" refs/remotes/origin/develop || refuse "develop does not hold $source"
           [ "$(git rev-list --parents -n 1 "$sha" | cut -s -d ' ' -f 2-)" = "$master" ] || refuse "its parent is not master's head"
+          since=
+          if [ -n "$previous" ]; then
+            since="$(source_of "$previous")"
+            since="${since:-$(git rev-parse "$previous^{commit}")}"
+            [ "$source" != "$since" ] && git merge-base --is-ancestor "$since" "$source" \
+              || refuse "it is not made from a develop commit after $since, the one $previous was made from"
+          fi
+          manifest=.claude-plugin/plugin.json
+          version_line="  \"version\": \"${TAG#v}\","
           [ "$(git diff --name-only "$source" "$sha")" = "$manifest" ] || refuse "it changes more than $manifest"
           [ "$(git show "$sha:$manifest" | grep -cxF "$version_line")" = 1 ] || refuse "its $manifest lacks the line $version_line"
           [ "$(git show "$sha:$manifest" | grep -vxF "$version_line")" = "$(git show "$source:$manifest")" ] \
             || refuse "its $manifest changes more than the version"
+          notes="$(git log --reverse --format=%s "${since:+$since..}$source" \
+            | awk '{ gsub(/^[[:space:]]+|[[:space:]]+$/, "") } $0 != "" { print "- " $0 }')"
+          [ "$(git log -1 --format=%B "$sha")" = "$(printf 'Release %s\n\n%s\n\nSource: develop@%s' "$TAG" "$notes" "$source")" ] \
+            || refuse "its message is not \"Release $TAG\", the notes of develop's commits since ${previous:-the start} and its develop commit"
+          [ "$(git for-each-ref --format='%(objecttype) %(contents)' "refs/tags/$TAG")" = "$(printf 'tag %s\n\n%s' "$TAG" "$notes")" ] \
+            || refuse 'its tag is not annotated with the release notes'
           git push origin "refs/tags/$TAG"
           git push origin "$sha:refs/heads/master"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "master is at $TAG ($sha)."
 
   publish:
     name: 'CD: GitHub release'
-    needs: [release, promote]
+    needs: [promote]
     if: >-
       github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
       && github.actor_id == github.repository_owner_id
@@ -243,12 +274,12 @@ jobs:
 
       - name: Take the release notes from the tag
         env:
-          TAG: ${{ needs.release.outputs.tag }}
+          TAG: ${{ needs.promote.outputs.tag }}
         run: git tag --list --format='%(contents:body)' "$TAG" > "$RUNNER_TEMP/release-notes.md"
 
       - name: Create the GitHub release unless it exists
         env:
-          TAG: ${{ needs.release.outputs.tag }}
+          TAG: ${{ needs.promote.outputs.tag }}
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "$TAG" > /dev/null 2>&1; then
@@ -261,7 +292,7 @@ jobs:
       # Only after GitHub shows the new release as the latest, so a failed publish never leaves none.
       - name: Keep only the latest release, tags stay
         env:
-          TAG: ${{ needs.release.outputs.tag }}
+          TAG: ${{ needs.promote.outputs.tag }}
           GH_TOKEN: ${{ github.token }}
         run: |
           latest="$(gh release view --json tagName --jq .tagName)"
