@@ -137,16 +137,25 @@ branch or pull request.
    job as a git bundle.
 5. The job **CD: master**, in the `production` environment, holds the repository's deploy key and
    runs none of the repository's code. It pushes the tag, then `master`, only when the tag is a
-   release commit: `develop`'s files at a commit `develop` holds, with the manifest's version line
-   added and nothing else changed, on `master`'s head. Anything else stops the run with nothing
-   pushed. Nothing else can move `master` (see below). With the directory's push webhook set up,
-   that push is what tells Anthropic's directory about the release; without it the directory finds
-   it at its next scheduled check
+   release commit exactly as the previous job makes one:
+   - the tag is named `vX.Y.Z` and is the highest such tag, so no release goes out under a lower
+     version than one already tagged;
+   - the commit carries `develop`'s files at a commit `develop` holds, later than the one the
+     previous release was made from, so `master` never goes back to older files;
+   - the manifest's version line is added and nothing else is changed;
+   - the commit sits on `master`'s head;
+   - its message is `Release vX.Y.Z`, the subjects of `develop`'s commits since the previous
+     release and its `Source: develop@<sha>` line, and the tag is annotated with those subjects,
+     the notes the GitHub release shows.
+
+   Anything else stops the run with nothing pushed. Nothing else can move `master` (see below).
+   With the directory's push webhook set up, that push is what tells Anthropic's directory about
+   the release; without it the directory finds it at its next scheduled check
    ([docs/directory-submission.md](docs/directory-submission.md#after-the-listing)).
-6. The job **CD: GitHub release** creates the GitHub release from the tag's notes and marks it
-   Latest. Once GitHub shows the new release as the latest, it deletes the older releases: the
-   repository keeps one release, and the `vX.Y.Z` tags of all versions stay as the history (a tag
-   ruleset forbids deleting or moving them).
+6. The job **CD: GitHub release** creates the GitHub release from the notes of the tag that
+   **CD: master** checked and pushed, and marks it Latest. Once GitHub shows the new release as the
+   latest, it deletes the older releases: the repository keeps one release, and the `vX.Y.Z` tags
+   of all versions stay as the history (a tag ruleset forbids deleting or moving them).
 
 A run that fails part way is finished by the next run, or by **Re-run failed jobs**: when `master`
 lacks the latest tag, or the head of `develop` is the commit the latest release was made from (the
@@ -204,8 +213,9 @@ The job **CD: master** pushes the tag and `master` over SSH with the deploy key;
 previous release; the deploy key has no such limit. The key is never in a job that runs the
 repository's code: the tests run in **CD: release commit and tag**, which has no credentials, and
 **CD: master** checks what that job hands it before it pushes, so even code that went wrong in the
-tests could not take the key or put anything but a release commit on `master`. No workflow here
-runs on a push, so neither push starts another run. The Release workflow opens no pull requests, so **Settings → Actions →
+tests could not take the key or put anything but a release commit on `master`: not older files,
+not a lower version and no release notes of its own. No workflow here runs on a push, so neither
+push starts another run. The Release workflow opens no pull requests, so **Settings → Actions →
 General → Workflow permissions → Allow GitHub Actions to create and approve pull requests** can
 stay off.
 
