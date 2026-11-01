@@ -135,12 +135,20 @@ Without readings from before it, a new window has no pace in its first 15 minute
 any history yet the pace is the average since the window opened. A large drop within a window is
 taken as a limit reset given on claude.ai, and usage counts again from there.
 
+For the 7-day limit the projection leaves out the last night before the reset, **02:00–07:00** on
+your computer's clock, as hours in which the usage does not grow: a week that resets at 07:00 is,
+in practice, over at 02:00. At 66% and 1%/h, 36 hours before a reset at 07:00, the projection is
+97% (31 hours of work), not 102%. Once that night has begun, the projection runs to the reset
+again, for whoever works on through it. The `↻` countdown always shows the reset itself, and
+without a known time zone nothing is left out.
+
 Colours: green below 80% projected, yellow from 80% to 100%, **red above 100%** or when the limit
-is used up; then `⚠ 100% in 1h17m` says when it runs out at the current pace. The reset's clock
-time is in your computer's time zone, with the weekday when it is more than a day away. On a
-narrow screen the clock time goes first, then the `⚠` part. The context bar is green below 50%,
-orange to 80% and red above. The context line is scaled from its lowest to its highest point, so
-it shows the shape of the trend; the percentage next to the bar is the absolute figure.
+is used up; then `⚠ 100% in 1h17m` says when it runs out at the current pace, for the 7-day limit
+with that night skipped. The reset's clock time is in your computer's time zone, with the weekday
+when it is more than a day away. On a narrow screen the clock time goes first, then the `⚠` part.
+The context bar is green below 50%, orange to 80% and red above. The context line is scaled from
+its lowest to its highest point, so it shows the shape of the trend; the percentage next to the
+bar is the absolute figure.
 
 In the desktop app the cache countdown is estimated: Claude Code keeps the cache warm for an hour
 after the last response on a plan within its limits and five minutes otherwise, unless

@@ -2,7 +2,8 @@
 // MOCKUP_LINES is the mockup as measured from its pixels (16-cell bars, the session line in the
 // bar column, a min→max line for the context history), with the session line moved up to sit
 // under the header so cost and runtime are read first, and the limit lines extended with the
-// usage projected to the reset and the reset's clock time.
+// usage projected to the reset and the reset's clock time. The 7-day projection leaves out the
+// night before the reset (Monday 02:00–07:00 UTC), so it is 69%, not the mockup's 71%.
 
 export const NOW = 1_800_000_000_000; // 2027-01-15 08:00 UTC, a Friday
 
@@ -31,7 +32,7 @@ export const MOCKUP_LINES = Object.freeze([
   'daily-claude | no git | ✦ Opus 5.5',
   '    $20.33 · 5h40m · cache 99% 52m · xhigh · +156 -23',
   'ctx ■■■■■■■■■□□□□□□□ 54%  543k/1.0M  ⣀⡠⠔⠊',
-  '7d  ■■■■■■□□□□□□□□□□ 39% →  71%  ↻ 3d04h Mon 12:10  ↗ 0.4%/h',
+  '7d  ■■■■■■□□□□□□□□□□ 39% →  69%  ↻ 3d04h Mon 12:10  ↗ 0.4%/h',
   '5h  ■■□□□□□□□□□□□□□□ 12% →  72%  ↻ 4h10m 12:10      ↗ 14.4%/h',
 ]);
 

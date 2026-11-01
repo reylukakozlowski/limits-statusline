@@ -89,12 +89,12 @@ test('narrower lines drop the clock time first, then the time to 100%, on both l
   assert.ok(at(80).every((line) => line.length <= 80));
   assert.match(at(80)[0], /Mon 12:10/);
   assert.deepEqual(at(70), [
-    '7d  ■■■■■■□□□□□□□□□□ 39% →  71%  ↻ 3d04h  ↗ 0.4%/h',
+    '7d  ■■■■■■□□□□□□□□□□ 39% →  69%  ↻ 3d04h  ↗ 0.4%/h',
     '5h  ■■■■■■■■■■■□□□□□ 70% → 117%  ↻ 2h00m  ↗ 23.3%/h  ⚠ 100% in 1h17m',
   ]);
   assert.deepEqual(at(60)[1], '5h  ■■■■■■■■■■■□□□□□ 70% → 117%  ↻ 2h00m  ↗ 23.3%/h');
   assert.deepEqual(at(45), [
-    '7d  ■■■■□□□□□□ 39% →  71%  ↻ 3d04h  ↗ 0.4%/h',
+    '7d  ■■■■□□□□□□ 39% →  69%  ↻ 3d04h  ↗ 0.4%/h',
     '5h  ■■■■■■■□□□ 70% → 117%  ↻ 2h00m  ↗ 23.3%/h',
   ]);
 });
@@ -102,8 +102,34 @@ test('narrower lines drop the clock time first, then the time to 100%, on both l
 test('without a known width or time zone the limit lines keep everything they can show', () => {
   const { fiveHour } = byRole(buildLines(RUNNING_OUT, { columns: undefined }));
   assert.match(lineText(fiveHour), /10:00 .* ⚠ 100% in 1h17m$/);
+  // Without a zone there is no night to leave out: the projection runs to the reset.
   const { sevenDay } = byRole(buildLines({ ...MOCKUP, timeZone: null }, { columns: 120 }));
   assert.equal(lineText(sevenDay), '7d  ■■■■■■□□□□□□□□□□ 39% →  71%  ↻ 3d04h  ↗ 0.4%/h');
+});
+
+// Friday 19:00 UTC, the week resets on Sunday at 07:00: 66% at 1%/h over the last day.
+const FRIDAY_19 = NOW + 11 * 3_600_000;
+const SUNDAY_07 = FRIDAY_19 + 36 * 3_600_000;
+const WEEK_ENDING_AT_DAWN = {
+  ...MOCKUP,
+  nowMs: FRIDAY_19,
+  limits: { ...MOCKUP.limits, sevenDay: { percentUsed: 66, resetsAtMs: SUNDAY_07 } },
+  limitReadings: { fiveHour: [], sevenDay: [[FRIDAY_19 - 86_400_000, 42, SUNDAY_07], [FRIDAY_19, 66, SUNDAY_07]] },
+};
+
+test('the 7-day line runs to 02:00 when the week resets at 07:00: yellow, and no ⚠', () => {
+  const { sevenDay } = byRole(buildLines(WEEK_ENDING_AT_DAWN, { columns: 120 }));
+  assert.match(lineText(sevenDay), /^7d {2}\S+ 66% → {2}97% {2}↻ 1d12h Sun 07:00 {2}↗ 1\.0%\/h$/);
+  assert.equal(segmentWith(sevenDay, '■').tone, TONE.warn);
+  assert.equal(segmentWith(sevenDay, ' 97%').tone, TONE.warn);
+  assert.equal(segmentWith(sevenDay, '%/h').tone, TONE.warn);
+  assert.equal(segmentWith(sevenDay, '⚠'), undefined);
+});
+
+test('the same week without a time zone runs to the reset: red, and when it runs out', () => {
+  const { sevenDay } = byRole(buildLines({ ...WEEK_ENDING_AT_DAWN, timeZone: null }, { columns: 120 }));
+  assert.match(lineText(sevenDay), /66% → 102% {2}↻ 1d12h {2}↗ 1\.0%\/h {2}⚠ 100% in 1d10h$/);
+  assert.equal(segmentWith(sevenDay, '102%').tone, TONE.alert);
 });
 
 test('in the first 15 minutes of a window there is no projection yet, shown as a muted dash', () => {
