@@ -1,6 +1,7 @@
 // Number → short label formatting shared by every renderer. Pure: no I/O, no clock.
 
 import { MS_PER_DAY, MS_PER_HOUR, MS_PER_SECOND } from './time.mjs';
+import { clockParts } from './zone-time.mjs';
 
 export const DASH = '—';
 
@@ -55,21 +56,15 @@ export function formatRate(percentPerHour) {
 }
 
 /**
- * Wall-clock time of a moment in `timeZone`, 24-hour: `18:10` within a day of now, else with
- * the weekday, `Tue 08:10`. A dash for an unknown time or zone.
- * @param {number} atMs @param {{ nowMs: number, timeZone: string | null }} context
+ * Wall-clock time of a moment in the user's zone, 24-hour: `18:10` within a day of now, else
+ * with the weekday, `Tue 08:10`. A dash for an unknown time or zone.
+ * @param {number} atMs @param {import('./zone-time.mjs').Clock} clock
  */
 export function formatClock(atMs, { nowMs, timeZone }) {
-  if (!Number.isFinite(atMs) || !Number.isFinite(nowMs) || typeof timeZone !== 'string') return DASH;
+  if (!Number.isFinite(nowMs)) return DASH;
   const withDay = atMs - nowMs >= MS_PER_DAY;
-  try {
-    const parts = new Intl.DateTimeFormat('en-GB', {
-      timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23', ...(withDay ? { weekday: 'short' } : {}),
-    }).formatToParts(atMs);
-    const part = (type) => parts.find((candidate) => candidate.type === type)?.value;
-    const time = `${part('hour')}:${part('minute')}`;
-    return withDay ? `${part('weekday')} ${time}` : time;
-  } catch {
-    return DASH; // an unknown zone name
-  }
+  const parts = clockParts(atMs, timeZone, { hour: '2-digit', minute: '2-digit', ...(withDay ? { weekday: 'short' } : {}) });
+  if (!parts) return DASH;
+  const time = `${parts.hour}:${parts.minute}`;
+  return withDay ? `${parts.weekday} ${time}` : time;
 }
