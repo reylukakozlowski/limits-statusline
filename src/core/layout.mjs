@@ -139,7 +139,7 @@ function limitLines(snapshot, size, columns) {
   const clock = { nowMs: snapshot.nowMs, timeZone: snapshot.timeZone ?? null };
   const limits = LIMIT_LINES.map(({ label, kind }) => {
     const reading = snapshot.limits?.[kind] ?? null;
-    const analysis = analyzeLimit(reading, LIMIT_WINDOWS[kind], snapshot.nowMs, snapshot.limitReadings?.[kind] ?? []);
+    const analysis = analyzeLimit(reading, LIMIT_WINDOWS[kind], clock, snapshot.limitReadings?.[kind] ?? []);
     const clockText = formatClock(reading?.resetsAtMs, clock);
     return { label, analysis, countdown: formatCountdown(analysis?.remainingMs), clockText: clockText === DASH ? null : clockText };
   });
