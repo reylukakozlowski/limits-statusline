@@ -1,8 +1,9 @@
 // Contract of .github/workflows/release.yml and of master's rulesets (.github/rulesets/master-*.json):
-// who may release, that one click runs the tests, the dry run and the checks and then the release
-// with nothing more asked, that the job that runs the repository's code holds no credentials, that
-// only the master job holds the deploy key and pushes nothing but a release commit made from
-// develop, that master only moves forward, and that a dry run publishes nothing. The release
+// who may release, and from where (master; develop only for the run that brings a new workflow to
+// master), that one click runs the checks, the tests and the dry run and then the release with
+// nothing more asked, that the job that runs the repository's code holds no credentials, that only
+// the master job holds the deploy key and pushes nothing but a release commit, a merge of develop
+// into master, that master only moves forward, and that a dry run publishes nothing. The release
 // script itself runs against real git in release.integration.test.mjs.
 // The workflow is read as text (the repository has no YAML parser), and the checks pin the lines
 // a careless edit would break. The scripts of the steps that touch GitHub also run for real in
@@ -28,6 +29,7 @@ const HISTORY = JSON.parse(read('../../.github/rulesets/master-history.json'));
 const TESTS_STEP = 'Run the tests';
 const DRY_RUN_STEP = 'Dry run of the release';
 const PREFLIGHT_STEP = 'Check that the release can reach master';
+const PIN_STEP = 'Name the develop commit to release';
 const AUTHOR_STEP = "Commit and tag as the repository's author";
 const RELEASE_STEP = 'Test, build the release commit and tag it';
 const BUNDLE_STEP = 'Bundle the release commit and its tag';
@@ -114,23 +116,30 @@ test('one click is the whole of it: the run waits for no approval, and CI is the
   assert.deepEqual(JOB_NAMES.filter((name) => !/^ {4}needs:/m.test(job(name))), ['ci']);
 });
 
-test('only the repository owner, on develop, gets any job: GitHub skips anyone else', () => {
+// A run executes the workflow of the branch it starts on. On master that is the workflow of the last
+// release; develop is let in for the run that brings a new one to master, and the environment
+// production, which deploys from master alone otherwise, decides whether that run gets the key.
+const RUN_BRANCHES = "(github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop')";
+
+test('only the repository owner, on master (or develop, to bring a new workflow), gets any job: GitHub skips anyone else', () => {
   for (const name of JOB_NAMES) {
     const condition = guard(name);
     for (const fact of [
       "github.event_name == 'workflow_dispatch'",
-      "github.ref == 'refs/heads/develop'",
+      RUN_BRANCHES,
       'github.actor_id == github.repository_owner_id',
       'github.triggering_actor == github.repository_owner',
     ]) {
       assert.ok(condition.includes(fact), `${name}: ${fact}`);
     }
-    assert.doesNotMatch(condition, /\|\||always\(\)|failure\(\)|cancelled\(\)/, name);
+    assert.doesNotMatch(condition.replace(RUN_BRANCHES, ''), /\|\||always\(\)|failure\(\)|cancelled\(\)/, name);
   }
 });
 
-test('CI, in every run, a release too: the tests, the dry run and the check of the way to master', () => {
-  assert.deepEqual(stepNames('ci'), [TESTS_STEP, DRY_RUN_STEP, PREFLIGHT_STEP]);
+test('CI, in every run, a release too: first the check of the way to master, then the tests and the dry run', () => {
+  // The check first: a run on the wrong branch, or a setting that would stop the release after its
+  // tag, fails within seconds, before the tests.
+  assert.deepEqual(stepNames('ci'), [PREFLIGHT_STEP, PIN_STEP, TESTS_STEP, DRY_RUN_STEP]);
   // The tests in a step of their own, whose counts go to the run's summary page.
   const tests = script(step('ci', TESTS_STEP));
   assert.match(tests, /^npm test 2>&1 \| tee "\$RUNNER_TEMP\/tests\.txt" \|\| status=\$\?$/m);
@@ -145,6 +154,20 @@ test('CI, in every run, a release too: the tests, the dry run and the check of t
   assert.match(preflight, /^ {8}run: node scripts\/release-preflight\.mjs$/m);
   // Every check runs and a failed one fails CI, so the release job never starts.
   assert.doesNotMatch(job('ci'), /^ {8}(if|continue-on-error):/m);
+});
+
+// The run's commit is master's on a release run, so CI checks out develop, the files to release, and
+// names the commit it checked; the release job builds on exactly that one, even when develop moves on.
+test('CI checks out develop and names the commit it checked, the one the release job releases', () => {
+  const checkout = action('ci', 'checkout');
+  assert.match(checkout, /^ {10}ref: develop$/m);
+  assert.match(checkout, /^ {10}fetch-depth: 0 # .+$/m);
+  const pin = step('ci', PIN_STEP);
+  assert.match(pin, /^ {8}id: source$/m);
+  // An assignment, not `echo "sha=$(...)"`: under bash -e a failing git then fails the step.
+  assert.equal(script(pin).trimEnd(), 'sha="$(git rev-parse HEAD)"\necho "sha=$sha" >> "$GITHUB_OUTPUT"');
+  assert.match(job('ci'), /^ {4}outputs:\n {6}source: \$\{\{ steps\.source\.outputs\.sha \}\}\n/m);
+  assert.match(action('release', 'checkout'), /^ {10}ref: \$\{\{ needs\.ci\.outputs\.source \}\}$/m);
 });
 
 test('CI reads and writes nothing else: a read-only token, no credentials kept, no secret', () => {
@@ -209,12 +232,12 @@ test('each job gets only the token permissions it uses, and one release runs at 
   assert.match(WORKFLOW, /^concurrency:\n {2}group: release\n {2}cancel-in-progress: false$/m);
 });
 
-test('the job that runs the repository\'s code holds no credentials, at the run\'s commit, and commits as the repository\'s author', () => {
+test('the job that runs the repository\'s code holds no credentials, at the commit CI checked, and commits as the repository\'s author', () => {
   const release = job('release');
   const checkout = action('release', 'checkout');
-  // No ref: develop at the run's commit, the one CI checked, not a develop that moved since.
-  assert.doesNotMatch(checkout, /^ {10}ref:/m);
-  assert.match(checkout, /^ {10}fetch-depth: 0$/m);
+  // The develop commit CI checked, not a develop that moved since.
+  assert.match(checkout, /^ {10}ref: \$\{\{ needs\.ci\.outputs\.source \}\}$/m);
+  assert.match(checkout, /^ {10}fetch-depth: 0 # .+$/m);
   assert.match(checkout, /^ {10}persist-credentials: false$/m);
   assert.doesNotMatch(release, /secrets\.|ssh-key|token|environment:|git push/);
   assert.match(release, /git config user\.email '27358836\+Reywedian@users\.noreply\.github\.com'/);
@@ -278,10 +301,11 @@ test('master: release only — master is created and moved only through a deploy
   assert.deepEqual(RELEASE_ONLY.bypass_actors, [{ actor_id: null, actor_type: 'DeployKey', bypass_mode: 'always' }]);
 });
 
-test('master: history — no deletion, no force push, linear history, and no one bypasses it', () => {
+// A release is a merge commit of develop into master: a required linear history would refuse it.
+test('master: history — no deletion and no force push, merge commits allowed, and no one bypasses it', () => {
   onMaster(HISTORY);
   assert.equal(HISTORY.name, 'master: history');
-  assert.deepEqual(HISTORY.rules.map((rule) => rule.type), ['deletion', 'non_fast_forward', 'required_linear_history']);
+  assert.deepEqual(HISTORY.rules.map((rule) => rule.type), ['deletion', 'non_fast_forward']);
   assert.deepEqual(HISTORY.bypass_actors, [], 'the deploy key and the owner included');
 });
 
@@ -388,7 +412,7 @@ const gitIn = (cwd, args, { input, env } = {}) => {
 
 /**
  * origin with master at v0.1.0 on develop's first commit and develop one commit further; `builder`
- * is the release job's clone, and the bundle goes where the master job downloads it.
+ * is the release job's clone, on develop, and the bundle goes where the master job downloads it.
  */
 function promoteRepository(t) {
   const root = mkdtempSync(join(tmpdir(), 'ls-release-promote-'));
@@ -399,7 +423,11 @@ function promoteRepository(t) {
   mkdirSync(runnerTemp);
   gitIn(root, ['init', '--quiet', '--bare', '--initial-branch=develop', origin]);
   gitIn(root, ['init', '--quiet', '--initial-branch=develop', builder]);
-  for (const [key, value] of [['user.name', 'Release Test'], ['user.email', 'release@example.com'], ['commit.gpgsign', 'false'], ['tag.gpgsign', 'false']]) {
+  // core.autocrlf off: Git for Windows turns it on, and the release checks its commit out to test it.
+  for (const [key, value] of [
+    ['user.name', 'Release Test'], ['user.email', 'release@example.com'], ['commit.gpgsign', 'false'], ['tag.gpgsign', 'false'],
+    ['core.autocrlf', 'false'],
+  ]) {
     gitIn(builder, ['config', key, value]);
   }
   mkdirSync(join(builder, '.claude-plugin'));
@@ -443,13 +471,13 @@ function buildRelease(repo) {
 
 /**
  * A commit made by hand in the builder, tagged and bundled. By default it is what the release script
- * makes of develop's head as v0.1.1 (a lightweight tag when `annotation` is null); each test changes
- * one thing about it.
+ * makes of develop's head as v0.1.1, a merge into master (a lightweight tag when `annotation` is
+ * null); each test changes one thing about it.
  */
 function forgeRelease(repo, {
   tag = 'v0.1.1',
   source = repo.head,
-  parent = repo.master,
+  parents = [repo.master, source],
   files = { [MANIFEST]: releaseManifest(tag.slice(1)) },
   message = `Release ${tag}\n\n${NOTES}\n\nSource: develop@${source}`,
   annotation = `${tag}\n\n${NOTES}`,
@@ -461,7 +489,7 @@ function forgeRelease(repo, {
     gitIn(repo.builder, ['update-index', '--add', '--cacheinfo', `100644,${blob},${path}`], { env });
   }
   const tree = gitIn(repo.builder, ['write-tree'], { env });
-  const commit = gitIn(repo.builder, ['commit-tree', tree, ...(parent ? ['-p', parent] : []), '-m', message]);
+  const commit = gitIn(repo.builder, ['commit-tree', tree, ...parents.flatMap((parent) => ['-p', parent]), '-m', message]);
   gitIn(repo.builder, ['tag', ...(annotation === null ? [] : ['-a', '-m', annotation]), tag, commit]);
   bundle(repo, tag);
   return commit;
@@ -500,14 +528,17 @@ test('master job: the version line it looks for is the one the release script wr
   assert.ok(withManifestVersion(manifest, '1.2.3').split('\n').includes('  "version": "1.2.3",'));
 });
 
-test('master job: the release script\'s commit moves master forward to it, the tag pushed first', { skip: NO_BASH }, (t) => {
+test('master job: the release script\'s merge moves master forward to it, the tag pushed first', { skip: NO_BASH }, (t) => {
   const repo = promoteRepository(t);
   const tag = buildRelease(repo);
   const run = promote(repo, tag);
   assert.equal(run.status, 0, run.output);
   const released = gitIn(repo.origin, ['rev-parse', `${tag}^{commit}`]);
   assert.equal(gitIn(repo.origin, ['rev-parse', 'master']), released);
-  assert.equal(gitIn(repo.origin, ['rev-parse', 'master^']), repo.master);
+  assert.equal(gitIn(repo.origin, ['rev-parse', 'master^1']), repo.master);
+  assert.equal(gitIn(repo.origin, ['rev-parse', 'master^2']), repo.head);
+  // What GitHub shows as "0 commits behind develop": master holds every commit of develop.
+  assert.equal(gitIn(repo.origin, ['rev-list', '--count', 'master..develop']), '0');
   assert.match(run.output, /master is at v0\.1\.1/);
   assert.equal(run.outputs, 'tag=v0.1.1\n', 'the tag for the GitHub release');
 });
@@ -521,7 +552,21 @@ test('master job: the next release is checked against the develop commit the las
   assert.equal(run.status, 0, run.output);
   assert.equal(run.outputs, 'tag=v0.1.2\n');
   assert.equal(gitIn(repo.origin, ['rev-parse', 'master']), gitIn(repo.origin, ['rev-parse', 'v0.1.2^{commit}']));
-  assert.equal(gitIn(repo.origin, ['rev-parse', 'master^']), gitIn(repo.origin, ['rev-parse', 'v0.1.1^{commit}']));
+  assert.equal(gitIn(repo.origin, ['rev-parse', 'master^1']), gitIn(repo.origin, ['rev-parse', 'v0.1.1^{commit}']));
+  assert.equal(gitIn(repo.origin, ['rev-parse', 'master^2']), gitIn(repo.origin, ['rev-parse', 'develop']));
+});
+
+// v1.0.11 to v1.0.14 sit on master as one-parent release commits naming their develop commit: the
+// first merge release goes on such a head and starts its notes after that develop commit.
+test('master job: the first merge after a one-parent release passes, its notes starting after that release\'s develop commit', { skip: NO_BASH }, (t) => {
+  const repo = promoteRepository(t);
+  forgeRelease(repo, { parents: [repo.master] });
+  gitIn(repo.builder, ['push', '--quiet', 'origin', 'refs/tags/v0.1.1', 'v0.1.1^{commit}:refs/heads/master']);
+  const tag = buildNextRelease(repo);
+  const run = promote(repo, tag);
+  assert.equal(run.status, 0, run.output);
+  assert.equal(gitIn(repo.origin, ['rev-parse', 'master^2']), gitIn(repo.origin, ['rev-parse', 'develop']));
+  assert.equal(gitIn(repo.origin, ['tag', '--list', '--format=%(contents:body)', tag]), '- LS-3_fix: third');
 });
 
 test('master job: a run again once master holds the release pushes nothing', { skip: NO_BASH }, (t) => {
@@ -560,12 +605,19 @@ test('master job: a hand-made commit that is exactly develop\'s files and the ve
   assert.equal(gitIn(repo.origin, ['rev-parse', 'master']), commit);
 });
 
+/** A commit no branch holds, with develop's files: history a release must not bring to master. */
+const elsewhere = (repo) => gitIn(repo.builder, ['commit-tree', `${repo.head}^{tree}`, '-m', 'LS-9_feat: elsewhere']);
+
 const REFUSALS = [
   ['a file besides the manifest', () => ({ files: { [MANIFEST]: RELEASE_MANIFEST, 'hook.mjs': 'run();\n' } }), /it changes more than \.claude-plugin\/plugin\.json/],
   ['a manifest changed beyond its version', () => ({ files: { [MANIFEST]: RELEASE_MANIFEST.replace('"Demo"', '"Demo",\n  "hooks": "./hook.json"') } }), /its \.claude-plugin\/plugin\.json changes more than the version/],
   ['a manifest without the version line', () => ({ files: { [MANIFEST]: DEVELOP_MANIFEST.replace('"Demo"', '"Demo 2"') } }), /lacks the line/],
-  ['a parent other than master\'s head', (repo) => ({ parent: repo.head }), /its parent is not master's head/],
-  ['no parent at all', () => ({ parent: null }), /its parent is not master's head/],
+  ['develop\'s commit alone as its parent', (repo) => ({ parents: [repo.head] }), /its parents are not master's head and /],
+  ['master\'s head alone as its parent, a release the one-parent way', (repo) => ({ parents: [repo.master] }), /its parents are not master's head and /],
+  ['its two parents the other way round', (repo) => ({ parents: [repo.head, repo.master] }), /its parents are not master's head and /],
+  ['a second parent other than the develop commit it names', (repo) => ({ parents: [repo.master, elsewhere(repo)] }), /its parents are not master's head and /],
+  ['a third parent', (repo) => ({ parents: [repo.master, repo.head, elsewhere(repo)] }), /its parents are not master's head and /],
+  ['no parent at all', () => ({ parents: [] }), /its parents are not master's head and /],
   ['a message that names no develop commit', () => ({ message: 'Release v0.1.1' }), /its message names no develop commit/],
   ['a develop commit develop does not hold', () => ({ message: `Release v0.1.1\n\nSource: develop@${'1'.repeat(40)}` }), /develop does not hold 1{40}/],
   ['a message whose notes are not develop\'s commits since the last release', (repo) => ({ message: `Release v0.1.1\n\n- LS-9_feat: invented\n\nSource: develop@${repo.head}` }), /its message is not/],
@@ -620,7 +672,7 @@ for (const [what, source] of STALE_SOURCES) {
     const repo = promoteRepository(t);
     assert.equal(promote(repo, buildRelease(repo)).status, 0);
     gitIn(repo.builder, ['fetch', '--quiet', 'origin']);
-    forgeRelease(repo, { tag: 'v0.1.2', source: source(repo), parent: gitIn(repo.origin, ['rev-parse', 'master']) });
+    forgeRelease(repo, { tag: 'v0.1.2', source: source(repo), parents: [gitIn(repo.origin, ['rev-parse', 'master']), source(repo)] });
     const refs = originRefs(repo);
     assertRefused(repo, promote(repo, 'v0.1.2'), 'v0.1.2', new RegExp(`it is not made from a develop commit after ${repo.head}, the one v0\\.1\\.1 was made from`), refs);
   });

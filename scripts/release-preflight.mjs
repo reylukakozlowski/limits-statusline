@@ -1,4 +1,4 @@
-// Entry point: node scripts/release-preflight.mjs, run by the Release workflow before it tags. From
+// Entry point: node scripts/release-preflight.mjs, the Release workflow's first check. From
 // a clone with gh signed in:
 //   GITHUB_REPOSITORY=<owner>/<repo> node scripts/release-preflight.mjs
 import { spawnSync } from 'node:child_process';
@@ -12,4 +12,8 @@ const exec = (command, args) => {
   return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr || result.error?.message || '' };
 };
 
-process.exitCode = runPreflight({ env: { GITHUB_REPOSITORY: process.env.GITHUB_REPOSITORY }, exec, stdout: process.stdout });
+process.exitCode = runPreflight({
+  env: { GITHUB_REPOSITORY: process.env.GITHUB_REPOSITORY, GITHUB_REF_NAME: process.env.GITHUB_REF_NAME },
+  exec,
+  stdout: process.stdout,
+});

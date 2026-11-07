@@ -1,7 +1,7 @@
 // The release command against real git: a clone on develop and a bare origin, with master at the
-// last release made the old way (v0.1.0 on develop's own commit). The command pushes nothing;
+// last release made the oldest way (v0.1.0 on develop's own commit). The command pushes nothing;
 // `publish` stands for the Release workflow's master job, whose checks run against real git in
-// release-workflow.test.mjs. `npm test` is stubbed; the unit tests cover what happens when it fails.
+// release-workflow.test.mjs. `npm test` is stubbed (it passes); the unit tests cover a failing one.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -25,9 +25,14 @@ const git = (cwd, ...args) => {
   return result.stdout.trim();
 };
 
-// Identity and signing are set per repository, so the machine's global git config never applies.
+// Identity, signing and line endings are set per repository, so the machine's git config never
+// applies: Git for Windows sets core.autocrlf, which would write CRLF when the release checks out
+// its commit to test it.
 const configure = (dir) => {
-  for (const [key, value] of [['user.name', 'Release Test'], ['user.email', 'release@example.com'], ['commit.gpgsign', 'false'], ['tag.gpgsign', 'false']]) {
+  for (const [key, value] of [
+    ['user.name', 'Release Test'], ['user.email', 'release@example.com'], ['commit.gpgsign', 'false'], ['tag.gpgsign', 'false'],
+    ['core.autocrlf', 'false'],
+  ]) {
     git(dir, 'config', key, value);
   }
 };
@@ -83,7 +88,7 @@ const publish = (repo, tag) => {
 /** Every ref at origin, as `<sha> <ref>` lines. */
 const originRefs = (repo) => git(repo.origin, 'for-each-ref', '--format=%(objectname) %(refname)');
 
-test('a release is one commit on master\'s head: develop\'s files with plugin.json at the version, tagged, nothing pushed', (t) => {
+test('a release is a merge of develop into master: develop\'s files with plugin.json at the version, tagged, nothing pushed', (t) => {
   const repo = repository(t);
   const develop = git(repo.clone, 'rev-parse', 'develop');
   const refs = originRefs(repo);
@@ -92,7 +97,9 @@ test('a release is one commit on master\'s head: develop\'s files with plugin.js
   assert.equal(result.out, 'v0.1.1\n');
 
   const tagged = git(repo.clone, 'rev-parse', 'v0.1.1^{commit}');
-  assert.equal(git(repo.clone, 'rev-parse', `${tagged}^`), git(repo.clone, 'rev-parse', 'origin/master'), 'master\'s head is its parent');
+  assert.equal(git(repo.clone, 'rev-parse', `${tagged}^1`), git(repo.clone, 'rev-parse', 'origin/master'), 'master\'s head is its first parent');
+  assert.equal(git(repo.clone, 'rev-parse', `${tagged}^2`), develop, 'develop\'s commit is its second parent');
+  assert.equal(git(repo.clone, 'rev-list', '--parents', '-n', '1', tagged).split(' ').length, 3, 'two parents, no more');
   assert.equal(git(repo.clone, 'cat-file', '-t', 'v0.1.1'), 'tag');
   // Its files are develop's, the manifest alone carrying the version.
   assert.equal(git(repo.clone, 'diff', '--name-only', develop, tagged), '.claude-plugin/plugin.json');
@@ -121,8 +128,11 @@ test('the next release lists only what develop gained since the last one, read f
   assert.equal(result.out, 'v0.2.0\n');
   assert.equal(git(repo.clone, 'tag', '--list', '--format=%(contents:body)', 'v0.2.0'), '- LS-4_feat: fourth');
   publish(repo, 'v0.2.0');
-  assert.equal(git(repo.origin, 'rev-parse', 'master^'), git(repo.origin, 'rev-parse', 'v0.1.1^{commit}'));
-  assert.equal(git(repo.origin, 'rev-list', '--count', 'master'), '3', 'master: v0.1.0, v0.1.1, v0.2.0, one after another');
+  assert.equal(git(repo.origin, 'rev-parse', 'master^1'), git(repo.origin, 'rev-parse', 'v0.1.1^{commit}'));
+  assert.equal(git(repo.origin, 'rev-parse', 'master^2'), git(repo.origin, 'rev-parse', 'develop'));
+  assert.equal(git(repo.origin, 'rev-list', '--first-parent', '--count', 'master'), '3', 'master: v0.1.0, v0.1.1, v0.2.0, one after another');
+  // master holds develop's history: no commit of develop is missing from it.
+  assert.equal(git(repo.origin, 'rev-list', '--count', 'master..develop'), '0');
 });
 
 test('running the release again on the same develop head finishes that release: no new tag', (t) => {
@@ -156,17 +166,38 @@ test('a release master never got is finished first, even after develop moved on,
   assert.equal(next.out, 'v0.1.2\n');
   assert.equal(git(repo.clone, 'tag', '--list', '--format=%(contents:body)', 'v0.1.2'), '- LS-4_feat: fourth');
   publish(repo, 'v0.1.2');
-  assert.equal(git(repo.origin, 'rev-list', '--count', 'master'), '3', 'master: v0.1.0, v0.1.1, v0.1.2');
+  assert.equal(git(repo.origin, 'rev-list', '--first-parent', '--count', 'master'), '3', 'master: v0.1.0, v0.1.1, v0.1.2');
 });
 
-test('the first release of a repository without master is a commit of its own', (t) => {
+// v1.0.11 to v1.0.14 were release commits on master with one parent, naming their develop commit in
+// the message: the first merge release starts its notes after that commit.
+test('the first merge after a release made the one-parent way lists what develop gained since it', (t) => {
+  const repo = repository(t);
+  const develop = git(repo.clone, 'rev-parse', 'develop');
+  const old = git(repo.clone, 'commit-tree', git(repo.clone, 'rev-parse', 'develop^{tree}'), '-p', git(repo.clone, 'rev-parse', 'origin/master'),
+    '-m', 'Release v0.1.1', '-m', '- LS-2_feat: second\n- LS-3_fix: third', '-m', `Source: develop@${develop}`);
+  git(repo.clone, 'tag', '-a', 'v0.1.1', old, '-m', 'v0.1.1');
+  publish(repo, 'v0.1.1');
+  commit(repo.clone, 'c.txt', 'LS-4_feat: fourth');
+  git(repo.clone, 'push', '--quiet', 'origin', 'develop');
+  git(repo.clone, 'fetch', '--quiet', 'origin');
+
+  const result = release(repo, ['patch']);
+  assert.equal(result.code, 0, result.text);
+  assert.equal(git(repo.clone, 'tag', '--list', '--format=%(contents:body)', 'v0.1.2'), '- LS-4_feat: fourth');
+  assert.equal(git(repo.clone, 'rev-parse', 'v0.1.2^{commit}^1'), old);
+  assert.equal(git(repo.clone, 'rev-parse', 'v0.1.2^{commit}^2'), git(repo.clone, 'rev-parse', 'develop'));
+});
+
+test('the first release of a repository without master sits on develop\'s commit alone', (t) => {
   const repo = repository(t, { withMaster: false });
   const result = release(repo, ['minor']);
   assert.equal(result.code, 0, result.text);
-  assert.equal(git(repo.clone, 'rev-list', '--count', 'v0.2.0^{commit}'), '1');
+  assert.equal(git(repo.clone, 'rev-parse', 'v0.2.0^{commit}^'), git(repo.clone, 'rev-parse', 'develop'));
+  assert.equal(git(repo.clone, 'rev-list', '--count', 'v0.2.0^{commit}'), '4', 'develop\'s three commits and the release');
 });
 
-test('a release off develop or with uncommitted changes stops before anything is written', (t) => {
+test('a release from a commit origin\'s develop lacks, or with uncommitted changes, stops before anything is written', (t) => {
   const repo = repository(t);
   const refs = originRefs(repo);
   writeFileSync(join(repo.clone, 'a.txt'), 'changed\n');
@@ -175,9 +206,10 @@ test('a release off develop or with uncommitted changes stops before anything is
   assert.match(dirty.text, /uncommitted changes/);
   git(repo.clone, 'checkout', '--quiet', '--', 'a.txt');
   git(repo.clone, 'switch', '--quiet', '-c', 'feature/x');
+  commit(repo.clone, 'x.txt', 'LS-9_feat: not merged');
   const offDevelop = release(repo, ['patch']);
   assert.equal(offDevelop.code, 2);
-  assert.match(offDevelop.text, /cut from develop, not feature\/x/);
+  assert.match(offDevelop.text, /feature\/x is not on origin\/develop/);
   assert.equal(git(repo.clone, 'tag', '--list'), 'v0.1.0');
   assert.equal(originRefs(repo), refs);
 });

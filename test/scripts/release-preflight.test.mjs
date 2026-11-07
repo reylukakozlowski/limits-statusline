@@ -9,20 +9,30 @@ const PRODUCTION = {
   deployment_branch_policy: { protected_branches: false, custom_branch_policies: true },
   protection_rules: [{ type: 'branch_policy' }],
 };
-const DEVELOP_ONLY = [{ id: 7, name: 'develop', type: 'branch' }];
+const MASTER_ONLY = [{ id: 7, name: 'master', type: 'branch' }];
+const DEVELOP = { id: 8, name: 'develop', type: 'branch' };
 
 const ready = (overrides = {}) => ({
-  masterRules: STANDARD_RULES, environment: PRODUCTION, branchPolicies: DEVELOP_ONLY, ...overrides,
+  masterRules: STANDARD_RULES, environment: PRODUCTION, branchPolicies: MASTER_ONLY, ref: 'master', ...overrides,
 });
 
-test('a repository set up to the production standard is ready', () => {
+test('a repository set up to the production standard is ready for a release run on master', () => {
+  assert.deepEqual(MASTER_RULES, ['creation', 'deletion', 'non_fast_forward', 'update']);
   assert.deepEqual(preflightProblems(ready()), []);
 });
 
 test('a rule besides the two rulesets, such as a required status check, would refuse the deploy key\'s push', () => {
   const masterRules = [...STANDARD_RULES, { type: 'required_status_checks', parameters: { required_status_checks: [{ context: 'x' }] } }];
   const [problem] = preflightProblems(ready({ masterRules }));
-  assert.match(problem, /^master's rules are \[creation, deletion, non_fast_forward, required_linear_history, required_status_checks, update\]/);
+  assert.match(problem, /^master's rules are \[creation, deletion, non_fast_forward, required_status_checks, update\]/);
+});
+
+// A release is a merge commit of develop into master, which a required linear history refuses.
+test('master: history still asking for a linear history would refuse the release\'s merge commit', () => {
+  const [problem, ...rest] = preflightProblems(ready({ masterRules: [...STANDARD_RULES, { type: 'required_linear_history' }] }));
+  assert.deepEqual(rest, []);
+  assert.match(problem, /required_linear_history/);
+  assert.match(problem, /merge commit/);
 });
 
 test('missing rulesets count as well: without them anyone with write access could move master', () => {
@@ -37,18 +47,42 @@ test('without the environment production nothing holds the deploy key', () => {
   assert.match(problems[0], /environment production is missing/);
 });
 
-test('production has to deploy from develop alone', () => {
+test('on master, production has to deploy from master alone', () => {
   const cases = [
-    [{ ...PRODUCTION, deployment_branch_policy: null }, [], /from any branch/],
+    [{ ...PRODUCTION, deployment_branch_policy: null }, [], /from any branch, not from master alone/],
     [{ ...PRODUCTION, deployment_branch_policy: { protected_branches: true, custom_branch_policies: false } }, [], /from no branch/],
-    [PRODUCTION, [...DEVELOP_ONLY, { id: 8, name: 'feature/*', type: 'branch' }], /from branch:develop, branch:feature\/\*/],
-    [PRODUCTION, [{ id: 9, name: 'develop', type: 'tag' }], /from tag:develop/],
+    [PRODUCTION, [...MASTER_ONLY, { id: 9, name: 'feature/*', type: 'branch' }], /from branch:master, branch:feature\/\*/],
+    [PRODUCTION, [{ id: 9, name: 'master', type: 'tag' }], /from tag:master/],
+    // Still open to develop after the switch: any run on develop could reach the deploy key.
+    [PRODUCTION, [DEVELOP], /from branch:develop, not from master alone/],
+    [PRODUCTION, [...MASTER_ONLY, DEVELOP], /from branch:master, branch:develop, not from master alone/],
   ];
   for (const [environment, branchPolicies, pattern] of cases) {
     const problems = preflightProblems(ready({ environment, branchPolicies }));
     assert.equal(problems.length, 1, String(pattern));
     assert.match(problems[0], pattern);
   }
+});
+
+// The run that brings a new Release workflow to master starts on develop: master still has the old
+// one. The owner lets production deploy from develop for it (repo-standard.mjs production --bootstrap).
+test('on develop, the run that brings a new workflow to master needs production open to develop, and to nothing else but master', () => {
+  for (const branchPolicies of [[DEVELOP], [...MASTER_ONLY, DEVELOP]]) {
+    assert.deepEqual(preflightProblems(ready({ ref: 'develop', branchPolicies })), [], JSON.stringify(branchPolicies));
+  }
+  for (const branchPolicies of [MASTER_ONLY, [DEVELOP, { id: 9, name: 'feature/*', type: 'branch' }], []]) {
+    const problems = preflightProblems(ready({ ref: 'develop', branchPolicies }));
+    assert.equal(problems.length, 1, JSON.stringify(branchPolicies));
+    assert.match(problems[0], /^this run is on develop, but production deploys from /);
+    assert.match(problems[0], /a release runs on master \(Actions → Release → Run workflow → Use workflow from: master\)/);
+    assert.match(problems[0], /--bootstrap/);
+  }
+});
+
+test('a run on any other branch is told that a release runs on master', () => {
+  const problems = preflightProblems(ready({ ref: 'feature/x' }));
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /^a release runs on master \(Actions → Release → Run workflow → Use workflow from: master\), not on feature\/x/);
 });
 
 // One click per release and nothing to approve: production needs no reviewer.
@@ -85,7 +119,7 @@ function fakeExec({ responses = {}, ghFailure = null } = {}) {
 const STANDARD_RESPONSES = {
   [`repos/${REPO}/rules/branches/master?per_page=100`]: STANDARD_RULES,
   [`repos/${REPO}/environments/production`]: PRODUCTION,
-  [`repos/${REPO}/environments/production/deployment-branch-policies?per_page=100`]: { total_count: 1, branch_policies: DEVELOP_ONLY },
+  [`repos/${REPO}/environments/production/deployment-branch-policies?per_page=100`]: { total_count: 1, branch_policies: MASTER_ONLY },
 };
 
 const preflight = (fake, env = { GITHUB_REPOSITORY: REPO }) => {
@@ -98,12 +132,21 @@ test('runPreflight reads master\'s rules and production, and passes a ready repo
   const fake = fakeExec({ responses: STANDARD_RESPONSES });
   const result = preflight(fake);
   assert.equal(result.code, 0, result.text);
-  assert.match(result.text, /can move master to the release commit/);
+  assert.match(result.text, /master's rules allow the release commit, and production deploys from master\./);
   assert.deepEqual(fake.calls, [
     `gh api repos/${REPO}/rules/branches/master?per_page=100`,
     `gh api repos/${REPO}/environments/production`,
     `gh api repos/${REPO}/environments/production/deployment-branch-policies?per_page=100`,
   ]);
+});
+
+// GitHub sets GITHUB_REF_NAME to the branch the run started on; a run from a computer, without it,
+// is checked as a release on master.
+test('runPreflight checks the branch the run is on', () => {
+  const onDevelop = preflight(fakeExec({ responses: STANDARD_RESPONSES }), { GITHUB_REPOSITORY: REPO, GITHUB_REF_NAME: 'develop' });
+  assert.equal(onDevelop.code, 1);
+  assert.match(onDevelop.text, /^::error::this run is on develop/m);
+  assert.equal(preflight(fakeExec({ responses: STANDARD_RESPONSES }), { GITHUB_REPOSITORY: REPO, GITHUB_REF_NAME: 'master' }).code, 0);
 });
 
 test('runPreflight prints each problem as a workflow error and exits 1', () => {

@@ -1,26 +1,29 @@
 // npm run release -- <patch|minor|major> [--dry-run]
-// A release is a commit on master and its tag. The release commit carries develop's files as they
-// are at its head, with .claude-plugin/plugin.json given the release's version, and its parent is
-// master's head, the previous release, so master moves forward by one commit and stays linear.
-// develop carries no version: the version is the release's, counted from the last vX.Y.Z tag by
-// the part the owner picked. The commit's message lists the subjects of develop's commits since
-// the previous release and ends with the develop commit it was made from; the annotated tag vX.Y.Z
-// on it holds the same notes. Both stay in this clone and nothing is pushed: the Release
-// workflow's master job checks that the commit is exactly this one (develop's files, later than
-// the previous release's, with the version alone, and these notes) and
-// pushes it with the deploy key, the one key that may move master. A latest release that master
-// lacks, or that was made from develop's head, is the one to finish: its tag is printed and no new
-// one is cut.
-// --dry-run runs the same checks and the tests and writes nothing.
+// A release is a merge of develop into master and its tag. Run from a develop commit that origin's
+// develop holds (the Release workflow checks out the one its CI pinned), it builds the release
+// commit: develop's files as they are at that commit, with .claude-plugin/plugin.json given the
+// release's version, and two parents, master's head (the previous release) and the develop commit.
+// So master moves forward by one commit and holds develop's history: right after a release, master
+// is no commit behind develop. develop carries no version: the version is the release's, counted
+// from the last vX.Y.Z tag by the part the owner picked. The commit's message lists the subjects of
+// develop's commits since the previous release and ends with the develop commit it was made from;
+// the tests run on the release commit itself, and only then does the annotated tag vX.Y.Z with the
+// same notes name it. Both stay in this clone and nothing is pushed: the Release workflow's job
+// CD: master checks that the commit is exactly this one (develop's files, later than the previous
+// release's, with the version alone, on master's head and that develop commit, and these notes)
+// and pushes it with the deploy key, the one key that may move master. A latest release that master
+// lacks, or that was made from this develop commit, is the one to finish: its tag is printed and no
+// new one is cut.
+// --dry-run runs the same checks and the tests on the develop commit and writes nothing.
 // stdout holds the tag and nothing else, for the workflow; every report goes to stderr.
 // Exit codes: 0 done (or dry run), 1 usage error, 2 refused or failed.
 
 import { parseArgs } from 'node:util';
 import { BUMPS, latestVersion, nextVersion, releaseNotes, releaseSource, sourceTrailer, withManifestVersion } from './release-lib.mjs';
 
-const BASE_BRANCH = 'develop';
 const VERSION_TAGS = 'v*.*.*';
 const MANIFEST_PATH = '.claude-plugin/plugin.json';
+const DEVELOP = 'refs/remotes/origin/develop';
 const MASTER = 'refs/remotes/origin/master';
 const USAGE = 'Usage: npm run release -- <patch|minor|major> [--dry-run]';
 
@@ -90,14 +93,17 @@ function parseOptions(argv) {
 function release({ bump, isDryRun, exec, readManifest, writeManifest, say }) {
   const git = gitRunner(exec);
   const plan = planRelease({ bump, exec, git });
+  const runTests = () => exec('npm', ['test'], { inherit: true }).status === 0;
 
-  if (exec('npm', ['test'], { inherit: true }).status !== 0) throw new Refusal('tests failed; nothing was tagged.');
+  if (isDryRun || plan.isFinishing) {
+    if (!runTests()) throw new Refusal('tests failed; nothing was tagged.');
+  }
 
   if (isDryRun) {
     say(plan.isFinishing
       ? `release (dry run): the run would finish ${plan.tag} instead of cutting a new release: ${plan.reason}.`
-      : `release (dry run): ${plan.current} → ${plan.version}, a release commit on master${plan.master ? '' : ' (its first)'} `
-        + `with develop's files at ${plan.head.slice(0, 7)} and plugin.json at ${plan.version}, tag ${plan.tag}.`);
+      : `release (dry run): ${plan.current} → ${plan.version}, ${plan.master ? 'a merge of' : 'the first release on'} develop at `
+        + `${plan.head.slice(0, 7)} ${plan.master ? 'into master' : '(it creates master)'}, with plugin.json at ${plan.version}, tag ${plan.tag}.`);
     if (plan.notes) say(plan.notes);
     return null;
   }
@@ -106,16 +112,27 @@ function release({ bump, isDryRun, exec, readManifest, writeManifest, say }) {
     say(`release: finishing ${plan.tag} instead of cutting a new release: ${plan.reason}.`);
   } else {
     const commit = commitRelease({ plan, git, readManifest, writeManifest });
+    // The tests run on the release commit, the files master gets, and only a passing one is tagged.
+    git('checkout', '--quiet', '--detach', commit);
+    let passed;
+    try {
+      passed = runTests();
+    } finally {
+      git('checkout', '--quiet', plan.branch === 'HEAD' ? plan.head : plan.branch);
+    }
+    if (!passed) throw new Refusal(`tests failed on the release commit ${commit.slice(0, 7)}; nothing was tagged.`);
     git('tag', '-a', plan.tag, commit, '-m', plan.tag, '-m', plan.notes);
-    say(`release: ${plan.tag} is ${commit.slice(0, 7)}, develop at ${plan.head.slice(0, 7)} with plugin.json at ${plan.version}.`);
+    say(`release: ${plan.tag} is ${commit.slice(0, 7)}, a merge of develop at ${plan.head.slice(0, 7)} with plugin.json at ${plan.version}.`);
   }
   say(`release: the Release workflow checks ${plan.tag} and pushes it and master with the deploy key; only that key may move master.`);
   return plan.tag;
 }
 
 /**
- * The release commit: the tree of develop's head with the manifest's version set, on master's
- * head. The working tree and the index are put back as they were, whatever happens.
+ * The release commit: the tree of the develop commit with the manifest's version set; its parents
+ * are master's head and that develop commit, a merge of develop into master (the first release,
+ * with no master yet, has the develop commit alone). The working tree and the index are put back
+ * as they were, whatever happens.
  */
 function commitRelease({ plan, git, readManifest, writeManifest }) {
   const manifest = readManifest();
@@ -128,14 +145,17 @@ function commitRelease({ plan, git, readManifest, writeManifest }) {
     writeManifest(manifest);
     git('add', MANIFEST_PATH);
   }
-  const parent = plan.master ? ['-p', plan.master] : [];
-  return git('commit-tree', tree, ...parent, '-m', `Release ${plan.tag}`, '-m', plan.notes, '-m', sourceTrailer(plan.head)).trim();
+  const parents = [...(plan.master ? ['-p', plan.master] : []), '-p', plan.head];
+  return git('commit-tree', tree, ...parents, '-m', `Release ${plan.tag}`, '-m', plan.notes, '-m', sourceTrailer(plan.head)).trim();
 }
 
 /** Reads the repository and works the release out, refusing before anything is written. */
 function planRelease({ bump, exec, git }) {
+  // 'HEAD' when detached, as in the Release workflow, which checks out the develop commit CI pinned.
   const branch = git('rev-parse', '--abbrev-ref', 'HEAD').trim();
-  if (branch !== BASE_BRANCH) throw new Refusal(`releases are cut from ${BASE_BRANCH}, not ${branch}.`);
+  if (exec('git', ['merge-base', '--is-ancestor', 'HEAD', DEVELOP], {}).status !== 0) {
+    throw new Refusal(`${branch} is not on origin/develop: a release is made from a develop commit origin holds.`);
+  }
   if (git('status', '--porcelain').trim() !== '') throw new Refusal('the working tree has uncommitted changes.');
 
   const head = git('rev-parse', 'HEAD').trim();
@@ -156,7 +176,7 @@ function planRelease({ bump, exec, git }) {
   }
   const isSinceSource = previousSource !== null && exec('git', ['merge-base', '--is-ancestor', previousSource, 'HEAD'], {}).status === 0;
   const notes = toRefusal(() => releaseNotes(lines(git('log', '--reverse', '--format=%s', isSinceSource ? `${previousSource}..HEAD` : 'HEAD'))));
-  return { isFinishing: false, current, version, tag, notes, head, master };
+  return { isFinishing: false, current, version, tag, notes, head, master, branch };
 }
 
 /**
