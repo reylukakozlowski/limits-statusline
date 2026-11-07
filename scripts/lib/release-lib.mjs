@@ -70,7 +70,8 @@ export function latestVersion(tags) {
 
 /**
  * The release notes: the owner's note from the Release form first, when there is one, then one line
- * per commit subject, in the order given.
+ * per commit subject, in the order given. The note loses only its outer spaces and tabs, exactly as
+ * the Release workflow's promote job trims it when it works the notes out again to check them.
  * @param {string[]} subjects
  * @param {string} [note]
  */
@@ -78,6 +79,6 @@ export function releaseNotes(subjects, note = '') {
   const lines = subjects.map((subject) => subject.trim()).filter(Boolean);
   if (lines.length === 0) throw new Error('There are no commits to release.');
   const list = lines.map((subject) => `- ${subject}`).join('\n');
-  const lead = (note ?? '').trim();
+  const lead = (note ?? '').replace(/^[ \t]+|[ \t]+$/g, '');
   return lead ? `${lead}\n\n${list}` : list;
 }
