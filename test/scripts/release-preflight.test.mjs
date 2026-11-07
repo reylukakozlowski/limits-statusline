@@ -122,6 +122,16 @@ test('runPreflight exits 2 when GitHub cannot be read', () => {
   assert.match(unreadable.text, /^::error::release preflight: gh api .* failed: HTTP 403/m);
 });
 
+// gh's stderr can hold several lines; a raw newline would end the annotation there, and a line
+// of it starting with :: would be read as a workflow command of its own.
+test('runPreflight keeps gh\'s whole error on its one annotation line', () => {
+  const result = preflight(fakeExec({ ghFailure: 'HTTP 403: Resource not accessible\n::warning::not from the preflight\n' }));
+  assert.equal(result.code, 2);
+  assert.deepEqual(result.text.split('\n').filter(Boolean), [
+    '::error::release preflight: gh api repos/owner/repo/rules/branches/master?per_page=100 failed: HTTP 403: Resource not accessible%0A::warning::not from the preflight',
+  ]);
+});
+
 test('runPreflight exits 2 and asks nothing of GitHub without a repository named <owner>/<repo>', () => {
   for (const env of [{}, { GITHUB_REPOSITORY: '' }, { GITHUB_REPOSITORY: 'repo' }, { GITHUB_REPOSITORY: 'owner/repo/extra' }]) {
     const fake = fakeExec({ responses: STANDARD_RESPONSES });
