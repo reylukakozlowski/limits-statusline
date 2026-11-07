@@ -29,7 +29,7 @@ there.
 | Terminal status line | Claude Code with status line support and **Node.js 20+** on `PATH` (on macOS, for example, from [nodejs.org](https://nodejs.org/en/download), Homebrew or nvm) |
 | Branch in the header | `git` 2.15 or later on `PATH`; on macOS it comes with the Xcode Command Line Tools (`xcode-select --install`). Without it the terminal line says `no git` |
 | Desktop band | Claude Code 2.1.290 or later (the desktop app updates its own copy); the monospaced face from 2.1.299. No Node.js needed |
-| Weekly (7-day) and 5-hour limits | A claude.ai Pro or Max subscription; the limits appear after the session's first response |
+| Weekly (7-day) and 5-hour limits | A claude.ai Pro, Max or Ultra subscription; the limits appear after the session's first response. Verified Ultra accounts have no 5-hour limit ([Ultra plan](https://support.claude.com/en/articles/17728952)) |
 | Prompt-cache ratio in the terminal | Exact with Claude Code 2.1.251+, estimated from the last request on older versions |
 
 ## Install
@@ -249,7 +249,8 @@ With `CLAUDE_CONFIG_DIR` set, these folders live there instead of `~/.claude`.
   `/limits-statusline:setup` again with the plugin installed: it rebuilds the runtime copy and
   points `settings.json` at it, or use `--uninstall` to put your previous status line back.
 - **`7d —` and `5h —`** — the limits arrive with the first response of a session and only for
-  Pro and Max subscribers.
+  Pro, Max and Ultra subscribers. A verified Ultra account has no 5-hour limit: while Claude Code
+  sends no 5-hour window, `5h —` stays.
 - **The 7-day projection is very high on the first day after installing** — the 7-day pace looks
   back 24 hours; until the shared history covers a day, the pace is the average since the weekly
   reset, which early in the week counts only working hours. It settles once a day of history is
