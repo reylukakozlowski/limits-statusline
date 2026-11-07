@@ -1,8 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  latestVersion, nextVersion, releaseNotes, releaseSource, sourceTrailer, withManifestVersion,
-} from '../../scripts/lib/release-lib.mjs';
+import { latestVersion, nextVersion, releaseNotes, withManifestVersion } from '../../scripts/lib/release-lib.mjs';
 
 test('nextVersion raises the patch, minor or major part of the last release', () => {
   assert.equal(nextVersion('1.0.10', 'patch'), '1.0.11');
@@ -67,14 +65,16 @@ test('releaseNotes lists each commit subject, oldest first as given', () => {
   assert.throws(() => releaseNotes(['', '  ']), /no commits/);
 });
 
-test('a release commit names its develop commit in a trailer that releaseSource reads back', () => {
-  const sha = 'a'.repeat(40);
-  assert.equal(sourceTrailer(sha), `Source: develop@${sha}`);
-  assert.equal(releaseSource(`Release v1.0.11\n\n- LS-60_feat: a\n\n${sourceTrailer(sha)}\n`), sha);
+// The owner's decision: the note given in the Release form comes first, then the commits.
+test('releaseNotes puts the owner\'s note first, a blank line before the commits', () => {
+  assert.equal(releaseNotes(['LS-28_feat: a', 'LS-29_fix: b'], 'Faster start-up.'), 'Faster start-up.\n\n- LS-28_feat: a\n- LS-29_fix: b');
+  assert.equal(releaseNotes(['LS-28_feat: a'], '  Faster start-up.  '), 'Faster start-up.\n\n- LS-28_feat: a', 'trimmed');
 });
 
-test('releaseSource finds none in a message without the trailer or with a malformed one', () => {
-  for (const message of ['LS-58_docs: an old release, develop\'s own commit', 'Source: develop@abc', 'Source: master@' + 'b'.repeat(40), '']) {
-    assert.equal(releaseSource(message), null, message);
-  }
+test('releaseNotes without a note, or with a blank one, is the commits alone', () => {
+  for (const note of [undefined, '', '   ']) assert.equal(releaseNotes(['LS-28_feat: a'], note), '- LS-28_feat: a', JSON.stringify(note));
+});
+
+test('a note is no release: with no commits releaseNotes still refuses', () => {
+  assert.throws(() => releaseNotes([], 'Faster start-up.'), /no commits/);
 });
