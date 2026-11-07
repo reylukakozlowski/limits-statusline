@@ -13,8 +13,11 @@ const MASTER_ONLY = [{ id: 7, name: 'master', type: 'branch' }];
 const DEVELOP = { id: 8, name: 'develop', type: 'branch' };
 
 const ready = (overrides = {}) => ({
-  masterRules: STANDARD_RULES, environment: PRODUCTION, branchPolicies: MASTER_ONLY, ref: 'master', ...overrides,
+  masterRules: STANDARD_RULES, environment: PRODUCTION, branchPolicies: MASTER_ONLY, ref: 'master', repo: REPO, ...overrides,
 });
+const POLICIES = `repos/${REPO}/environments/production/deployment-branch-policies`;
+/** The command a problem ends with, for the owner to run; null when it names none. */
+const fix = (problem) => / Fix \(owner\): (.+)$/.exec(problem)?.[1] ?? null;
 
 test('a repository set up to the production standard is ready for a release run on master', () => {
   assert.deepEqual(MASTER_RULES, ['creation', 'deletion', 'non_fast_forward', 'update']);
@@ -33,6 +36,17 @@ test('master: history still asking for a linear history would refuse the release
   assert.deepEqual(rest, []);
   assert.match(problem, /required_linear_history/);
   assert.match(problem, /merge commit/);
+});
+
+// The first release after the switch to releases on master stopped here (run 42396834207): the
+// ruleset on GitHub still had the rule the repository's file no longer has. The problem names the
+// command that sends the file, with the ruleset's id from GitHub's answer.
+test('a linear history left on master: history comes with the command that sends the repository\'s ruleset file', () => {
+  const [problem] = preflightProblems(ready({ masterRules: [...STANDARD_RULES, { type: 'required_linear_history', ruleset_id: 25566952 }] }));
+  assert.equal(fix(problem), `gh api --method PUT repos/${REPO}/rulesets/25566952 --input .github/rulesets/master-history.json`);
+  const [unknownId] = preflightProblems(ready({ masterRules: [...STANDARD_RULES, { type: 'required_linear_history' }] }));
+  assert.equal(fix(unknownId), `gh api --method PUT repos/${REPO}/rulesets/<id> --input .github/rulesets/master-history.json`);
+  assert.equal(fix(preflightProblems(ready({ masterRules: [] }))[0]), null, 'missing rulesets: the setup in CONTRIBUTING.md');
 });
 
 test('missing rulesets count as well: without them anyone with write access could move master', () => {
@@ -77,6 +91,31 @@ test('on develop, the run that brings a new workflow to master needs production 
     assert.match(problems[0], /a release runs on master \(Actions → Release → Run workflow → Use workflow from: master\)/);
     assert.match(problems[0], /--bootstrap/);
   }
+});
+
+// After the run on develop the owner closes production to master; the problem names the calls.
+test('on master, the branch policies to add and to delete come as commands, by their ids', () => {
+  const POST_MASTER = `gh api --method POST ${POLICIES} -f name=master -f type=branch`;
+  const cases = [
+    [[...MASTER_ONLY, DEVELOP], `gh api --method DELETE ${POLICIES}/8`],
+    [[DEVELOP], `${POST_MASTER} && gh api --method DELETE ${POLICIES}/8`],
+    [[...MASTER_ONLY, { id: 9, name: 'feature/*', type: 'branch' }], `gh api --method DELETE ${POLICIES}/9`],
+    [[{ id: 9, name: 'master', type: 'tag' }], `${POST_MASTER} && gh api --method DELETE ${POLICIES}/9`],
+    [[], POST_MASTER],
+  ];
+  for (const [branchPolicies, command] of cases) {
+    assert.equal(fix(preflightProblems(ready({ branchPolicies }))[0]), command, JSON.stringify(branchPolicies));
+  }
+  // Without selected branches the environment itself needs changing: the setup in CONTRIBUTING.md.
+  assert.equal(fix(preflightProblems(ready({ environment: { ...PRODUCTION, deployment_branch_policy: null }, branchPolicies: [] }))[0]), null);
+});
+
+test('on develop, production not open to develop comes with the command that opens it', () => {
+  const POST_DEVELOP = `gh api --method POST ${POLICIES} -f name=develop -f type=branch`;
+  assert.equal(fix(preflightProblems(ready({ ref: 'develop', branchPolicies: MASTER_ONLY }))[0]), POST_DEVELOP);
+  assert.equal(fix(preflightProblems(ready({ ref: 'develop', branchPolicies: [] }))[0]), POST_DEVELOP);
+  const feature = { id: 9, name: 'feature/*', type: 'branch' };
+  assert.equal(fix(preflightProblems(ready({ ref: 'develop', branchPolicies: [DEVELOP, feature] }))[0]), `gh api --method DELETE ${POLICIES}/9`);
 });
 
 test('a run on any other branch is told that a release runs on master', () => {
@@ -147,6 +186,22 @@ test('runPreflight checks the branch the run is on', () => {
   assert.equal(onDevelop.code, 1);
   assert.match(onDevelop.text, /^::error::this run is on develop/m);
   assert.equal(preflight(fakeExec({ responses: STANDARD_RESPONSES }), { GITHUB_REPOSITORY: REPO, GITHUB_REF_NAME: 'master' }).code, 0);
+});
+
+// As GitHub answered run 42396834207: a run on develop, production open to develop, and the ruleset
+// "master: history" (25566952) still with its linear history.
+test('runPreflight names the repository and the ruleset in the command it prints', () => {
+  const rules = [...STANDARD_RULES, { type: 'required_linear_history', ruleset_id: 25566952 }];
+  const responses = {
+    ...STANDARD_RESPONSES,
+    [`repos/${REPO}/rules/branches/master?per_page=100`]: rules,
+    [`repos/${REPO}/environments/production/deployment-branch-policies?per_page=100`]: { total_count: 1, branch_policies: [DEVELOP] },
+  };
+  const result = preflight(fakeExec({ responses }), { GITHUB_REPOSITORY: REPO, GITHUB_REF_NAME: 'develop' });
+  assert.equal(result.code, 1);
+  const errors = result.text.split('\n').filter((line) => line.startsWith('::error::'));
+  assert.equal(errors.length, 1, result.text);
+  assert.ok(errors[0].endsWith(` Fix (owner): gh api --method PUT repos/${REPO}/rulesets/25566952 --input .github/rulesets/master-history.json`), errors[0]);
 });
 
 test('runPreflight prints each problem as a workflow error and exits 1', () => {

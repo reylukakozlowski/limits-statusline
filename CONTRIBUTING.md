@@ -197,7 +197,10 @@ makes no branch or pull request.
    - **Check that the release can reach master** (`scripts/release-preflight.mjs`), first, so that
      a run on the wrong branch, or a setting that would stop the release after its tag, fails
      within seconds: `master`'s two rulesets and no other rule, merge commits allowed, and the
-     `production` environment deploying from `master` alone;
+     `production` environment deploying from `master` alone. A linear history left on
+     `master: history`, or a branch policy of `production` to add or remove, ends its error with
+     the GitHub calls that fix it, `Fix (owner): gh api …`, with this repository and GitHub's ids,
+     ready to run;
    - **Name the develop commit to release**: the commit checked out, which the next job releases
      even when `develop` moves on during the run;
    - **Run the tests**: `npm test`; the counts, with the name of each failed test, are on the
