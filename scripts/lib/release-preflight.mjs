@@ -8,6 +8,8 @@
 // Problems are printed as workflow errors on stdout.
 // Exit codes: 0 ready, 1 not ready, 2 GitHub could not be read.
 
+import { annotation } from './workflow-commands.mjs';
+
 /** The rule types on master: the rulesets "master: release only" and "master: history", nothing else. */
 export const MASTER_RULES = Object.freeze(['creation', 'deletion', 'non_fast_forward', 'required_linear_history', 'update']);
 const DEPLOY_FROM = 'branch:develop';
@@ -49,7 +51,7 @@ export function preflightProblems({ masterRules, environment, branchPolicies }) 
 export function runPreflight({ env, exec, stdout }) {
   const say = (text) => stdout.write(`${text}\n`);
   if (!REPOSITORY.test(env.GITHUB_REPOSITORY ?? '')) {
-    say('::error::release preflight: GITHUB_REPOSITORY must be set as <owner>/<repo>.');
+    say(annotation('error', 'release preflight: GITHUB_REPOSITORY must be set as <owner>/<repo>.'));
     return 2;
   }
   let facts;
@@ -57,11 +59,11 @@ export function runPreflight({ env, exec, stdout }) {
     facts = readFacts(env.GITHUB_REPOSITORY, exec);
   } catch (error) {
     if (!(error instanceof Unreadable)) throw error;
-    say(`::error::release preflight: ${error.message}`);
+    say(annotation('error', `release preflight: ${error.message}`));
     return 2;
   }
   const problems = preflightProblems(facts);
-  for (const problem of problems) say(`::error::${problem}`);
+  for (const problem of problems) say(annotation('error', problem));
   if (problems.length > 0) {
     say('release preflight: the release would stop after its tag, so it stops here; nothing was tagged.');
     return 1;
