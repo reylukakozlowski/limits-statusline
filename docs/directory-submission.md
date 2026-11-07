@@ -61,7 +61,8 @@ reaches users.
 6. **Review and submit**
    - How new versions reach the directory: **GitHub push webhook**, then **Set up push updates**
      (needs admin access to the repository). The directory also checks `master` on a schedule.
-   - Auto-publish: on. Only a release moves `master`, so every new commit there is a release.
+   - Auto-publish: on. Only a release moves `master`, so its head is always a release: a merge of
+     `develop` that brings `develop`'s commits along as its history.
 
 ## The band's policy holds
 
@@ -142,7 +143,7 @@ call on `$` fails `test/desktop/directory-review.test.mjs` until the README's Pr
 
 ## After the listing
 
-A release adds its release commit to `master` and tags it `vX.Y.Z`; the webhook or the scheduled check picks it up,
+A release adds its release commit, a merge of `develop`, to `master` and tags it `vX.Y.Z`; the webhook or the scheduled check picks it up,
 the directory validates and scans it, and it is published as the plugin's publish setting says.
 Anthropic applies that setting: by default a reviewer publishes each version, and a version with a
 policy hold ([the band's policy holds](#the-bands-policy-holds)) waits for a reviewer.

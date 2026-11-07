@@ -10,18 +10,24 @@ const RELEASED = 'e'.repeat(40);
 const LOG = 'LS-5_feat: a\nLS-6_fix: b\n';
 const NOTES = '- LS-5_feat: a\n- LS-6_fix: b';
 const MANIFEST = '{\n  "name": "demo"\n}\n';
-const WRITES = ['git add', 'git write-tree', 'git commit-tree', 'git tag -a', 'git push', 'npm '];
+const WRITES = ['git add', 'git write-tree', 'git commit-tree', 'git checkout', 'git tag -a', 'git push', 'npm '];
 
 function fakeGit({
   branch = 'develop', status = '', tags = ['v0.0.9', 'v0.1.0'], previousMessage = 'LS-4_docs: released the old way',
-  log = LOG, tagExists = false, master = MASTER, masterHasPrevious = true, testStatus = 0, writeTreeStatus = 0,
+  log = LOG, tagExists = false, master = MASTER, masterHasPrevious = true, onDevelop = true, testStatus = 0,
+  releaseTestStatus = testStatus, writeTreeStatus = 0,
 } = {}) {
   const calls = [];
   const manifests = [];
+  let checkedOut = null; // the commit checked out to test, while it is
   const exec = (command, args) => {
     const call = [command, ...args].join(' ');
     calls.push(call);
-    if (command === 'npm') return { status: testStatus, stdout: '' };
+    if (command === 'npm') return { status: checkedOut === RELEASED ? releaseTestStatus : testStatus, stdout: '' };
+    if (args[0] === 'checkout') {
+      checkedOut = args.at(-1);
+      return { status: 0, stdout: '' };
+    }
     if (call === 'git rev-parse --abbrev-ref HEAD') return { status: 0, stdout: `${branch}\n` };
     if (call === 'git status --porcelain') return { status: 0, stdout: status };
     if (call === 'git rev-parse HEAD') return { status: 0, stdout: `${HEAD}\n` };
@@ -30,6 +36,7 @@ function fakeGit({
     if (call === `git log -1 --format=%B ${PREVIOUS}`) return { status: 0, stdout: `${previousMessage}\n` };
     if (call.startsWith('git rev-parse --quiet --verify refs/tags/')) return { status: tagExists ? 0 : 1, stdout: '' };
     if (call === `git merge-base --is-ancestor ${PREVIOUS} ${MASTER}`) return { status: masterHasPrevious ? 0 : 1, stdout: '' };
+    if (call === 'git merge-base --is-ancestor HEAD refs/remotes/origin/develop') return { status: onDevelop ? 0 : 1, stdout: '' };
     if (call.startsWith('git merge-base --is-ancestor')) return { status: 0, stdout: '' };
     if (args[0] === 'log' && args.includes('--reverse')) return { status: 0, stdout: log };
     if (call === 'git rev-parse --quiet --verify refs/remotes/origin/master') return { status: master ? 0 : 1, stdout: master ? `${master}\n` : '' };
@@ -53,17 +60,20 @@ const release = (git, argv) => {
   return { code, out: out.join(''), text: [...out, ...err].join('') };
 };
 
-test('a release builds one commit on master with develop\'s tree and the version, and tags it', () => {
+test('a release merges develop into master: develop\'s tree and the version, on master\'s head and develop\'s commit, tested, then tagged', () => {
   const git = fakeGit();
   const result = release(git, ['patch']);
   assert.equal(result.code, 0, result.text);
   assert.equal(result.out, 'v0.1.1\n');
   assert.deepEqual(git.writes(), [
-    'npm test',
     'git add .claude-plugin/plugin.json',
     'git write-tree',
     'git add .claude-plugin/plugin.json',
-    `git commit-tree ${TREE} -p ${MASTER} -m Release v0.1.1 -m ${NOTES} -m Source: develop@${HEAD}`,
+    `git commit-tree ${TREE} -p ${MASTER} -p ${HEAD} -m Release v0.1.1 -m ${NOTES} -m Source: develop@${HEAD}`,
+    // The tests run on the release commit itself, the files master gets, before it is tagged.
+    `git checkout --quiet --detach ${RELEASED}`,
+    'npm test',
+    'git checkout --quiet develop',
     `git tag -a v0.1.1 ${RELEASED} -m v0.1.1 -m ${NOTES}`,
   ]);
   // The manifest gets the version for the tree, then goes back as it was.
@@ -72,12 +82,33 @@ test('a release builds one commit on master with develop\'s tree and the version
 });
 
 // The Release workflow's master job checks the release commit and pushes it with the deploy key.
-test('release pushes nothing and makes no branch or pull request', () => {
+test('release pushes nothing and makes no branch or pull request; it checks out only the release commit, and back', () => {
   const git = fakeGit();
   const result = release(git, ['minor']);
   assert.equal(result.code, 0, result.text);
   assert.equal(result.out, 'v0.2.0\n');
-  assert.ok(!git.calls.some((call) => /^git (push|commit |switch|branch|checkout)|^gh /.test(call)), git.calls.join('\n'));
+  assert.ok(!git.calls.some((call) => /^git (push|commit |switch|branch)|^gh /.test(call)), git.calls.join('\n'));
+  assert.deepEqual(git.calls.filter((call) => call.startsWith('git checkout')), [
+    `git checkout --quiet --detach ${RELEASED}`,
+    'git checkout --quiet develop',
+  ]);
+});
+
+// The release job checks out the develop commit CI pinned, so HEAD is detached there.
+test('from a detached develop commit the release goes back to that commit after its tests', () => {
+  const git = fakeGit({ branch: 'HEAD' });
+  assert.equal(release(git, ['patch']).code, 0);
+  assert.equal(git.calls.filter((call) => call.startsWith('git checkout')).at(-1), `git checkout --quiet ${HEAD}`);
+});
+
+test('tests failing on the release commit stop the release: no tag, and the clone goes back to develop', () => {
+  const git = fakeGit({ releaseTestStatus: 1 });
+  const result = release(git, ['patch']);
+  assert.equal(result.code, 2);
+  assert.equal(result.out, '');
+  assert.match(result.text, /tests failed on the release commit eeeeeee; nothing was tagged/);
+  assert.ok(!git.calls.some((call) => call.startsWith('git tag -a')), git.calls.join('\n'));
+  assert.equal(git.calls.at(-1), 'git checkout --quiet develop');
 });
 
 test('the notes start after the develop commit the last release names in its message', () => {
@@ -87,13 +118,13 @@ test('the notes start after the develop commit the last release names in its mes
   assert.ok(git.calls.includes(`git log --reverse --format=%s ${source}..HEAD`));
 });
 
-test('the first release, with no version tag and no master, is a commit of its own and counts every commit', () => {
+test('the first release, with no version tag and no master, sits on develop\'s commit alone and counts every commit', () => {
   const git = fakeGit({ tags: [], master: null });
   const result = release(git, ['patch']);
   assert.equal(result.code, 0, result.text);
   assert.equal(result.out, 'v0.0.1\n');
   assert.ok(git.calls.includes('git log --reverse --format=%s HEAD'));
-  assert.ok(git.calls.some((call) => call.startsWith(`git commit-tree ${TREE} -m Release v0.0.1`)));
+  assert.ok(git.calls.some((call) => call.startsWith(`git commit-tree ${TREE} -p ${HEAD} -m Release v0.0.1`)), git.calls.join('\n'));
 });
 
 test('a develop head the latest release was made from is that release, to finish: no new commit or tag, its tag printed', () => {
@@ -117,19 +148,20 @@ test('a latest release that master lacks is finished before a new one, even afte
   assert.deepEqual(dry.writes(), ['npm test']);
 });
 
-test('release refuses off develop, with a dirty tree, or with a taken tag, before the tests and without writing', () => {
-  for (const options of [{ branch: 'master' }, { status: ' M README.md\n' }, { tagExists: true }]) {
+test('release refuses a commit origin\'s develop lacks, a dirty tree or a taken tag, before the tests and without writing', () => {
+  for (const options of [{ onDevelop: false, branch: 'feature/x' }, { status: ' M README.md\n' }, { tagExists: true }]) {
     const git = fakeGit(options);
     const result = release(git, ['patch']);
     assert.equal(result.code, 2, JSON.stringify(options));
     assert.equal(result.out, '');
     assert.deepEqual(git.writes(), [], JSON.stringify(options));
   }
+  assert.match(release(fakeGit({ onDevelop: false, branch: 'feature/x' }), ['patch']).text, /feature\/x is not on origin\/develop/);
 });
 
-test('release stops before writing when the tests fail, and a dry run writes nothing either way', () => {
+test('a dry run tests develop\'s commit and writes nothing, whether the tests pass or fail', () => {
   const failing = fakeGit({ testStatus: 1 });
-  assert.equal(release(failing, ['patch']).code, 2);
+  assert.equal(release(failing, ['patch', '--dry-run']).code, 2);
   assert.deepEqual(failing.writes(), ['npm test']);
   const dry = fakeGit();
   const result = release(dry, ['major', '--dry-run']);
