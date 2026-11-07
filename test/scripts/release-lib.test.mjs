@@ -71,6 +71,12 @@ test('releaseNotes puts the owner\'s note first, a blank line before the commits
   assert.equal(releaseNotes(['LS-28_feat: a'], '  Faster start-up.  '), 'Faster start-up.\n\n- LS-28_feat: a', 'trimmed');
 });
 
+// The promote job trims the note with awk's [ \t]: any other trimming would make it refuse the notes.
+test('releaseNotes trims the note of spaces and tabs only, as the promote job does', () => {
+  assert.equal(releaseNotes(['LS-28_feat: a'], '\t Faster start-up. \t'), 'Faster start-up.\n\n- LS-28_feat: a');
+  assert.equal(releaseNotes(['LS-28_feat: a'], ' Faster start-up. '), ' Faster start-up. \n\n- LS-28_feat: a');
+});
+
 test('releaseNotes without a note, or with a blank one, is the commits alone', () => {
   for (const note of [undefined, '', '   ']) assert.equal(releaseNotes(['LS-28_feat: a'], note), '- LS-28_feat: a', JSON.stringify(note));
 });

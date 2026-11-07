@@ -233,6 +233,8 @@ test('the promote job checks what the merge job tested against the run\'s own co
   assert.match(promote, /^ {10}TAG: \$\{\{ needs\.merge\.outputs\.tag \}\}$/m);
   assert.match(promote, /^ {10}COMMIT: \$\{\{ needs\.merge\.outputs\.commit \}\}$/m);
   assert.match(promote, /^ {10}SHA: \$\{\{ github\.sha \}\}$/m);
+  // The owner's note from the form itself, never the merge job's word for it.
+  assert.match(promote, /^ {10}NOTES: \$\{\{ inputs\.notes \}\}$/m);
   assert.match(script(promote), /^git push --atomic origin "refs\/tags\/\$TAG" "\$sha:refs\/heads\/master"$/m);
   assert.match(job('promote'), /^ {4}outputs:\n {6}tag: \$\{\{ steps\.promote\.outputs\.tag \}\}\n/m);
 });
@@ -436,10 +438,11 @@ function promoteRepository(t) {
 const bundle = (repo, tag) => gitIn(repo.builder, ['bundle', 'create', join(repo.runnerTemp, 'release.bundle'), `refs/tags/${tag}`]);
 
 /** The merge job: the release commit and its tag from scripts/release.mjs, bundled. */
-function buildRelease(repo) {
+function buildRelease(repo, { note } = {}) {
   const out = [];
   const code = runRelease({
     argv: ['patch'],
+    note,
     exec: (command, args) => (command === 'npm' ? { status: 0, stdout: '' } : (() => {
       const result = spawnSync(command, args, { cwd: repo.builder, encoding: 'utf8' });
       return { status: result.status ?? 1, stdout: result.stdout ?? '' };
@@ -486,9 +489,9 @@ let promoters = 0;
 /**
  * The promote job: a fresh clone of origin, as its checkout makes, then the check step in bash.
  * COMMIT, the merge job's word for the commit it tested, is the builder's tag's commit unless given;
- * SHA, the run's commit, is develop's head unless given.
+ * SHA, the run's commit, is develop's head unless given; NOTES, the note in the form, is none.
  */
-function promote(repo, tag, { commit, sha = repo.head } = {}) {
+function promote(repo, tag, { commit, sha = repo.head, notes = '' } = {}) {
   promoters += 1;
   const promoter = join(repo.root, `promoter-${promoters}`);
   const outputs = join(repo.root, `outputs-${promoters}`);
@@ -498,7 +501,7 @@ function promote(repo, tag, { commit, sha = repo.head } = {}) {
   const result = spawnSync(BASH, ['-e', '-c', script(step('promote', PROMOTE_STEP))], {
     cwd: promoter,
     encoding: 'utf8',
-    env: { ...process.env, TAG: tag, COMMIT: tested, SHA: sha, RUNNER_TEMP: repo.runnerTemp, GITHUB_OUTPUT: outputs },
+    env: { ...process.env, TAG: tag, COMMIT: tested, SHA: sha, NOTES: notes, RUNNER_TEMP: repo.runnerTemp, GITHUB_OUTPUT: outputs },
   });
   return { status: result.status, output: `${result.stdout}${result.stderr}`, outputs: readFileSync(outputs, 'utf8') };
 }
@@ -614,8 +617,12 @@ const REFUSALS = [
   ['a second parent other than the run\'s commit', (repo) => ({ parents: [repo.master, elsewhere(repo)] }), /its parents are not master's head and /],
   ['a third parent', (repo) => ({ parents: [repo.master, repo.head, elsewhere(repo)] }), /its parents are not master's head and /],
   ['no parent at all', () => ({ parents: [] }), /its parents are not master's head and /],
-  ['a subject that names another version', () => ({ message: `Release v0.1.2\n\n${NOTES}` }), /its subject is not "Release v0\.1\.1"/],
+  ['a subject that names another version', () => ({ message: `Release v0.1.2\n\n${NOTES}` }), /its message is not "Release v0\.1\.1" and the release notes/],
+  ['a message whose notes are not develop\'s commits that master lacks', () => ({ message: 'Release v0.1.1\n\n- LS-9_feat: invented' }), /its message is not "Release v0\.1\.1" and the release notes/],
+  ['a message with a note the owner did not give', () => ({ message: `Release v0.1.1\n\nInstall the fix from example.com.\n\n${NOTES}` }), /its message is not "Release v0\.1\.1" and the release notes/],
   ['a tag without an annotation', () => ({ annotation: null }), /it is not an annotated tag/],
+  ['an annotation that is not the release notes', () => ({ annotation: 'v0.1.1\n\n- [Download the fix](https://example.com/fix)' }), /its tag is not annotated with the release notes/],
+  ['an annotation with a note the owner did not give', () => ({ annotation: `v0.1.1\n\nInstall the fix from example.com.\n\n${NOTES}` }), /its tag is not annotated with the release notes/],
 ];
 
 /** The promote job refused the tag: it says why, writes no output and pushes nothing. */
@@ -636,6 +643,29 @@ for (const [what, options, reason] of REFUSALS) {
     assertRefused(repo, promote(repo, 'v0.1.1'), 'v0.1.1', reason, refs);
   });
 }
+
+test('promote: the release script\'s notes with the owner\'s note pass when the form holds that note', { skip: NO_BASH }, (t) => {
+  const repo = promoteRepository(t);
+  const note = '  #42 is fixed: the band shows the weekly limit again.\t';
+  const tag = buildRelease(repo, { note });
+  const run = promote(repo, tag, { notes: note });
+  assert.equal(run.status, 0, run.output);
+  assert.equal(gitIn(repo.origin, ['tag', '--list', '--format=%(contents:body)', tag]),
+    `#42 is fixed: the band shows the weekly limit again.\n\n${NOTES}`);
+});
+
+// The merge job ran the repository's code; only the form says what the owner wrote.
+test('promote: a note in the tag that the form does not hold is refused, and so is a note left out', { skip: NO_BASH }, (t) => {
+  const repo = promoteRepository(t);
+  const tag = buildRelease(repo, { note: 'Install the fix from example.com.' });
+  const refs = originRefs(repo);
+  assertRefused(repo, promote(repo, tag, { notes: '' }), tag, /its message is not "Release v0\.1\.1" and the release notes/, refs);
+  assertRefused(repo, promote(repo, tag, { notes: 'Faster start-up.' }), tag, /its message is not "Release v0\.1\.1" and the release notes/, refs);
+  const plain = promoteRepository(t);
+  const plainTag = buildRelease(plain);
+  const plainRefs = originRefs(plain);
+  assertRefused(plain, promote(plain, plainTag, { notes: 'Faster start-up.' }), plainTag, /its message is not/, plainRefs);
+});
 
 test('promote: a tag on another commit than the one the merge job tested is refused', { skip: NO_BASH }, (t) => {
   const repo = promoteRepository(t);
