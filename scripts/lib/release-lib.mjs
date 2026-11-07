@@ -1,11 +1,10 @@
-// Pure release arithmetic: versions, the latest version tag, release notes, the release commit's
-// manifest and the develop commit a release was made from.
+// Pure release arithmetic: versions, the latest version tag, release notes and the release
+// commit's manifest.
 
 const SEMVER = /^v?(\d+)\.(\d+)\.(\d+)$/;
 const VERSION_TAG = /^v\d+\.\d+\.\d+$/;
 const VERSION_LINE = /("version"\s*:\s*")[^"]*(")/g;
 const NAME_LINE = /^([ \t]*)("name"\s*:\s*"[^"]*")(,?)[ \t]*(\r?\n)/m;
-const SOURCE = /^Source: develop@([0-9a-f]{40})$/m;
 
 export const BUMPS = Object.freeze(['patch', 'minor', 'major']);
 
@@ -69,19 +68,16 @@ export function latestVersion(tags) {
   return versions.sort(compare).at(-1).join('.');
 }
 
-/** The release notes: one line per commit subject, in the order given. */
-export function releaseNotes(subjects) {
+/**
+ * The release notes: the owner's note from the Release form first, when there is one, then one line
+ * per commit subject, in the order given.
+ * @param {string[]} subjects
+ * @param {string} [note]
+ */
+export function releaseNotes(subjects, note = '') {
   const lines = subjects.map((subject) => subject.trim()).filter(Boolean);
   if (lines.length === 0) throw new Error('There are no commits to release.');
-  return lines.map((subject) => `- ${subject}`).join('\n');
+  const list = lines.map((subject) => `- ${subject}`).join('\n');
+  const lead = (note ?? '').trim();
+  return lead ? `${lead}\n\n${list}` : list;
 }
-
-/** The line a release commit's message ends with: the develop commit whose files it carries. */
-export const sourceTrailer = (sha) => `Source: develop@${sha}`;
-
-/**
- * The develop commit a release commit was made from, read from its message; null for a message
- * without one (the releases up to v1.0.10 were develop's own commits).
- * @param {string} message a release commit's message
- */
-export const releaseSource = (message) => SOURCE.exec(message)?.[1] ?? null;
