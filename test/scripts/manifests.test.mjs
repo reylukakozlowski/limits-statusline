@@ -21,9 +21,16 @@ const marketplace = json('.claude-plugin/marketplace.json');
 
 // Claude Code takes the version from plugin.json first and keeps users on it until it changes. The
 // release writes it into plugin.json in the release commit on master (scripts/release.mjs), counted
-// from the last tag, so the version lives in one place per release and develop never holds a stale one.
-test('develop\'s plugin.json carries no version, the release writes it on master; the marketplace entry and package.json carry none', () => {
-  assert.equal('version' in plugin, false);
+// from the last tag, so the version lives in one place per release and develop never holds a stale
+// one. The release runs these tests on its commit before it tags it, so there, and only there, the
+// checked-out commit is "Release vX.Y.Z" and plugin.json carries that version.
+const releaseVersionOfHead = () => {
+  const subject = spawnSync('git', ['log', '-1', '--format=%s', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).stdout ?? '';
+  return /^Release v(\d+\.\d+\.\d+)$/.exec(subject.trim())?.[1] ?? null;
+};
+
+test('plugin.json carries a version only in a release commit, the release\'s own; the marketplace entry and package.json carry none', () => {
+  if ('version' in plugin) assert.equal(plugin.version, releaseVersionOfHead(), 'a version only in a release commit, "Release vX.Y.Z"');
   assert.equal('version' in marketplace.plugins[0], false);
   assert.equal('version' in pkg, false);
 });
