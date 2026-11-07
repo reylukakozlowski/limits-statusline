@@ -1,0 +1,72 @@
+# Compatibility: every second day, the plugin against the newest Claude Code, so that a change in
+# Claude Code the plugin has to follow shows as a failed run before it shows in someone's status
+# line. GitHub sends a scheduled workflow's notifications to the user who created it, who last
+# changed its cron line, or who enabled it again (CONTRIBUTING.md, Against the newest Claude Code).
+#
+# One job, on Linux, installs the newest Claude Code (npm's `latest`) and runs three checks. Each
+# one runs even when an earlier one failed, so a run shows every problem at once, and any failure
+# fails the run; there is no other notification:
+#   1. `claude plugin validate .`: the manifest, the hooks module and the band's state contract as
+#      that release reads them (develop's plugin.json sets no version, by design: a warning only);
+#   2. `claude plugin test .`: the desktop band's tests (test/desktop/band.test.ts), run by its
+#      engine;
+#   3. scripts/check-status-line-contract.mjs: every field of the status line input that the plugin
+#      reads is still in Anthropic's status line page, with the type and unit the plugin expects.
+#      Fields the page newly documents are listed as a warning and in the run's summary only.
+# The downloads (Claude Code and the page) happen here, in the workflow: the plugin's own code makes
+# no network request. A schedule runs on the default branch, develop; Actions → Compatibility → Run
+# workflow starts a run by hand. The token can only read the repository and the run holds no
+# secret. GitHub turns a public repository's schedules off after 60 days without activity.
+name: Compatibility
+
+on:
+  schedule:
+    - cron: '17 4 */2 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compatibility
+  cancel-in-progress: false
+
+jobs:
+  compatibility:
+    name: The plugin on the newest Claude Code
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      # `claude --version` proves the native binary came with the package (npm takes it from an
+      # optional dependency), so a broken install fails here, not in the checks.
+      - name: Install the newest Claude Code
+        id: install
+        run: |
+          npm install --global --no-audit --no-fund @anthropic-ai/claude-code@latest
+          version="$(claude --version)"
+          echo "### Claude Code ${version%% *}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Download the status line page
+        id: docs
+        if: ${{ !cancelled() }}
+        run: curl --fail --silent --show-error --location --retry 3 --output "$RUNNER_TEMP/statusline.md" https://code.claude.com/docs/en/statusline.md
+
+      - name: Validate the plugin
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: claude plugin validate .
+
+      - name: Test the desktop band
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: claude plugin test .
+
+      - name: Check the status line contract
+        if: ${{ !cancelled() && steps.docs.outcome == 'success' }}
+        run: node scripts/check-status-line-contract.mjs --docs "$RUNNER_TEMP/statusline.md"
