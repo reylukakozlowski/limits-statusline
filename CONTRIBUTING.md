@@ -165,84 +165,90 @@ gh repo edit reylukakozlowski/limits-statusline \
 
 ## Releasing
 
-A release is a merge of `develop` into `master` and its tag, made by one click and built on
-`master`, the production branch. `develop` carries no version: the release commit carries the files
-of `develop` as they are at the commit the run checked, with `version` in
-`.claude-plugin/plugin.json` set to the release's (`X.Y.Z`, SemVer), and its two parents are the
-previous release (`master`'s head) and that `develop` commit. So `master` moves forward by one
-commit per release and holds `develop`'s history: right after a release GitHub shows `master` "N
-commits ahead of" `develop` (the release commits) and none behind; it falls behind again only as
-new pull requests reach `develop`. The annotated tag `vX.Y.Z` names the release commit. Claude Code
-takes the version from `plugin.json` and keeps users on it until it changes, so each release has a
-new one, counted from the newest `vX.Y.Z` tag; Anthropic's directory reads it from `master`. A test
-keeps the marketplace entry and `package.json` without a version, and `plugin.json` too, except in
-a release commit (`Release vX.Y.Z`), where it is that version. Releases come from the **Release**
-workflow on GitHub, which only the repository owner can run; it commits nothing to `develop` and
-makes no branch or pull request.
+A release is a merge of `develop` into `master` and its tag. `develop` carries no version: the
+release commit carries the files of `develop` as they are at the commit the run releases, with
+`version` in `.claude-plugin/plugin.json` set to the release's (`X.Y.Z`, SemVer), and its two
+parents are the previous release (`master`'s head) and that `develop` commit. So `master` moves
+forward by one commit per release and holds `develop`'s history: right after a release GitHub shows
+`master` "N commits ahead of" `develop` (the release commits) and none behind; it falls behind
+again only as new pull requests reach `develop`. The annotated tag `vX.Y.Z` names the release
+commit. Claude Code takes the version from `plugin.json` and keeps users on it until it changes, so
+each release has a new one, counted from the highest `vX.Y.Z` tag; users install from `master`, and
+Anthropic's directory reads it from there. A test keeps the marketplace entry and `package.json`
+without a version, and `plugin.json` too, except in a release commit (`Release vX.Y.Z`), where it
+is that version. Releases come from the **Release** workflow
+([`.github/workflows/release.yml`](.github/workflows/release.yml)), which only the repository owner
+can run and approve; it commits nothing to `develop` and makes no branch or pull request.
+
+### Making a release
 
 1. Merge the changes into `develop` through pull requests, as usual. Run `npm run test:mod` first
    when the band changed: the workflow does not run it. A new hook or call on `$` in the band also
    changes what Anthropic's directory holds for a reviewer: `npm test` fails until the README's
    Privacy section, `PRIVACY.md` and [the band's policy holds](docs/directory-submission.md#the-bands-policy-holds)
    describe it.
-2. On GitHub, open **Actions → Release → Run workflow**, set **Use workflow from** to `master` and
-   press **Run workflow**. That click is the whole release, and the run asks for nothing more. It
-   raises the patch part (`1.0.10` → `1.0.11`) unless you pick `minor` for new features or `major`
-   for a change users must act on. Tick **Dry run** to run only the job **CI** of step 3. The run is
-   listed as `Release patch`, `Dry run minor` and so on. The list offers `develop` first, the
-   default branch; a run on `develop` stops at its first check, which says to run on `master`
-   (except for the run that [brings a new Release workflow to `master`](#the-run-on-develop-that-brings-a-new-release-workflow)).
-3. The job **CI: tests and checks** runs in every run, a release too, checks out `develop` and
-   writes nothing:
-   - **Check that the release can reach master** (`scripts/release-preflight.mjs`), first, so that
-     a run on the wrong branch, or a setting that would stop the release after its tag, fails
-     within seconds: `master`'s two rulesets and no other rule, merge commits allowed, and the
-     `production` environment deploying from `master` alone. A linear history left on
-     `master: history`, or a branch policy of `production` to add or remove, ends its error with
-     the GitHub calls that fix it, `Fix (owner): gh api …`, with this repository and GitHub's ids,
-     ready to run;
-   - **Name the develop commit to release**: the commit checked out, which the next job releases
-     even when `develop` moves on during the run;
-   - **Run the tests**: `npm test`; the counts, with the name of each failed test, are on the
-     run's summary page;
-   - **Dry run of the release**: the checks of `npm run release -- <part> --dry-run` (a `develop`
-     commit that origin holds, a clean tree, commits since the last release, the next version, a
-     tag not taken yet), and the version and the notes in its log.
+2. On GitHub, open **Actions → Release → Run workflow**. Leave **Use workflow from** at `develop`,
+   its default: a run on any other branch is refused. Pick the **Version part to raise**: `patch`
+   (the default, `1.0.15` → `1.0.16`), `minor` for new features, `major` for a change users must
+   act on. The **Release note** is optional: one line of at most 500 characters, which opens the
+   release notes. Press **Run workflow**. The run is listed as `Release patch` and so on.
+3. The run waits for your approval before any of its steps runs. Open it, press **Review
+   deployments**, tick `release` and press **Approve and deploy** (GitHub also notifies you, and
+   waits up to 30 days). **Reject** stops the run, and nothing has happened. The release is made of
+   the `develop` commit of the moment you pressed **Run workflow**: a pull request merged while the
+   run waits goes into the next release.
+4. Then the jobs run by themselves, each only after the one before passed:
+   - **Merge and test**, which holds no credentials, first checks the note (one line, at most 500
+     characters). Then `scripts/release.mjs` refuses a `develop` commit that `master` already
+     holds (nothing new since the last release) and one that lacks the `develop` commit of the
+     release on `master` (`develop` only moves forward), takes the version from the highest
+     `vX.Y.Z` tag, builds the release commit, runs `npm test` on it (the files `master` gets, with
+     the version), and only then tags it with the annotated tag `vX.Y.Z`. The release notes, in
+     the tag and in the commit's message, are your note, then the subjects of the `develop`
+     commits that `master` lacks, oldest first. The job pushes nothing: the tag goes to the next
+     job as a git bundle.
+   - **Push to master**, in the `production` environment, holds the repository's deploy key and
+     runs none of the repository's code. It pushes the tag and `master` in one atomic push, both or
+     neither and never forced, and only when the tag is the release the previous job tested: named
+     `vX.Y.Z` and the highest such tag, annotated, on the commit the tests passed on; a merge whose
+     parents are `master`'s head and the run's commit, in this order, so no history but
+     `develop`'s reaches `master`; `develop`'s files at that commit with the manifest's version
+     line added and nothing else; the run's commit not yet in `master`; and a message and an
+     annotation whose notes the job works out itself from your note in the form and git, so the
+     job that ran the repository's code cannot put notes of its own into the release. Anything
+     else stops the run with nothing pushed. With the directory's push webhook set up, that push
+     is what tells Anthropic's directory about the release; without it the directory finds it at
+     its next scheduled check ([docs/directory-submission.md](docs/directory-submission.md#after-the-listing)).
+   - **GitHub release** creates the GitHub release from the tag's notes and marks it Latest. Once
+     GitHub shows the new release as the latest, it deletes the older releases: the repository
+     keeps one release, and the `vX.Y.Z` tags of all versions stay as the history (the ruleset
+     **protect release tags** forbids deleting or moving them).
 
-   A dry run ends here.
-4. Only when CI passed, the job **CD: release commit and tag**, which holds no credentials, checks
-   out the `develop` commit CI named, builds the release commit, runs `npm test` on it (the files
-   `master` gets, with the version), and only then tags it with an annotated tag `vX.Y.Z` whose
-   message, like the commit's, lists the subjects of the `develop` commits since the previous
-   release. It pushes nothing: the tag goes to the next job as a git bundle.
-5. The job **CD: master**, in the `production` environment, holds the repository's deploy key and
-   runs none of the repository's code. It pushes the tag, then `master`, only when the tag is a
-   release commit exactly as the previous job makes one:
-   - the tag is named `vX.Y.Z` and is the highest such tag, so no release goes out under a lower
-     version than one already tagged;
-   - the commit carries `develop`'s files at a commit `develop` holds, later than the one the
-     previous release was made from, so `master` never goes back to older files;
-   - the manifest's version line is added and nothing else is changed;
-   - its parents are `master`'s head and that `develop` commit, in this order, and no other, so
-     no history but `develop`'s reaches `master`;
-   - its message is `Release vX.Y.Z`, the subjects of `develop`'s commits since the previous
-     release and its `Source: develop@<sha>` line, and the tag is annotated with those subjects,
-     the notes the GitHub release shows.
+Claude never approves or rejects a release. Claude runs `gh` as the owner, so its approval would
+pass as yours; the guard of the owner's `sealoop-workflow` plugin blocks deployment reviews.
+Claude writes and changes the Release workflow and its tests; you start and approve each release.
 
-   Anything else stops the run with nothing pushed. Nothing else can move `master` (see below).
-   With the directory's push webhook set up, that push is what tells Anthropic's directory about
-   the release; without it the directory finds it at its next scheduled check
-   ([docs/directory-submission.md](docs/directory-submission.md#after-the-listing)).
-6. The job **CD: GitHub release** creates the GitHub release from the notes of the tag that
-   **CD: master** checked and pushed, and marks it Latest. Once GitHub shows the new release as the
-   latest, it deletes the older releases: the repository keeps one release, and the `vX.Y.Z` tags
-   of all versions stay as the history (a tag ruleset forbids deleting or moving them).
+### When a run fails
 
-A run that fails part way is finished by the next run, or by **Re-run failed jobs**: when `master`
-lacks the latest tag, or the `develop` commit to release is the one the latest release was made
-from (the release commit's message ends with it, `Source: develop@<sha>`), the run finishes that
-release (the pushes, the GitHub release) instead of cutting a new one, and skips what is done. So
-`master` skips no version, even when more was merged into `develop` in between.
+The step that failed says why, in an error at the top of the run's page.
+
+- **Refuse**: the run was not a **Run workflow** on `develop` by you. Nothing happened; start it
+  again from `develop`.
+- **Approval** rejected, or never approved: nothing happened.
+- **Merge and test**: nothing was pushed. The note had more than one line or 500 characters;
+  `develop` has nothing new since the last release (merge something first); `develop` lost the
+  commit of the last release (it never should: the `develop` ruleset forbids force pushes); or a
+  test failed on the release commit (fix it on `develop`). Then start a new run.
+- **Push to master**, before its push: nothing was pushed, since the push is atomic. Fix the
+  cause (the error names it), then **Re-run failed jobs** within a day, while the bundle is kept,
+  or start a new run, which makes the same version again.
+- **Push to master** after its push, or **GitHub release**: the version is on `master` and
+  tagged. **Re-run failed jobs**: **Push to master** pushes nothing when `master` already holds
+  the tag, and **GitHub release** skips a release that exists. A new run would be refused, as
+  `develop` has nothing new; after more merges it releases the next version, and the one before
+  keeps its tag without a GitHub release.
+
+A tag is never moved or deleted, so a version once tagged is taken for good.
 
 ### master
 
@@ -254,112 +260,61 @@ marketplace file, which is read from `develop`, fetches the plugin from it. User
 with `claude plugin update limits-statusline@sealoop`, or by themselves when they turned auto-update
 on for this marketplace (it is off by default for marketplaces outside Anthropic's).
 
-Two rulesets guard `master`, and GitHub refuses every other change, the owner's included:
+Two rulesets on GitHub guard `master`, and GitHub refuses every other change, the owner's included:
 
-- **master: release only** ([.github/rulesets/master-release-only.json](.github/rulesets/master-release-only.json))
-  lets only a deploy key create or move `master`.
-- **master: history** ([.github/rulesets/master-history.json](.github/rulesets/master-history.json))
-  forbids deleting `master` and force pushes, and no one bypasses it, the deploy key and the owner
-  included. It allows merge commits: a release is one.
+- **master: release only** lets only a deploy key create or move `master`.
+- **master: history** forbids deleting `master` and force pushes, and no one bypasses it, the
+  deploy key and the owner included. It must not require a linear history: a release is a merge
+  commit.
 
-The repository has exactly one deploy key with write access, `production: master (release
-workflow)`: GitHub cannot name a single key as the one that bypasses a ruleset, so every deploy key
-of the repository could move `master`. Its private half is the secret `PRODUCTION_DEPLOY_KEY` of
-the `production` environment, which deploys from `master` only, and only the job **CD: master**
-of the Release workflow names it. Do not open pull requests into `master`: Rebase and merge would
-rewrite the commits, and the workflow moves it.
+The repository has exactly one deploy key with write access: GitHub cannot name a single key as
+the one that bypasses a ruleset, so every deploy key of the repository could move `master`. Its
+private half is the secret `PRODUCTION_DEPLOY_KEY` of the `production` environment, which deploys
+from `develop` only, and only the job **Push to master** of the Release workflow names it. Do not
+open pull requests into `master`: Rebase and merge would rewrite the commits, and the workflow
+moves it.
 
-A run executes the workflow file of the branch it starts on, so a release runs the Release
-workflow as the previous release left it on `master`, the checks of **CD: master** included: a
-change to `.github/workflows/release.yml` merged into `develop` takes effect from the release after
-the one that brings it to `master`. Only the workflow comes from `master`: the release script, the
-tests and the files of the release are those of the `develop` commit being released, and the
-release commit they build sits on `master`'s head. The key is only ever used by a workflow that is
-already released.
+The owner sets this up, and rotates the key, with the `sealoop-workflow` plugin: `repo-standard.mjs
+production reylukakozlowski/limits-statusline`, with `--dry-run` first to see the plan
+(`--rotate-key` for a new key). It makes `production` deploy from `develop` alone, sets up the
+`release` environment (the owner its one required reviewer, self-review allowed, `develop` only),
+both rulesets and the one deploy key; it neither adds nor removes a linear history on
+`master: history`. It creates a credential, so Claude runs only the dry run.
 
-#### The run on develop that brings a new Release workflow
-
-When `master`'s Release workflow cannot make the next release itself, one run on `develop` brings
-`develop`'s workflow to `master`: the first release made on `master` (v1.0.14 and earlier ran on
-`develop`), or the repair of a Release workflow that broke on `master`. The owner, in this order:
-
-1. has the new workflow on `develop`: the pull request that brings it is merged;
-2. makes sure the ruleset `master: history` on GitHub no longer has `required_linear_history` (the
-   file in this repository has it no more; once):
-   `gh api --method PUT repos/<owner>/<repo>/rulesets/<id> --input .github/rulesets/master-history.json`;
-3. opens production to `develop`, next to `master`: `repo-standard.mjs production <owner>/<repo>
-   --bootstrap` (sealoop-workflow), or by hand with
-   `gh api --method POST repos/<owner>/<repo>/environments/production/deployment-branch-policies -f name=develop -f type=branch`
-   (and the same with `name=master` when it is missing);
-4. runs **Actions → Release → Run workflow** with **Use workflow from** `develop`, a dry run first
-   (its first check, too, needs production open to `develop`), then the release. Afterwards
-   `gh api repos/<owner>/<repo>/compare/develop...master --jq .behind_by` prints `0` (no commit of
-   `develop` missing from `master`) unless `develop` moved on meanwhile, and `master`'s head is
-   `Release vX.Y.Z` with two parents;
-5. removes `develop` from production, leaving `master` alone: `repo-standard.mjs production
-   <owner>/<repo>`, or by hand `gh api repos/<owner>/<repo>/environments/production/deployment-branch-policies`
-   for the id of `develop`, then `gh api --method DELETE repos/<owner>/<repo>/environments/production/deployment-branch-policies/<id>`.
-
-From then on every release runs on `master`, and the check of a run on `master` fails while
-production still deploys from `develop`, so a forgotten step 5 stops the next release before
-anything is written.
-
-To set this up again, in a fork for example: with no `master` yet, the first release is the run on
-`develop` above, so production starts open to both branches; that release creates `master` on
-`develop`'s commit, and step 5 then removes `develop` from production, leaving `master` alone.
-
-```bash
-gh api --method POST repos/<owner>/<repo>/rulesets --input .github/rulesets/master-release-only.json
-gh api --method POST repos/<owner>/<repo>/rulesets --input .github/rulesets/master-history.json
-gh api --method PUT repos/<owner>/<repo>/environments/production \
-  -F 'deployment_branch_policy[protected_branches]=false' -F 'deployment_branch_policy[custom_branch_policies]=true'
-gh api --method POST repos/<owner>/<repo>/environments/production/deployment-branch-policies -f name=master -f type=branch
-gh api --method POST repos/<owner>/<repo>/environments/production/deployment-branch-policies -f name=develop -f type=branch
-ssh-keygen -q -t ed25519 -N '' -C 'production: master (release workflow)' -f production-key
-gh repo deploy-key add production-key.pub -R <owner>/<repo> --allow-write --title 'production: master (release workflow)'
-gh secret set PRODUCTION_DEPLOY_KEY --env production -R <owner>/<repo> < production-key
-rm production-key production-key.pub
-```
-
-To change a ruleset, edit its file and send it with `gh api --method PUT
-repos/<owner>/<repo>/rulesets/<id> --input <file>`; `gh api repos/<owner>/<repo>/rulesets` lists the
-ids.
+A run executes the workflow file of the branch it starts on, `develop`, so a change to
+`.github/workflows/release.yml` takes effect in the first run after its pull request is merged. The
+file has to stay on `develop`, the default branch, for **Run workflow** to appear.
 
 ### Credentials
 
-The job **CD: master** pushes the tag and `master` over SSH with the deploy key; its
+The job **Push to master** pushes the tag and `master` over SSH with the deploy key; its
 `GITHUB_TOKEN` only reads. GitHub refuses that token a push of a commit that changes
 `.github/workflows`, which a release commit does whenever `develop` changed a workflow since the
 previous release; the deploy key has no such limit. The key is never in a job that runs the
-repository's code: the tests run in **CD: release commit and tag**, which has no credentials, and
-**CD: master** checks what that job hands it before it pushes, so even code that went wrong in the
-tests could not take the key or put anything but a release commit on `master`: not older files,
-not a lower version and no release notes of its own. No workflow here runs on a push, so neither
-push starts another run. The Release workflow opens no pull requests, so **Settings → Actions →
+repository's code: the tests run in **Merge and test**, which has no credentials, and **Push to
+master** checks what that job hands it before it pushes, so even code that went wrong in the tests
+could not take the key or put anything but the tested release commit on `master`: not older files,
+not a lower version and no release notes of its own. **GitHub release** writes with
+`GITHUB_TOKEN` (`contents: write`) and pushes nothing. No workflow here runs on a push, so the push
+starts no other run. The Release workflow opens no pull requests, so **Settings → Actions →
 General → Workflow permissions → Allow GitHub Actions to create and approve pull requests** can
 stay off.
 
 ### Who can release
 
-GitHub skips every job, without a runner, when anyone but the repository owner starts the run or
-when it runs on any branch but `master` or `develop`; only people with write access can start it
-at all, and the first check stops a run on `develop` unless production lets `develop` deploy (the
-run that brings a new Release workflow, above). The owner's click is the release: the run asks for
-no approval. The `production` environment accepts only `master` (and `develop` only while the owner
-opens it for a run that brings a new Release workflow) and holds the deploy key; it asks for no
-approval either. Three things keep the key from any other job: the branch policy (`master`
-only, which only the deploy key can move); the owner-only guard on every job of the Release
-workflow; and the contract test that fails when another workflow names `production` or its key,
-which the Tests workflow runs on every pull request into `develop` once it is ready for review.
-Events that anyone can cause, such as an issue comment, run the workflows of `develop` with
-`develop` as their ref, so a workflow on such an event must never name `production`, and
-production is open to `develop` only from step 3 to step 5 of a run that brings a new Release
-workflow; a required reviewer on `production` would hold such a job as well, at the price of an
-approval in every release. Keep the `production` environment: GitHub creates a missing environment
-that a workflow names, without any protection rules (the check of step 3 stops a release before
-that). No workflow names the `release` environment any more; it can be deleted. The workflow file
-has to stay on `develop`, the default branch, for **Run workflow** to appear; a release runs the
-copy on `master`.
+GitHub skips every release job, without a runner, when anyone but the repository owner starts the
+run or when it runs on any branch but `develop`; the job **Refuse** then fails and says so. Only
+people with write access can start it at all. Your approval in the `release` environment is the go
+for one release; it is not what keeps the deploy key safe. That is `production`'s branch policy:
+only runs on `develop` get the key, and only your merges change `develop` (pull request workflows
+run on `refs/pull/…`). Three things keep the key from any other job: that branch policy; the
+owner-only condition on every job of the Release workflow; and the contract test
+(`test/scripts/release-workflow.test.mjs`) that fails when another workflow names `production` or
+its key, which the Tests workflow runs on every pull request into `develop` once it is ready for
+review. Events that anyone can cause, such as an issue comment, run the workflows of `develop` with
+`develop` as their ref, so a workflow on such an event must never name `production`. Keep both
+environments: GitHub creates a missing environment that a workflow names, without any protection
+rules, so without `release` a run would wait for no approval.
 
 So that no stranger runs workflows on the repository's runners, the setting
 **Approval for running fork pull request workflows from contributors** (Settings → Actions →
@@ -369,13 +324,11 @@ workflow before the owner approves it.
 ### From a computer
 
 `npm run release -- patch --dry-run` (or `minor`, `major`) runs the same checks and the tests and
-prints the next version and the notes. With `gh` signed in,
-`GITHUB_REPOSITORY=<owner>/<repo> node scripts/release-preflight.mjs` makes the Release
-workflow's check of the way to `master` (`GITHUB_REF_NAME=develop` checks a run on `develop`). On
-a clean `develop` that origin holds, `npm run release -- patch` builds the release commit, runs
-the tests on it and tags it, in the clone only, to look at; it checks the release commit out for
-the tests and then goes back, so `develop` and the working tree stay as they were. Releases come
-from the workflow: only its deploy key can move `master`.
+prints the next version and the notes; with `NOTES="<note>"` in front, the note opens them. On a
+clean `develop` that origin holds, `npm run release -- patch` builds the release commit, runs the
+tests on it and tags it, in the clone only, to look at; it checks the release commit out for the
+tests and then goes back, so `develop` and the working tree stay as they were. Releases come from
+the workflow: only its deploy key can move `master`.
 
 `CHANGELOG.md` covers the versions up to 1.0.2; the first tagged release is `v0.1.1`, and `0.1.0`
 has a changelog entry but no tag.
