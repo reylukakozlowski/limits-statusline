@@ -16,12 +16,12 @@ const DEVELOP_MANIFEST = '{\n  "name": "demo",\n  "displayName": "Demo"\n}\n';
 
 const run = (cwd, command, args) => {
   const result = spawnSync(command, args, { cwd, encoding: 'utf8' });
-  return { status: result.status ?? 1, stdout: result.stdout ?? '' };
+  return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr || result.error?.message || '' };
 };
 
 const git = (cwd, ...args) => {
   const result = run(cwd, 'git', args);
-  assert.equal(result.status, 0, `git ${args.join(' ')}`);
+  assert.equal(result.status, 0, `git ${args.join(' ')}: ${result.stderr.trim()}`);
   return result.stdout.trim();
 };
 
