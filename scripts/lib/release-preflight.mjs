@@ -75,10 +75,17 @@ export function preflightProblems({ masterRules, environment, branchPolicies, re
   const branches = branchPolicies.map((branch) => `${branch.type ?? 'branch'}:${branch.name}`);
   const custom = policy?.custom_branch_policies === true && policy.protected_branches === false;
   const from = policy ? branches.join(', ') || 'no branch' : 'any branch';
+  const masterAlone = custom && branches.join(' ') === `branch:${RELEASE_BRANCH}`;
   if (ref === BOOTSTRAP_BRANCH) {
     const open = custom && branches.includes(`branch:${BOOTSTRAP_BRANCH}`)
       && branches.every((branch) => branch === `branch:${BOOTSTRAP_BRANCH}` || branch === `branch:${RELEASE_BRANCH}`);
-    if (!open) {
+    if (masterAlone) {
+      // The usual case: production is set up, and the run was started on develop, the branch the Run
+      // workflow list offers first. The answer is a run on master, not production opened to develop.
+      problems.push('this run is on develop: a release runs on master. Run it again with Actions → Release → Run workflow → '
+        + 'Use workflow from: master. Only the run that brings a new Release workflow to master starts on develop, after '
+        + `the owner opened production to develop for it (repo-standard.mjs production <owner>/<repo> --bootstrap) ${SEE}.`);
+    } else if (!open) {
       const fix = custom
         ? withFix(policyCommands(repo, branchPolicies, { required: [BOOTSTRAP_BRANCH], allowed: [BOOTSTRAP_BRANCH, RELEASE_BRANCH] }))
         : '';
@@ -86,7 +93,7 @@ export function preflightProblems({ masterRules, environment, branchPolicies, re
         + 'brings a new Release workflow to master, after the owner opened production to develop (repo-standard.mjs '
         + `production <owner>/<repo> --bootstrap) ${SEE}.${fix}`);
     }
-  } else if (!(custom && branches.join(' ') === `branch:${RELEASE_BRANCH}`)) {
+  } else if (!masterAlone) {
     // Without selected branches the environment itself changes first: the setup in CONTRIBUTING.md.
     const fix = custom ? withFix(policyCommands(repo, branchPolicies, { required: [RELEASE_BRANCH], allowed: [RELEASE_BRANCH] })) : '';
     problems.push(`the environment production deploys from ${from}, not from master alone ${SEE}.${fix}`);

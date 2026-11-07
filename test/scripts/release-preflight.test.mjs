@@ -84,13 +84,24 @@ test('on develop, the run that brings a new workflow to master needs production 
   for (const branchPolicies of [[DEVELOP], [...MASTER_ONLY, DEVELOP]]) {
     assert.deepEqual(preflightProblems(ready({ ref: 'develop', branchPolicies })), [], JSON.stringify(branchPolicies));
   }
-  for (const branchPolicies of [MASTER_ONLY, [DEVELOP, { id: 9, name: 'feature/*', type: 'branch' }], []]) {
+  for (const branchPolicies of [[DEVELOP, { id: 9, name: 'feature/*', type: 'branch' }], []]) {
     const problems = preflightProblems(ready({ ref: 'develop', branchPolicies }));
     assert.equal(problems.length, 1, JSON.stringify(branchPolicies));
     assert.match(problems[0], /^this run is on develop, but production deploys from /);
     assert.match(problems[0], /a release runs on master \(Actions → Release → Run workflow → Use workflow from: master\)/);
     assert.match(problems[0], /--bootstrap/);
   }
+});
+
+// Run 42406112922: after the switch the owner started a release on develop, the branch the Run
+// workflow list offers first. production deploys from master alone, as it should, so the answer is a
+// run on master, not production opened to develop.
+test('on develop, with production on master alone as it should be, the problem says to run the release again on master', () => {
+  const [problem, ...rest] = preflightProblems(ready({ ref: 'develop', branchPolicies: MASTER_ONLY }));
+  assert.deepEqual(rest, []);
+  assert.match(problem, /^this run is on develop: a release runs on master\. Run it again with Actions → Release → Run workflow → Use workflow from: master\./);
+  assert.equal(fix(problem), null, 'no command that opens production to develop');
+  assert.doesNotMatch(problem, /deployment-branch-policies/);
 });
 
 // After the run on develop the owner closes production to master; the problem names the calls.
@@ -110,9 +121,8 @@ test('on master, the branch policies to add and to delete come as commands, by t
   assert.equal(fix(preflightProblems(ready({ environment: { ...PRODUCTION, deployment_branch_policy: null }, branchPolicies: [] }))[0]), null);
 });
 
-test('on develop, production not open to develop comes with the command that opens it', () => {
+test('on develop, production set up neither way comes with the command that opens it to develop', () => {
   const POST_DEVELOP = `gh api --method POST ${POLICIES} -f name=develop -f type=branch`;
-  assert.equal(fix(preflightProblems(ready({ ref: 'develop', branchPolicies: MASTER_ONLY }))[0]), POST_DEVELOP);
   assert.equal(fix(preflightProblems(ready({ ref: 'develop', branchPolicies: [] }))[0]), POST_DEVELOP);
   const feature = { id: 9, name: 'feature/*', type: 'branch' };
   assert.equal(fix(preflightProblems(ready({ ref: 'develop', branchPolicies: [DEVELOP, feature] }))[0]), `gh api --method DELETE ${POLICIES}/9`);
