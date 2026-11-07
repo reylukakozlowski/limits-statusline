@@ -45,11 +45,78 @@ Some tests depend on the system they run on:
 - A Windows checkout may have CRLF line endings (Git for Windows sets `core.autocrlf=true` by
   default); the tests read files with either line ending, as a run on a CRLF checkout showed.
 
-`npm run test:mod` runs only on a computer with Claude Code, not in the workflow. Nor does the
-workflow show how the lines look: the status line in a macOS terminal (Terminal.app, iTerm2) and
-the desktop band in the macOS app have not been checked by hand yet. To make the three
-`npm test on …` checks required before a merge, the owner adds them to the `develop` ruleset
-(Settings → Rules → Rulesets → protect develop → Require status checks to pass).
+`npm run test:mod` needs Claude Code, so the Tests workflow does not run it; the Compatibility
+workflow below runs the same tests every second day. Neither workflow shows how the lines look:
+the status line in a macOS terminal (Terminal.app, iTerm2) and the desktop band in the macOS app
+have not been checked by hand yet. To make the three `npm test on …` checks required before a
+merge, the owner adds them to the `develop` ruleset (Settings → Rules → Rulesets → protect develop
+→ Require status checks to pass).
+
+### Against the newest Claude Code
+
+Claude Code changes often: npm lists 18 releases of
+[`@anthropic-ai/claude-code`](https://www.npmjs.com/package/@anthropic-ai/claude-code?activeTab=versions)
+from 2.1.301 on 15 October to 2.1.319 on 6 November 2026. The plugin depends on what each release
+sends and runs: the status line input, the mods engine, the manifest. The **Compatibility** workflow
+([`.github/workflows/compatibility.yml`](.github/workflows/compatibility.yml)) checks the plugin
+against the newest release every second day (04:17 UTC on odd days of the month), and from
+Actions → Compatibility → Run workflow at any time. It installs `@anthropic-ai/claude-code@latest`
+on Linux and runs:
+
+1. `claude plugin validate .` and `claude plugin test .`, as above, with that release;
+2. `node scripts/check-status-line-contract.mjs --docs <copy>` against a copy of Anthropic's
+   [status line page](https://code.claude.com/docs/en/statusline.md), which the workflow downloads.
+   The contract (`scripts/lib/status-line-contract.mjs`) lists every input field the status line
+   reads, with the type the page's "Full JSON schema" example gives it and, where the code relies
+   on one, the unit its table row states (`from 0 to 100`, `Unix epoch seconds`). A field the page
+   no longer documents, or documents with another type or unit, fails the check; a field the page
+   newly documents is only listed as a warning and in the run's summary. A page the parser does
+   not recognise fails it too (exit code 2), rather than reading as every field gone.
+
+Each check runs even when an earlier one failed, and any failure fails the run. A failed run is the
+only notification. GitHub sends a scheduled workflow's notifications to the user who created the
+workflow; after someone else changes its cron line they go to that user, and after the workflow
+was disabled and enabled again, to whoever enabled it
+([notifications for workflow runs](https://docs.github.com/en/actions/concepts/workflows-and-actions/notifications-for-workflow-runs)).
+They arrive by email or on the web as that user's notification settings for Actions say, which can
+be set to failed runs only. The token can only read the repository and the run holds no secret.
+The downloads happen in the workflow, so the plugin's own code makes no network request
+(`test/scripts/no-network.test.mjs` keeps it so). The contract cannot drift from the code:
+`test/scripts/status-line-contract-drift.test.mjs` traces every field the status line reads and
+fails when the contract lists one more or one fewer. `test/scripts/compatibility-workflow.test.mjs`
+pins the workflow.
+
+GitHub runs schedules from the default branch only (`develop`) and turns them off in a public
+repository after 60 days without activity; Actions → Compatibility → Enable workflow turns the
+schedule back on.
+
+#### When a Compatibility run fails
+
+The run's summary names the Claude Code version it installed and the contract's findings; the step
+that failed says where to look:
+
+- **Install the newest Claude Code**: npm or the package failed, not the plugin. Run the workflow
+  again; if it fails again, the release itself may be broken, and a later run installs the next one.
+- **Validate the plugin** or **Test the desktop band**: that release reads the manifest, the hooks
+  module or the band differently. Run the same command locally with that release (`npm install
+  --prefix <folder> @anthropic-ai/claude-code@<version>`, then `<folder>/node_modules/.bin/claude
+  plugin test .`), read the release's entry in Claude Code's
+  [changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md), and fix the plugin.
+- **Download the status line page**: the docs host refused or failed the download (the step's log
+  shows curl's error). Nothing was checked; run the workflow again later. A refusal that keeps
+  coming back means the host blocks the runner, and the check needs another way to get the page.
+- **Check the status line contract** with exit code 1: a field the plugin reads changed on the page.
+  The annotation names the field and what the page says now. Change the code that reads the field
+  in `src/terminal/snapshot.mjs` or `run.mjs`, then the field's entry in `STATUS_LINE_CONTRACT` and
+  the date beside it. A field that only moved, or a unit only reworded, needs the contract alone.
+- **Check the status line contract** with exit code 2: the page's layout changed, so the parser
+  (`scripts/lib/status-line-docs.mjs`) no longer finds the "Full JSON schema" example or the field
+  tables. Fix the parser and its fixture (`test/fixtures/status-line-docs.md`); the plugin may need
+  nothing.
+
+A warning that lists newly documented fields leaves the run green. When such a field should stay
+unread, add it to `UNREAD_FIELDS` in `scripts/lib/status-line-contract.mjs`, and the warning stops;
+when the plugin should show it, read it in the code and add it to the contract.
 
 ## Run a working copy in every session
 
