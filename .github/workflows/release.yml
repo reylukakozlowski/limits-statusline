@@ -1,67 +1,63 @@
-# Release: publishes develop as a new version, with one click, built on master, the production
-# branch. A release is a merge of develop into master and its tag: the release commit carries
-# develop's files as they are at the commit CI checked, with .claude-plugin/plugin.json given the
-# release's version, and its parents are master's head (the previous release) and that develop
-# commit. So master moves forward by one commit and holds develop's history: right after a release
-# GitHub shows master no commit behind develop. develop carries no version and gets nothing from
-# the run. The tag vX.Y.Z names the release commit; its version is the last tag's with the part the
-# owner picked raised (patch by default).
+# Release: publishes develop as a new version. The owner starts it from Actions → Release → Run
+# workflow with "Use workflow from" left at develop, the default branch, so a run executes this
+# file as develop has it: a change here works from the next run. A release is a merge of develop
+# into master, the production branch users install from, and its tag: the release commit carries
+# develop's files as they are at the run's commit (github.sha, develop when the owner clicked),
+# with .claude-plugin/plugin.json given the release's version, and its parents are master's head
+# (the previous release) and that develop commit. So master moves forward by one commit and holds
+# develop's history: right after a release GitHub shows master no commit behind develop. develop
+# carries no version and gets nothing from the run. The version is the highest vX.Y.Z tag's with
+# the part the owner picked raised (patch by default).
 #
-# Started from Actions → Release → Run workflow → Use workflow from: master. A run executes the
-# workflow of the branch it starts on, so a release runs this file as the last release left it on
-# master, the checks of the job CD: master included, and a change to it here works from the release after the
-# one that brings it to master; the release script, the tests and the files are the develop
-# commit's. A run on develop is only for that: the run that brings a new Release workflow to master
-# (the first release made on master, or a repair), once the owner opened the environment
-# `production` to develop (repo-standard.mjs production <owner>/<repo> --bootstrap, or by hand;
-# CONTRIBUTING.md, master). GitHub checks each job's `if` without a runner: a run by
-# anyone but the repository owner, or on any other branch, is skipped. For the owner the run asks
-# nothing more and goes through four jobs, in this order:
-#   1. ci checks out develop: first scripts/release-preflight.mjs, which checks that the run can
-#      reach master (master's two rulesets and nothing else, merge commits allowed; the environment
-#      `production` on master alone, or for a run on develop on develop and master), so a run on
-#      the wrong branch stops within seconds; then it names the develop commit it checked, runs the
-#      tests, with their counts on the run's summary page, and the dry run of scripts/release.mjs (a
-#      develop commit origin holds, a clean tree, the next version, a free tag, the notes). It reads
-#      the repository and writes nothing;
-#   2. release, only when ci passed, with no credentials, on the develop commit ci named:
-#      scripts/release.mjs builds the release commit, runs the tests on it, the files master gets,
-#      and tags it with the annotated tag vX.Y.Z (the subjects of develop's commits since the
-#      previous release). It pushes nothing; the tag goes to the next job as a git bundle;
-#   3. promote (environment `production`, which deploys from master only and holds the secret
-#      PRODUCTION_DEPLOY_KEY) runs none of the repository's code: it checks that the bundle's tag is
-#      a release commit exactly as job 2 makes one (the highest vX.Y.Z tag; develop's files at a
-#      develop commit after the previous release's, with the version line added; master's head and
-#      that develop commit as its parents; the subjects of develop's commits since that release in
-#      its message and its annotated tag) and pushes the tag, then master, with that deploy key.
-#      master's rulesets let only a deploy key create or move master and refuse a deletion or a
-#      force push, so master is exactly the latest release and only moves forward. The repository
-#      has one deploy key;
-#   4. publish: creates the GitHub release from the notes of the tag job 3 checked and pushed,
-#      marks it Latest and deletes the older releases; their tags stay as the history.
-# A dry run is job 1 alone: it changes nothing and never enters `production`. When master lacks
-# the latest tag, or the develop commit is the one that release was made from, a run finishes that
-# release (the pushes, the GitHub release) instead of cutting a new one, so a failed run is finished
-# by the next one and master skips no version.
+# Every job but refuse runs only for a workflow_dispatch on develop by the repository owner
+# (GitHub checks each job's `if` without a runner); refuse runs only otherwise and fails, saying
+# why. For the owner the jobs run in this order, each only after the one before passed (their
+# names on the run's page: Approval, Merge develop into master, Push to master, Release
+# publication):
+#   1. approval (environment `release`, whose one required reviewer is the owner): GitHub holds the
+#      run before any step until the owner approves it under Review deployments. Claude never
+#      approves or rejects a release;
+#   2. merge, with no credentials: refuses a note of more than one line or 500 characters, then
+#      scripts/release.mjs refuses a develop commit master already holds (nothing new) or one that
+#      lacks the release on master's develop commit, builds the release commit, runs the tests on
+#      it, the files master gets, and only then tags it with the annotated tag vX.Y.Z (the owner's
+#      note, then the subjects of the develop commits master lacks). It pushes nothing; the tag
+#      goes to the next job as a git bundle;
+#   3. promote (environment `production`, which deploys from develop only and holds the secret
+#      PRODUCTION_DEPLOY_KEY) runs none of the repository's code: first it asks GitHub whether the
+#      owner approved this run in the environment release (a deleted release would come back
+#      without its reviewer and let the run through unapproved); then it checks that the bundle's
+#      tag is the release commit job 2 tested, a merge of exactly master's head and the run's
+#      commit (which holds the develop commit of the release on master: develop only moves
+#      forward) that adds the version line and nothing else, the highest release, and that its
+#      message and annotation carry the notes it works out itself from the form and git; then it
+#      pushes the tag and master in one atomic push with that deploy key, both or neither.
+#      master's rulesets let only a deploy key move master and refuse a deletion or a force push;
+#   4. publish: creates the GitHub release from the notes of the tag job 3 pushed, marks it Latest
+#      and, once GitHub shows it as the latest, deletes the older releases; their tags stay. When
+#      GitHub shows another release as the latest, it fails and deletes nothing.
+# A run that fails before job 3's push changes nothing: run it again. One that fails after it is
+# finished by Re-run failed jobs: job 3 pushes nothing when master already holds its tag, and job 4
+# skips a release that exists.
 #
-# Both pushes use the deploy key: the release commit is new to origin and may change
-# .github/workflows, which GITHUB_TOKEN may not push. No workflow here runs on a push, so neither
-# push starts another run.
+# The push uses the deploy key: the release commit is new to origin and may change
+# .github/workflows, which GITHUB_TOKEN may not push. No workflow here runs on a push, so the push
+# starts no other run.
 name: Release
-run-name: ${{ format('{0} {1}', inputs.dry_run && 'Dry run' || 'Release', inputs.bump) }}
+run-name: Release ${{ inputs.bump }}
 
 on:
   workflow_dispatch:
     inputs:
       bump:
-        description: Part of the version to raise
+        description: Version part to raise
         type: choice
         options: [patch, minor, major]
         default: patch
-      dry_run:
-        description: Dry run - run every check and the tests, change nothing
-        type: boolean
-        default: false
+      notes:
+        description: Release note, optional - one line, at most 500 characters
+        type: string
+        required: false
 
 permissions: {}
 
@@ -70,98 +66,86 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  ci:
-    name: 'CI: tests and checks'
+  refuse:
+    name: Refuse
+    # The other jobs' condition turned round: exactly the runs every other job skips.
+    if: >-
+      github.event_name != 'workflow_dispatch'
+      || github.ref != 'refs/heads/develop'
+      || github.actor_id != github.repository_owner_id
+      || github.triggering_actor != github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Say why nothing is released
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          ACTOR: ${{ github.triggering_actor }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          echo "::error::A release is started by $OWNER from Actions → Release → Run workflow, on develop. This run ($EVENT on $REF by $ACTOR) releases nothing."
+          exit 1
+
+  approval:
+    name: Approval
     # IDs survive account renames; the triggering actor covers a re-run started by someone else.
     if: >-
       github.event_name == 'workflow_dispatch'
-      && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop')
+      && github.ref == 'refs/heads/develop'
       && github.actor_id == github.repository_owner_id
       && github.triggering_actor == github.repository_owner
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      actions: read # the environment production, for the check
-    outputs:
-      source: ${{ steps.source.outputs.sha }}
+    timeout-minutes: 5
+    # GitHub holds the job before its first step until the owner approves it (up to 30 days).
+    environment: release
+    permissions: {}
     steps:
-      # develop, the files to release; the run's own commit is master's on a release run.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: develop
-          fetch-depth: 0 # the notes read every commit since the last release; the version reads every tag
-          persist-credentials: false
-
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 24
-
-      # First, so that a run on the wrong branch, or a setting that would stop the release after its
-      # tag, fails within seconds, before the tests. GitHub sets GITHUB_REF_NAME to the run's branch.
-      - name: Check that the release can reach master
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/release-preflight.mjs
-
-      # The release job releases this commit, even when develop moves on during the run. An
-      # assignment, not `echo "sha=$(...)"`: under bash -e a failing git then fails the step.
-      - name: Name the develop commit to release
-        id: source
-        run: |
-          sha="$(git rev-parse HEAD)"
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
-      # The counts, with the name of each failed test, go to the run's summary page. The release job
-      # runs the tests again, on the release commit itself; they take seconds.
-      - name: Run the tests
-        run: |
-          set -o pipefail
-          status=0
-          npm test 2>&1 | tee "$RUNNER_TEMP/tests.txt" || status=$?
-          count() { sed -n "s/^ℹ $1 //p" "$RUNNER_TEMP/tests.txt" | tail -n 1; }
-          {
-            if [ "$status" -eq 0 ]; then echo '### ✅ Tests passed'; else echo '### ❌ Tests failed'; fi
-            echo
-            if [ -n "$(count tests)" ]; then
-              printf '`npm test`: %s passed, %s failed, %s skipped, %s in all.\n' "$(count pass)" "$(count fail)" "$(count skipped)" "$(count tests)"
-            else
-              echo '`npm test` printed no totals; the log of the step "Run the tests" shows why.'
-            fi
-            # No failed test: grep finds nothing and exits 1, which under -e and pipefail would end the step.
-            grep '^✖ ' "$RUNNER_TEMP/tests.txt" | grep -v '^✖ failing tests:' | sed 's/ ([0-9.]*ms)$//; s/^✖ /- /' | awk '!seen[$0]++' || true
-          } >> "$GITHUB_STEP_SUMMARY"
-          exit "$status"
-
-      # The input through the environment, never written into the script.
-      - name: Dry run of the release
+      - name: Record the owner's approval
         env:
           BUMP: ${{ inputs.bump }}
-        run: node scripts/release.mjs "$BUMP" --dry-run
+          SHA: ${{ github.sha }}
+        run: echo "The owner approved a $BUMP release of develop at $SHA."
 
-  release:
-    name: 'CD: release commit and tag'
-    needs: [ci]
-    # Only after ci passed, and never in a dry run.
+  merge:
+    name: Merge develop into master
+    needs: [approval]
     if: >-
       github.event_name == 'workflow_dispatch'
-      && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop')
+      && github.ref == 'refs/heads/develop'
       && github.actor_id == github.repository_owner_id
       && github.triggering_actor == github.repository_owner
-      && !inputs.dry_run
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
     outputs:
       tag: ${{ steps.release.outputs.tag }}
+      commit: ${{ steps.release.outputs.commit }}
     steps:
-      # The develop commit ci checked and named; origin/develop, origin/master and the tags with it.
-      # No credentials: this job runs the repository's code (the tests) and pushes nothing.
+      # First, before anything is fetched. C.UTF-8, so that ${#NOTES} counts characters, not bytes.
+      - name: Check the note
+        env:
+          NOTES: ${{ inputs.notes }}
+          LC_ALL: C.UTF-8
+        run: |
+          case "$NOTES" in
+            *$'\n'* | *$'\r'*) echo '::error::The note has more than one line: give it on one line.'; exit 1 ;;
+          esac
+          if [ "${#NOTES}" -gt 500 ]; then
+            echo "::error::The note has ${#NOTES} characters, more than 500."
+            exit 1
+          fi
+          echo "The note: ${NOTES:-none}"
+
+      # The run's commit, develop when the owner clicked: a pull request merged while the run waited
+      # for the approval is not part of this release. No credentials: this job runs the repository's
+      # code (the tests) and pushes nothing.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.ci.outputs.source }}
-          fetch-depth: 0 # master's head, the release commit's first parent, and the tags
+          ref: ${{ github.sha }}
+          fetch-depth: 0 # master's head, the release commit's first parent, and every tag, for the version
           persist-credentials: false
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -174,16 +158,19 @@ jobs:
           git config user.email '27358836+Reywedian@users.noreply.github.com'
 
       # The script builds the release commit, runs the tests on it and tags it only when they pass.
-      # An assignment, not `echo "tag=$(...)"`: under bash -e a failing script then fails the step.
-      - name: Test, build the release commit and tag it
+      # Assignments, not `echo "tag=$(...)"`: under bash -e a failing command then fails the step.
+      - name: Merge develop into master, test it and tag it
         id: release
         env:
           BUMP: ${{ inputs.bump }}
+          NOTES: ${{ inputs.notes }}
         run: |
           tag="$(node scripts/release.mjs "$BUMP")"
+          commit="$(git rev-parse "refs/tags/$tag^{commit}")"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
 
-      # The tag with every commit it needs, for the master job, which checks what it gets.
+      # The tag with every commit it needs, for the promote job, which checks what it gets.
       - name: Bundle the release commit and its tag
         env:
           TAG: ${{ steps.release.outputs.tag }}
@@ -197,25 +184,44 @@ jobs:
           retention-days: 1
 
   promote:
-    name: 'CD: master'
-    needs: [release]
+    name: Push to master
+    needs: [merge]
     # A skipped job never sees the deploy key.
     if: >-
       github.event_name == 'workflow_dispatch'
-      && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop')
+      && github.ref == 'refs/heads/develop'
       && github.actor_id == github.repository_owner_id
       && github.triggering_actor == github.repository_owner
-      && !inputs.dry_run
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: production
     permissions:
+      actions: read # the run's approvals
       contents: read
     outputs:
       tag: ${{ steps.promote.outputs.tag }}
     steps:
-      # The deploy key, with the run's commit, develop, master and the tags as origin has them. This
-      # job runs none of the repository's code: only the check below and git.
+      # First, before the deploy key is checked out: GitHub's own record that the owner approved
+      # this run in the environment release. The approval job passing is not enough: GitHub creates
+      # an environment a workflow names when it is missing, with no reviewer, so with release
+      # deleted the run would reach this job unapproved, and GitHub then lists no approval.
+      - name: Check that the owner approved this run
+        env:
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          OWNER: ${{ github.repository_owner }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          fail() { echo "::error::$1 Nothing was pushed."; exit 1; }
+          approved="$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/approvals" \
+            --jq 'any(.[]; .state == "approved" and .user.login == env.OWNER and any(.environments[]?; .name == "release"))')" \
+            || fail "GitHub did not list this run's approvals."
+          [ "$approved" = true ] \
+            || fail "$OWNER has not approved this run in the environment release (Review deployments → Approve and deploy)."
+          echo "$OWNER approved this run in the environment release."
+
+      # The deploy key, with develop, master and the tags as origin has them. This job runs none of
+      # the repository's code: only the checks and git.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -226,78 +232,89 @@ jobs:
           name: release
           path: ${{ runner.temp }}
 
-      # The bundle comes from a job that ran the repository's code, so only a release commit leaves
-      # it, exactly as the release job makes one: the tag vX.Y.Z, the highest release tag, on
-      # develop's files at a develop commit after the one the previous release was made from, with
-      # the manifest's version line added (the line the release script writes after "name"); a
-      # merge of develop into master, its parents master's head and that develop commit, which its
-      # message names, so no history but develop's comes with it; its message and its annotated tag
-      # hold the subjects of develop's commits since that previous release, the notes the GitHub
-      # release shows. A tag that origin already has under another commit is refused by the fetch.
-      # Anything else pushes nothing.
+      # The bundle comes from a job that ran the repository's code, so only the release commit that
+      # job tested leaves it: the annotated tag vX.Y.Z, the highest release tag, on the commit the
+      # merge job named; a merge whose parents are master's head and the run's commit, in this
+      # order, so no history but develop's comes with it; develop's files at the run's commit with
+      # the manifest's version line added (the line the release script writes after "name") and
+      # nothing else; the run's commit not in master yet, and holding the develop commit of the
+      # release on master (master's second parent: develop only moves forward); and a message
+      # ("Release vX.Y.Z" and the notes) and an annotation (vX.Y.Z and the notes) whose notes this
+      # job works out itself from trusted inputs alone: the owner's note from the form, then the
+      # subjects of the develop commits master lacks, as the release script writes them. A tag
+      # that origin already has under another commit is refused by the fetch. When master already
+      # holds the tag (a re-run after the push), nothing is left to push. Anything else pushes
+      # nothing.
       - name: Check the release commit and push it and its tag
         id: promote
         env:
-          TAG: ${{ needs.release.outputs.tag }}
+          TAG: ${{ needs.merge.outputs.tag }}
+          COMMIT: ${{ needs.merge.outputs.commit }}
+          SHA: ${{ github.sha }}
+          NOTES: ${{ inputs.notes }}
         run: |
-          refuse() { echo "::error::$TAG is not a release commit of develop: $1. Nothing was pushed."; exit 1; }
+          refuse() { echo "::error::$TAG is not the release this run made: $1. Nothing was pushed."; exit 1; }
           release_tag='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
           [[ "$TAG" =~ $release_tag ]] || refuse 'its name is not vX.Y.Z'
           git fetch "$RUNNER_TEMP/release.bundle" "refs/tags/$TAG:refs/tags/$TAG" \
             || refuse "the bundle lacks it, or origin has $TAG on another commit"
-          sha="$(git rev-parse "$TAG^{commit}")"
+          [ "$(git cat-file -t "refs/tags/$TAG")" = tag ] || refuse 'it is not an annotated tag'
+          sha="$(git rev-parse "refs/tags/$TAG^{commit}")"
+          [ "$sha" = "$COMMIT" ] || refuse "it names $sha, not $COMMIT, the commit the tests passed on"
+          latest="$(git tag --list --sort=-version:refname | grep -E "$release_tag" | head -n 1)"
+          [ "$latest" = "$TAG" ] || refuse "$latest is a later release"
           master="$(git rev-parse --quiet --verify refs/remotes/origin/master || true)"
           if [ "$sha" = "$master" ]; then
             echo "master already holds $TAG ($sha)."
-            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-            exit 0
+          else
+            # Parents in this order: master's head, then the run's commit (the first release, with
+            # no master yet: the run's commit alone).
+            [ "$(git rev-list --parents -n 1 "$sha" | cut -s -d ' ' -f 2-)" = "${master:+$master }$SHA" ] \
+              || refuse "its parents are not master's head and $SHA, the develop commit this run releases"
+            if [ -n "$master" ] && git merge-base --is-ancestor "$SHA" "$master"; then
+              refuse "master holds $SHA already: nothing new since the last release"
+            fi
+            # develop only moves forward: the run's commit holds the develop commit the release on
+            # master was made of, master's second parent (a one-parent release, as v1.0.11 to
+            # v1.0.14 were made, names none).
+            released=
+            [ -z "$master" ] || released="$(git rev-list --parents -n 1 "$master" | cut -s -d ' ' -f 3)"
+            if [ -n "$released" ] && ! git merge-base --is-ancestor "$released" "$SHA"; then
+              refuse "$SHA lacks $released, the develop commit of the release on master: develop only moves forward"
+            fi
+            # The notes as the release script writes them: the note trimmed of spaces and tabs, a
+            # blank line, then "- <subject>" per develop commit master lacks, oldest first, each
+            # subject trimmed of spaces and tabs too and skipped when nothing is left. Only spaces
+            # and tabs on both sides: awk's [[:space:]] and JavaScript's trim() take different sets.
+            subjects="$(git log --reverse --no-merges --format=%s "${master:+$master..}$SHA" \
+              | awk '{ gsub(/^[ \t]+|[ \t]+$/, "") } $0 != "" { print "- " $0 }')"
+            note="$(printf '%s' "$NOTES" | awk '{ gsub(/^[ \t]+|[ \t]+$/, ""); print }')"
+            notes="$subjects"
+            [ -z "$note" ] || notes="$note"$'\n\n'"$subjects"
+            [ "$(git log -1 --format=%B "$sha")" = "Release $TAG"$'\n\n'"$notes" ] \
+              || refuse "its message is not \"Release $TAG\" and the release notes: the owner's note, then develop's commits that master lacks"
+            [ "$(git for-each-ref --format='%(contents)' "refs/tags/$TAG")" = "$TAG"$'\n\n'"$notes" ] \
+              || refuse 'its tag is not annotated with the release notes'
+            manifest=.claude-plugin/plugin.json
+            version_line="  \"version\": \"${TAG#v}\","
+            [ "$(git diff --name-only "$SHA" "$sha")" = "$manifest" ] || refuse "it changes more than $manifest"
+            [ "$(git show "$sha:$manifest" | grep -cxF "$version_line")" = 1 ] || refuse "its $manifest lacks the line $version_line"
+            [ "$(git show "$sha:$manifest" | grep -vxF "$version_line")" = "$(git show "$SHA:$manifest")" ] \
+              || refuse "its $manifest changes more than the version"
           fi
-          releases="$(git tag --list --sort=-version:refname | grep -E "$release_tag" || true)"
-          latest="$(echo "$releases" | head -n 1)"
-          [ "$latest" = "$TAG" ] || refuse "$latest is a later release"
-          previous="$(echo "$releases" | sed -n 2p)"
-          # The develop commit a release was made from; up to v1.0.10 a release was that commit.
-          source_of() { git log -1 --format=%B "$1" | sed -n 's/^Source: develop@\([0-9a-f]\{40\}\)$/\1/p'; }
-          source="$(source_of "$sha")"
-          [ -n "$source" ] || refuse 'its message names no develop commit'
-          git merge-base --is-ancestor "$source" refs/remotes/origin/develop || refuse "develop does not hold $source"
-          # Parents in this order: master's head, then the develop commit (the first release, with no
-          # master yet: that develop commit alone).
-          [ "$(git rev-list --parents -n 1 "$sha" | cut -s -d ' ' -f 2-)" = "${master:+$master }$source" ] \
-            || refuse "its parents are not master's head and $source, the develop commit its message names"
-          since=
-          if [ -n "$previous" ]; then
-            since="$(source_of "$previous")"
-            since="${since:-$(git rev-parse "$previous^{commit}")}"
-            [ "$source" != "$since" ] && git merge-base --is-ancestor "$since" "$source" \
-              || refuse "it is not made from a develop commit after $since, the one $previous was made from"
-          fi
-          manifest=.claude-plugin/plugin.json
-          version_line="  \"version\": \"${TAG#v}\","
-          [ "$(git diff --name-only "$source" "$sha")" = "$manifest" ] || refuse "it changes more than $manifest"
-          [ "$(git show "$sha:$manifest" | grep -cxF "$version_line")" = 1 ] || refuse "its $manifest lacks the line $version_line"
-          [ "$(git show "$sha:$manifest" | grep -vxF "$version_line")" = "$(git show "$source:$manifest")" ] \
-            || refuse "its $manifest changes more than the version"
-          notes="$(git log --reverse --format=%s "${since:+$since..}$source" \
-            | awk '{ gsub(/^[[:space:]]+|[[:space:]]+$/, "") } $0 != "" { print "- " $0 }')"
-          [ "$(git log -1 --format=%B "$sha")" = "$(printf 'Release %s\n\n%s\n\nSource: develop@%s' "$TAG" "$notes" "$source")" ] \
-            || refuse "its message is not \"Release $TAG\", the notes of develop's commits since ${previous:-the start} and its develop commit"
-          [ "$(git for-each-ref --format='%(objecttype) %(contents)' "refs/tags/$TAG")" = "$(printf 'tag %s\n\n%s' "$TAG" "$notes")" ] \
-            || refuse 'its tag is not annotated with the release notes'
-          git push origin "refs/tags/$TAG"
-          git push origin "$sha:refs/heads/master"
+          # Atomic: origin takes the tag and master together or neither. Never forced.
+          git push --atomic origin "refs/tags/$TAG" "$sha:refs/heads/master"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "master is at $TAG ($sha)."
 
   publish:
-    name: 'CD: GitHub release'
+    name: Release publication
     needs: [promote]
     if: >-
       github.event_name == 'workflow_dispatch'
-      && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop')
+      && github.ref == 'refs/heads/develop'
       && github.actor_id == github.repository_owner_id
       && github.triggering_actor == github.repository_owner
-      && !inputs.dry_run
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -325,7 +342,8 @@ jobs:
           fi
 
       # One release per repository, the latest; its predecessors go, their tags stay as the history.
-      # Only after GitHub shows the new release as the latest, so a failed publish never leaves none.
+      # Only after GitHub shows the new release as the latest, so a failed publish never leaves none;
+      # when it does not, the job fails with nothing deleted.
       - name: Keep only the latest release, tags stay
         env:
           TAG: ${{ needs.promote.outputs.tag }}
@@ -333,8 +351,8 @@ jobs:
         run: |
           latest="$(gh release view --json tagName --jq .tagName)"
           if [ "$latest" != "$TAG" ]; then
-            echo "The latest release is '$latest', not $TAG; no release deleted."
-            exit 0
+            echo "::error::GitHub shows '$latest' as the latest release, not $TAG; no release was deleted."
+            exit 1
           fi
           gh release list --limit 100 --json tagName --jq '.[].tagName' | while read -r old; do
             if [ "$old" != "$TAG" ]; then gh release delete "$old" --yes; fi

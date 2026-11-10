@@ -1,5 +1,6 @@
 // Entry point: npm run release -- <patch|minor|major> [--dry-run]
 // Prints the tag on stdout for the Release workflow; the tests' and git's own output goes to stderr.
+// NOTES is the owner's release note, which the Release workflow hands on from its form.
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -22,6 +23,7 @@ const exec = (command, args, { inherit = false } = {}) => {
 
 process.exitCode = runRelease({
   argv: process.argv.slice(2),
+  note: process.env.NOTES ?? '',
   exec,
   readManifest: () => readFileSync(manifestPath, 'utf8'),
   writeManifest: (text) => writeFileSync(manifestPath, text),

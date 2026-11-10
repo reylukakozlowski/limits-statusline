@@ -1,8 +1,9 @@
 # Changelog
 
 This file is the history up to 1.0.2. Since then a release is only its tag `vX.Y.Z`: the
-Release workflow writes the release notes, the subjects of the commits since the previous
-release, into the annotated tag and into the GitHub release. Read them with
+Release workflow writes the release notes, the owner's note when there is one and then the
+subjects of the commits since the previous release, into the annotated tag and into the GitHub
+release. Read them with
 `git tag --list --format='%(contents:body)' vX.Y.Z`, or on GitHub under Releases (the latest)
 and Tags (every version).
 

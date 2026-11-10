@@ -4,8 +4,8 @@ What the developer portal asks for when this plugin is listed in [Anthropic's
 directory](https://claude.ai/directory), with the answers for this repository. The submission is
 made once, by the owner, at [claude.ai/directory/manage](https://claude.ai/directory/manage); after
 that every release reaches the directory by itself, because the directory follows `master`, the
-production branch that only a release moves to its tag. `develop` is the working branch and never
-reaches users.
+production branch that only the Release workflow moves, to the tag of a release the owner
+approved. `develop` is the working branch and never reaches users.
 
 ## Before you submit
 
@@ -118,10 +118,12 @@ hold below.
   line prints. The owner then chose to drop the README's sample (LS-56; the banner shows the same
   lines) and to write the banner source's dollar sign as `&dollar;` (LS-57; drawn the same).
   **Validate** on the branch of pull request #40 at LS-57 (2026-10-22) named the next pair:
-  `formatTokens` again, and `scripts/lib/release-preflight.mjs`, which asks GitHub's API through
-  `gh` for the Release workflow. That pair stays too: "token" is in the model's own field names
-  across `src`, and the release tooling has to reach GitHub. The tests and fixtures that check the
-  printed cost keep it as printed.
+  `formatTokens` again, and `scripts/lib/release-preflight.mjs`, which asked GitHub's API through
+  `gh` for the Release workflow. `formatTokens` stays: "token" is in the model's own field names
+  across `src`. The preflight is gone (LS-73): the Release workflow, started from `develop`, no
+  longer checks the way to `master` first, and no code of the plugin calls `gh` any more, so that
+  half of the pair is gone; **Validate** has not been run since. The tests and fixtures that check
+  the printed cost keep it as printed.
 
 Two warnings stay by design, both marked "No action needed" for the listing fields:
 
@@ -143,7 +145,8 @@ call on `$` fails `test/desktop/directory-review.test.mjs` until the README's Pr
 
 ## After the listing
 
-A release adds its release commit, a merge of `develop`, to `master` and tags it `vX.Y.Z`; the webhook or the scheduled check picks it up,
+A release, once the owner approved its run, adds its release commit, a merge of `develop`, to
+`master` and tags it `vX.Y.Z` in one push (CONTRIBUTING.md, Releasing); the webhook or the scheduled check picks it up,
 the directory validates and scans it, and it is published as the plugin's publish setting says.
 Anthropic applies that setting: by default a reviewer publishes each version, and a version with a
 policy hold ([the band's policy holds](#the-bands-policy-holds)) waits for a reviewer.
