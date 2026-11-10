@@ -773,6 +773,27 @@ test('promote: the release script\'s notes with the owner\'s note pass when the 
     `#42 is fixed: the band shows the weekly limit again.\n\n${NOTES}`);
 });
 
+// The release script and the promote job trim a subject alike, of spaces and tabs only: had one
+// trimmed with JavaScript's trim() or awk's [[:space:]], these subjects would make the job refuse.
+test('promote: subjects with a no-break space, a vertical tab or a form feed at their ends pass as the release script wrote them', { skip: NO_BASH }, (t) => {
+  const repo = promoteRepository(t);
+  const subjects = [' LS-3_fix: no-break spaces ', '\vLS-4_fix: a vertical tab and a form feed\f', '\t LS-5_fix: a tab and spaces'];
+  for (const [index, subject] of subjects.entries()) {
+    writeFileSync(join(repo.builder, `blank-${index}.txt`), `${index}\n`);
+    gitIn(repo.builder, ['add', `blank-${index}.txt`]);
+    // Verbatim: git's own clean-up would drop what follows the subject's last character.
+    gitIn(repo.builder, ['commit', '--quiet', '--cleanup=verbatim', '-F', '-'], { input: `${subject}\n` });
+  }
+  gitIn(repo.builder, ['push', '--quiet', 'origin', 'develop']);
+  gitIn(repo.builder, ['fetch', '--quiet', 'origin']);
+  const tag = buildRelease(repo);
+  assert.equal(gitIn(repo.builder, ['tag', '--list', '--format=%(contents:body)', tag]),
+    `${NOTES}\n-  LS-3_fix: no-break spaces \n- \vLS-4_fix: a vertical tab and a form feed\f\n- LS-5_fix: a tab and spaces`);
+  const run = promote(repo, tag, { sha: gitIn(repo.builder, ['rev-parse', 'develop']) });
+  assert.equal(run.status, 0, run.output);
+  assert.equal(gitIn(repo.origin, ['rev-parse', 'master']), gitIn(repo.origin, ['rev-parse', `${tag}^{commit}`]));
+});
+
 // The merge job ran the repository's code; only the form says what the owner wrote.
 test('promote: a note in the tag that the form does not hold is refused, and so is a note left out', { skip: NO_BASH }, (t) => {
   const repo = promoteRepository(t);

@@ -68,17 +68,23 @@ export function latestVersion(tags) {
   return versions.sort(compare).at(-1).join('.');
 }
 
+/** Text without its outer spaces and tabs, and nothing else: awk's /^[ \t]+|[ \t]+$/ in the
+ * Release workflow's promote job. String.prototype.trim would also take a no-break space, a
+ * vertical tab or a form feed, which the job keeps, and the job would then refuse the notes. */
+const trimBlanks = (text) => text.replace(/^[ \t]+|[ \t]+$/g, '');
+
 /**
  * The release notes: the owner's note from the Release form first, when there is one, then one line
- * per commit subject, in the order given. The note loses only its outer spaces and tabs, exactly as
- * the Release workflow's promote job trims it when it works the notes out again to check them.
+ * per commit subject, in the order given; a subject left empty is skipped. The note and each subject
+ * lose only their outer spaces and tabs, exactly as the Release workflow's promote job trims them
+ * when it works the notes out again to check them.
  * @param {string[]} subjects
  * @param {string} [note]
  */
 export function releaseNotes(subjects, note = '') {
-  const lines = subjects.map((subject) => subject.trim()).filter(Boolean);
+  const lines = subjects.map(trimBlanks).filter(Boolean);
   if (lines.length === 0) throw new Error('There are no commits to release.');
   const list = lines.map((subject) => `- ${subject}`).join('\n');
-  const lead = (note ?? '').replace(/^[ \t]+|[ \t]+$/g, '');
+  const lead = trimBlanks(note ?? '');
   return lead ? `${lead}\n\n${list}` : list;
 }
