@@ -834,6 +834,43 @@ test('promote: a run\'s commit that master already holds is refused: nothing new
   assertRefused(repo, promote(repo, 'v0.1.2'), 'v0.1.2', new RegExp(`master holds ${repo.head} already: nothing new since the last release`), refs);
 });
 
+// develop only moves forward: the run's commit must hold master's second parent, the develop commit
+// of the last release. The merge job refuses this first; the check holds even if it did not.
+const BACKWARDS = [
+  ['a develop rewritten from before the last release', (repo) => gitIn(repo.builder, [
+    'commit-tree', `${repo.master}^{tree}`, '-p', repo.master, '-m', 'LS-9_fix: beside the released commit'])],
+  ['a develop started over with no history', (repo) => elsewhere(repo)],
+];
+
+for (const [what, developCommit] of BACKWARDS) {
+  test(`promote: ${what}, which lacks the develop commit of the release on master, is refused`, { skip: NO_BASH }, (t) => {
+    const repo = promoteRepository(t);
+    assert.equal(promote(repo, buildRelease(repo)).status, 0);
+    const master = gitIn(repo.origin, ['rev-parse', 'master']);
+    const sha = developCommit(repo);
+    // Everything else about the release is right: a merge of master and the run's commit, with the
+    // version, and the notes of the one commit master lacks.
+    const notes = `- ${gitIn(repo.builder, ['log', '-1', '--format=%s', sha])}`;
+    forgeRelease(repo, { tag: 'v0.1.2', source: sha, parents: [master, sha], message: `Release v0.1.2\n\n${notes}`, annotation: `v0.1.2\n\n${notes}` });
+    const refs = originRefs(repo);
+    assertRefused(repo, promote(repo, 'v0.1.2', { sha }), 'v0.1.2',
+      new RegExp(`${sha} lacks ${repo.head}, the develop commit of the release on master: develop only moves forward`), refs);
+  });
+}
+
+// v1.0.11 to v1.0.14 were made on master's head with one parent each: such a release names no
+// develop commit, so the release after it is checked without one.
+test('promote: after a one-parent release on master, the next release moves master on', { skip: NO_BASH }, (t) => {
+  const repo = promoteRepository(t);
+  const oneParent = gitIn(repo.builder, ['commit-tree', `${repo.master}^{tree}`, '-p', repo.master, '-m', 'Release v0.1.0']);
+  gitIn(repo.builder, ['push', '--quiet', 'origin', `${oneParent}:refs/heads/master`]);
+  gitIn(repo.builder, ['fetch', '--quiet', 'origin']);
+  const run = promote(repo, buildRelease(repo));
+  assert.equal(run.status, 0, run.output);
+  assert.equal(gitIn(repo.origin, ['rev-parse', 'master^1']), oneParent);
+  assert.equal(gitIn(repo.origin, ['rev-parse', 'master^2']), repo.head);
+});
+
 test('promote: a tag named anything but vX.Y.Z is refused before it is fetched', { skip: NO_BASH }, (t) => {
   const repo = promoteRepository(t);
   const refs = originRefs(repo);
