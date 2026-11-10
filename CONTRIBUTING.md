@@ -216,11 +216,13 @@ can run and approve; it commits nothing to `develop` and makes no branch or pull
      annotated, on the commit the tests passed on; a merge whose parents are `master`'s head and
      the run's commit, in this order, so no history but `develop`'s reaches `master`; `develop`'s
      files at that commit with the manifest's version line added and nothing else; the run's
-     commit not yet in `master`; and a message and an annotation whose notes the job works out
-     itself from your note in the form and git, so the job that ran the repository's code cannot
-     put notes of its own into the release. Anything else stops the run with nothing pushed. With the directory's push webhook set up, that push
-     is what tells Anthropic's directory about the release; without it the directory finds it at
-     its next scheduled check ([docs/directory-submission.md](docs/directory-submission.md#after-the-listing)).
+     commit not yet in `master`, and holding the `develop` commit of the release on `master`
+     (`develop` only moves forward); and a message and an annotation whose notes the job works
+     out itself from your note in the form and git, so the job that ran the repository's code
+     cannot put notes of its own into the release. Anything else stops the run with nothing
+     pushed. With the directory's push webhook set up, that push is what tells Anthropic's
+     directory about the release; without it the directory finds it at its next scheduled check
+     ([docs/directory-submission.md](docs/directory-submission.md#after-the-listing)).
    - **GitHub release** creates the GitHub release from the tag's notes and marks it Latest. Once
      GitHub shows the new release as the latest, it deletes the older releases: the repository
      keeps one release, and the `vX.Y.Z` tags of all versions stay as the history (the ruleset

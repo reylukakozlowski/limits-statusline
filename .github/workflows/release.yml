@@ -26,7 +26,8 @@
 #      owner approved this run in the environment release (a deleted release would come back
 #      without its reviewer and let the run through unapproved); then it checks that the bundle's
 #      tag is the release commit job 2 tested, a merge of exactly master's head and the run's
-#      commit that adds the version line and nothing else, the highest release, and that its
+#      commit (which holds the develop commit of the release on master: develop only moves
+#      forward) that adds the version line and nothing else, the highest release, and that its
 #      message and annotation carry the notes it works out itself from the form and git; then it
 #      pushes the tag and master in one atomic push with that deploy key, both or neither.
 #      master's rulesets let only a deploy key move master and refuse a deletion or a force push;
@@ -233,12 +234,14 @@ jobs:
       # merge job named; a merge whose parents are master's head and the run's commit, in this
       # order, so no history but develop's comes with it; develop's files at the run's commit with
       # the manifest's version line added (the line the release script writes after "name") and
-      # nothing else; the run's commit not in master yet; and a message ("Release vX.Y.Z" and the
-      # notes) and an annotation (vX.Y.Z and the notes) whose notes this job works out itself from
-      # trusted inputs alone: the owner's note from the form, then the subjects of the develop
-      # commits master lacks, as the release script writes them. A tag that origin already has
-      # under another commit is refused by the fetch. When master already holds the tag (a re-run
-      # after the push), nothing is left to push. Anything else pushes nothing.
+      # nothing else; the run's commit not in master yet, and holding the develop commit of the
+      # release on master (master's second parent: develop only moves forward); and a message
+      # ("Release vX.Y.Z" and the notes) and an annotation (vX.Y.Z and the notes) whose notes this
+      # job works out itself from trusted inputs alone: the owner's note from the form, then the
+      # subjects of the develop commits master lacks, as the release script writes them. A tag
+      # that origin already has under another commit is refused by the fetch. When master already
+      # holds the tag (a re-run after the push), nothing is left to push. Anything else pushes
+      # nothing.
       - name: Check the release commit and push it and its tag
         id: promote
         env:
@@ -267,6 +270,14 @@ jobs:
               || refuse "its parents are not master's head and $SHA, the develop commit this run releases"
             if [ -n "$master" ] && git merge-base --is-ancestor "$SHA" "$master"; then
               refuse "master holds $SHA already: nothing new since the last release"
+            fi
+            # develop only moves forward: the run's commit holds the develop commit the release on
+            # master was made of, master's second parent (a one-parent release, as v1.0.11 to
+            # v1.0.14 were made, names none).
+            released=
+            [ -z "$master" ] || released="$(git rev-list --parents -n 1 "$master" | cut -s -d ' ' -f 3)"
+            if [ -n "$released" ] && ! git merge-base --is-ancestor "$released" "$SHA"; then
+              refuse "$SHA lacks $released, the develop commit of the release on master: develop only moves forward"
             fi
             # The notes as the release script writes them: the note trimmed of spaces and tabs, a
             # blank line, then "- <subject>" per develop commit master lacks, oldest first, each
