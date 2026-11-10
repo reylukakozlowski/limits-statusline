@@ -112,9 +112,11 @@ test('each run is listed as Release and the part it raises', () => {
 
 test('five jobs: refuse, then the owner\'s approval, the merge and its tests, master behind production, the GitHub release', () => {
   assert.deepEqual(JOBS.match(/^ {2}[\w-]+(?=:$)/gm).map((name) => name.trim()), JOB_NAMES);
-  // The graph on the run's page reads in the order the jobs run.
+  // The graph on the run's page reads in the order the jobs run. Refuse, Merge develop into master
+  // and Release publication are the names of the owner's standard (sealoop-workflow SKILL.md §5);
+  // this repository's split adds Approval and Push to master between them.
   const names = JOB_NAMES.map((name) => /^ {4}name: (.+)$/m.exec(job(name))?.[1]);
-  assert.deepEqual(names, ['Refuse', 'Approval', 'Merge and test', 'Push to master', 'GitHub release']);
+  assert.deepEqual(names, ['Refuse', 'Approval', 'Merge develop into master', 'Push to master', 'Release publication']);
 });
 
 test('approval comes first: no job waits for nothing but refuse and approval, and each release job waits for the one before', () => {
