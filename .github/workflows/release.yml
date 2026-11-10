@@ -22,12 +22,14 @@
 #      note, then the subjects of the develop commits master lacks). It pushes nothing; the tag
 #      goes to the next job as a git bundle;
 #   3. promote (environment `production`, which deploys from develop only and holds the secret
-#      PRODUCTION_DEPLOY_KEY) runs none of the repository's code: it checks that the bundle's tag
-#      is the release commit job 2 tested, a merge of exactly master's head and the run's commit
-#      that adds the version line and nothing else, the highest release, and that its message and
-#      annotation carry the notes it works out itself from the form and git; then it pushes the
-#      tag and master in one atomic push with that deploy key, both or neither. master's rulesets
-#      let only a deploy key move master and refuse a deletion or a force push;
+#      PRODUCTION_DEPLOY_KEY) runs none of the repository's code: first it asks GitHub whether the
+#      owner approved this run in the environment release (a deleted release would come back
+#      without its reviewer and let the run through unapproved); then it checks that the bundle's
+#      tag is the release commit job 2 tested, a merge of exactly master's head and the run's
+#      commit that adds the version line and nothing else, the highest release, and that its
+#      message and annotation carry the notes it works out itself from the form and git; then it
+#      pushes the tag and master in one atomic push with that deploy key, both or neither.
+#      master's rulesets let only a deploy key move master and refuse a deletion or a force push;
 #   4. publish: creates the GitHub release from the notes of the tag job 3 pushed, marks it Latest
 #      and, once GitHub shows it as the latest, deletes the older releases; their tags stay.
 # A run that fails before job 3's push changes nothing: run it again. One that fails after it is
@@ -190,12 +192,32 @@ jobs:
     timeout-minutes: 5
     environment: production
     permissions:
+      actions: read # the run's approvals
       contents: read
     outputs:
       tag: ${{ steps.promote.outputs.tag }}
     steps:
+      # First, before the deploy key is checked out: GitHub's own record that the owner approved
+      # this run in the environment release. The approval job passing is not enough: GitHub creates
+      # an environment a workflow names when it is missing, with no reviewer, so with release
+      # deleted the run would reach this job unapproved, and GitHub then lists no approval.
+      - name: Check that the owner approved this run
+        env:
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          OWNER: ${{ github.repository_owner }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          fail() { echo "::error::$1 Nothing was pushed."; exit 1; }
+          approved="$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/approvals" \
+            --jq 'any(.[]; .state == "approved" and .user.login == env.OWNER and any(.environments[]?; .name == "release"))')" \
+            || fail "GitHub did not list this run's approvals."
+          [ "$approved" = true ] \
+            || fail "$OWNER has not approved this run in the environment release (Review deployments → Approve and deploy)."
+          echo "$OWNER approved this run in the environment release."
+
       # The deploy key, with develop, master and the tags as origin has them. This job runs none of
-      # the repository's code: only the check below and git.
+      # the repository's code: only the checks and git.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
