@@ -34,7 +34,8 @@
 #      pushes the tag and master in one atomic push with that deploy key, both or neither.
 #      master's rulesets let only a deploy key move master and refuse a deletion or a force push;
 #   4. publish: creates the GitHub release from the notes of the tag job 3 pushed, marks it Latest
-#      and, once GitHub shows it as the latest, deletes the older releases; their tags stay.
+#      and, once GitHub shows it as the latest, deletes the older releases; their tags stay. When
+#      GitHub shows another release as the latest, it fails and deletes nothing.
 # A run that fails before job 3's push changes nothing: run it again. One that fails after it is
 # finished by Re-run failed jobs: job 3 pushes nothing when master already holds its tag, and job 4
 # skips a release that exists.
@@ -341,7 +342,8 @@ jobs:
           fi
 
       # One release per repository, the latest; its predecessors go, their tags stay as the history.
-      # Only after GitHub shows the new release as the latest, so a failed publish never leaves none.
+      # Only after GitHub shows the new release as the latest, so a failed publish never leaves none;
+      # when it does not, the job fails with nothing deleted.
       - name: Keep only the latest release, tags stay
         env:
           TAG: ${{ needs.promote.outputs.tag }}
@@ -349,8 +351,8 @@ jobs:
         run: |
           latest="$(gh release view --json tagName --jq .tagName)"
           if [ "$latest" != "$TAG" ]; then
-            echo "The latest release is '$latest', not $TAG; no release deleted."
-            exit 0
+            echo "::error::GitHub shows '$latest' as the latest release, not $TAG; no release was deleted."
+            exit 1
           fi
           gh release list --limit 100 --json tagName --jq '.[].tagName' | while read -r old; do
             if [ "$old" != "$TAG" ]; then gh release delete "$old" --yes; fi
