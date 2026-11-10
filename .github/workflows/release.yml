@@ -11,7 +11,9 @@
 #
 # Every job but refuse runs only for a workflow_dispatch on develop by the repository owner
 # (GitHub checks each job's `if` without a runner); refuse runs only otherwise and fails, saying
-# why. For the owner the jobs run in this order, each only after the one before passed:
+# why. For the owner the jobs run in this order, each only after the one before passed (their
+# names on the run's page: Approval, Merge develop into master, Push to master, Release
+# publication):
 #   1. approval (environment `release`, whose one required reviewer is the owner): GitHub holds the
 #      run before any step until the owner approves it under Review deployments. Claude never
 #      approves or rejects a release;
@@ -106,7 +108,7 @@ jobs:
         run: echo "The owner approved a $BUMP release of develop at $SHA."
 
   merge:
-    name: Merge and test
+    name: Merge develop into master
     needs: [approval]
     if: >-
       github.event_name == 'workflow_dispatch'
@@ -305,7 +307,7 @@ jobs:
           echo "master is at $TAG ($sha)."
 
   publish:
-    name: GitHub release
+    name: Release publication
     needs: [promote]
     if: >-
       github.event_name == 'workflow_dispatch'

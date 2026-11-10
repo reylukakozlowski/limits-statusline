@@ -198,15 +198,15 @@ can run and approve; it commits nothing to `develop` and makes no branch or pull
    the `develop` commit of the moment you pressed **Run workflow**: a pull request merged while the
    run waits goes into the next release.
 4. Then the jobs run by themselves, each only after the one before passed:
-   - **Merge and test**, which holds no credentials, first checks the note (one line, at most 500
-     characters). Then `scripts/release.mjs` refuses a `develop` commit that `master` already
-     holds (nothing new since the last release) and one that lacks the `develop` commit of the
-     release on `master` (`develop` only moves forward), takes the version from the highest
-     `vX.Y.Z` tag, builds the release commit, runs `npm test` on it (the files `master` gets, with
-     the version), and only then tags it with the annotated tag `vX.Y.Z`. The release notes, in
-     the tag and in the commit's message, are your note, then the subjects of the `develop`
-     commits that `master` lacks, oldest first. The job pushes nothing: the tag goes to the next
-     job as a git bundle.
+   - **Merge develop into master**, which holds no credentials, first checks the note (one line,
+     at most 500 characters). Then `scripts/release.mjs` refuses a `develop` commit that `master`
+     already holds (nothing new since the last release) and one that lacks the `develop` commit
+     of the release on `master` (`develop` only moves forward), takes the version from the
+     highest `vX.Y.Z` tag, builds the release commit, runs `npm test` on it (the files `master`
+     gets, with the version), and only then tags it with the annotated tag `vX.Y.Z`. The release
+     notes, in the tag and in the commit's message, are your note, then the subjects of the
+     `develop` commits that `master` lacks, oldest first. The job pushes nothing: the tag goes to
+     the next job as a git bundle.
    - **Push to master**, in the `production` environment, holds the repository's deploy key and
      runs none of the repository's code. First it asks GitHub for the run's approvals and stops
      unless you approved this run in `release`: should `release` ever be deleted, GitHub would
@@ -223,10 +223,10 @@ can run and approve; it commits nothing to `develop` and makes no branch or pull
      pushed. With the directory's push webhook set up, that push is what tells Anthropic's
      directory about the release; without it the directory finds it at its next scheduled check
      ([docs/directory-submission.md](docs/directory-submission.md#after-the-listing)).
-   - **GitHub release** creates the GitHub release from the tag's notes and marks it Latest. Once
-     GitHub shows the new release as the latest, it deletes the older releases: the repository
-     keeps one release, and the `vX.Y.Z` tags of all versions stay as the history (the ruleset
-     **protect release tags** forbids deleting or moving them).
+   - **Release publication** creates the GitHub release from the tag's notes and marks it Latest.
+     Once GitHub shows the new release as the latest, it deletes the older releases: the
+     repository keeps one release, and the `vX.Y.Z` tags of all versions stay as the history (the
+     ruleset **protect release tags** forbids deleting or moving them).
 
 Claude never approves or rejects a release. Claude runs `gh` as the owner, so its approval would
 pass as yours; the guard of the owner's `sealoop-workflow` plugin blocks deployment reviews.
@@ -239,20 +239,20 @@ The step that failed says why, in an error at the top of the run's page.
 - **Refuse**: the run was not a **Run workflow** on `develop` by you. Nothing happened; start it
   again from `develop`.
 - **Approval** rejected, or never approved: nothing happened.
-- **Merge and test**: nothing was pushed. The note had more than one line or 500 characters;
-  `develop` has nothing new since the last release (merge something first); `develop` lost the
-  commit of the last release (it never should: the `develop` ruleset forbids force pushes); or a
-  test failed on the release commit (fix it on `develop`). Then start a new run.
+- **Merge develop into master**: nothing was pushed. The note had more than one line or 500
+  characters; `develop` has nothing new since the last release (merge something first); `develop`
+  lost the commit of the last release (it never should: the `develop` ruleset forbids force
+  pushes); or a test failed on the release commit (fix it on `develop`). Then start a new run.
 - **Push to master**, before its push: nothing was pushed, since the push is atomic. Fix the
   cause (the error names it), then **Re-run failed jobs** within a day, while the bundle is kept,
   or start a new run, which makes the same version again. When it says you have not approved the
   run, GitHub held it for no one: the `release` environment is missing its reviewer. Set it up
   again with `repo-standard.mjs production` (below) and start a new run.
-- **Push to master** after its push, or **GitHub release**: the version is on `master` and
+- **Push to master** after its push, or **Release publication**: the version is on `master` and
   tagged. **Re-run failed jobs**: **Push to master** pushes nothing when `master` already holds
-  the tag, and **GitHub release** skips a release that exists. A new run would be refused, as
-  `develop` has nothing new; after more merges it releases the next version, and the one before
-  keeps its tag without a GitHub release.
+  the tag, and **Release publication** skips a release that exists. A new run would be refused,
+  as `develop` has nothing new; after more merges it releases the next version, and the one
+  before keeps its tag without a GitHub release.
 
 A tag is never moved or deleted, so a version once tagged is taken for good.
 
@@ -294,17 +294,17 @@ file has to stay on `develop`, the default branch, for **Run workflow** to appea
 ### Credentials
 
 The job **Push to master** pushes the tag and `master` over SSH with the deploy key; its
-`GITHUB_TOKEN` only reads (the repository and the run's approvals). GitHub refuses that token a push of a commit that changes
-`.github/workflows`, which a release commit does whenever `develop` changed a workflow since the
-previous release; the deploy key has no such limit. The key is never in a job that runs the
-repository's code: the tests run in **Merge and test**, which has no credentials, and **Push to
-master** checks what that job hands it before it pushes, so even code that went wrong in the tests
-could not take the key or put anything but the tested release commit on `master`: not older files,
-not a lower version and no release notes of its own. **GitHub release** writes with
-`GITHUB_TOKEN` (`contents: write`) and pushes nothing. No workflow here runs on a push, so the push
-starts no other run. The Release workflow opens no pull requests, so **Settings → Actions →
-General → Workflow permissions → Allow GitHub Actions to create and approve pull requests** can
-stay off.
+`GITHUB_TOKEN` only reads (the repository and the run's approvals). GitHub refuses that token a
+push of a commit that changes `.github/workflows`, which a release commit does whenever `develop`
+changed a workflow since the previous release; the deploy key has no such limit. The key is never
+in a job that runs the repository's code: the tests run in **Merge develop into master**, which
+has no credentials, and **Push to master** checks what that job hands it before it pushes, so even
+code that went wrong in the tests could not take the key or put anything but the tested release
+commit on `master`: not older files, not a lower version and no release notes of its own.
+**Release publication** writes with `GITHUB_TOKEN` (`contents: write`) and pushes nothing. No
+workflow here runs on a push, so the push starts no other run. The Release workflow opens no pull
+requests, so **Settings → Actions → General → Workflow permissions → Allow GitHub Actions to
+create and approve pull requests** can stay off.
 
 ### Who can release
 
