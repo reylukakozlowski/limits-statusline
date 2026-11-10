@@ -902,13 +902,13 @@ test('promote: a bundle whose tag differs from the one origin has is refused by 
 
 // --- One release per repository, tags kept ----------------------------------------------------
 
-// Stand-in gh for the keep step: GH_LATEST is the release GitHub marks as latest, GH_RELEASES the
-// tags of all releases; deletions are recorded.
+// Stand-in gh for the keep step: GH_LATEST is the release GitHub marks as latest (none when empty,
+// and gh then fails as it does), GH_RELEASES the tags of all releases; deletions are recorded.
 const KEEP_GH = [
   '#!/usr/bin/env bash',
   'echo "gh $*" >> "$STUB_LOG"',
   'case "$1 $2" in',
-  '  "release view") echo "$GH_LATEST" ;;',
+  '  "release view") [ -n "$GH_LATEST" ] || { echo "release not found" >&2; exit 1; }; echo "$GH_LATEST" ;;',
   '  "release list") printf "%s\\n" $GH_RELEASES ;;',
   '  "release delete") ;;',
   '  *) exit 64 ;;',
@@ -924,11 +924,18 @@ test('keep step: the new release is the latest, so every older release goes and 
   assert.deepEqual(deletions(run), ['gh release delete v0.1.4 --yes', 'gh release delete v0.1.3 --yes']);
 });
 
-test('keep step: when the new release is not the latest, nothing is deleted', { skip: NO_BASH }, (t) => {
+// SKILL.md §5 of sealoop-workflow: `test "$(gh release view ...)" = "v$VERSION"`, a failing check.
+test('keep step: when the new release is not the latest, the job fails and nothing is deleted', { skip: NO_BASH }, (t) => {
   const run = keep(t, { TAG: 'v0.1.3', GH_LATEST: 'v0.1.5', GH_RELEASES: 'v0.1.5 v0.1.3' });
-  assert.equal(run.status, 0, run.output);
+  assert.equal(run.status, 1, run.output);
   assert.deepEqual(deletions(run), []);
-  assert.match(run.output, /not v0\.1\.3/);
+  assert.match(run.output, /^::error::GitHub shows 'v0\.1\.5' as the latest release, not v0\.1\.3; no release was deleted\.$/m);
+});
+
+test('keep step: when GitHub shows no latest release at all, the job fails and nothing is deleted', { skip: NO_BASH }, (t) => {
+  const run = keep(t, { TAG: 'v0.1.3', GH_LATEST: '', GH_RELEASES: 'v0.1.3 v0.1.2' });
+  assert.notEqual(run.status, 0, run.output);
+  assert.deepEqual(deletions(run), []);
 });
 
 test('keep step: a lone release deletes nothing', { skip: NO_BASH }, (t) => {

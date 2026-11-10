@@ -226,7 +226,8 @@ can run and approve; it commits nothing to `develop` and makes no branch or pull
    - **Release publication** creates the GitHub release from the tag's notes and marks it Latest.
      Once GitHub shows the new release as the latest, it deletes the older releases: the
      repository keeps one release, and the `vX.Y.Z` tags of all versions stay as the history (the
-     ruleset **protect release tags** forbids deleting or moving them).
+     ruleset **protect release tags** forbids deleting or moving them). When GitHub shows another
+     release as the latest, the job fails and deletes nothing.
 
 Claude never approves or rejects a release. Claude runs `gh` as the owner, so its approval would
 pass as yours; the guard of the owner's `sealoop-workflow` plugin blocks deployment reviews.
@@ -252,7 +253,9 @@ The step that failed says why, in an error at the top of the run's page.
   tagged. **Re-run failed jobs**: **Push to master** pushes nothing when `master` already holds
   the tag, and **Release publication** skips a release that exists. A new run would be refused,
   as `develop` has nothing new; after more merges it releases the next version, and the one
-  before keeps its tag without a GitHub release.
+  before keeps its tag without a GitHub release. When **Release publication** says that GitHub
+  shows another release as the latest, mark the new one Latest on its release page, then
+  **Re-run failed jobs** to delete the older releases.
 
 A tag is never moved or deleted, so a version once tagged is taken for good.
 
