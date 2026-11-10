@@ -77,6 +77,15 @@ test('releaseNotes trims the note of spaces and tabs only, as the promote job do
   assert.equal(releaseNotes(['LS-28_feat: a'], ' Faster start-up. '), ' Faster start-up. \n\n- LS-28_feat: a');
 });
 
+// The promote job trims each subject with awk's [ \t] as well: String.prototype.trim would also
+// take a no-break space, a vertical tab or a form feed, and the job would refuse the notes.
+test('releaseNotes trims each subject of spaces and tabs only, as the promote job does', () => {
+  assert.equal(releaseNotes([' \tLS-28_feat: a\t ', ' LS-29_fix: b ', '\vLS-30_fix: c\f']),
+    '- LS-28_feat: a\n-  LS-29_fix: b \n- \vLS-30_fix: c\f');
+  // A subject of spaces and tabs alone is skipped; one of other blanks stays, as in the job.
+  assert.equal(releaseNotes(['LS-28_feat: a', ' \t ', ' ']), '- LS-28_feat: a\n-  ');
+});
+
 test('releaseNotes without a note, or with a blank one, is the commits alone', () => {
   for (const note of [undefined, '', '   ']) assert.equal(releaseNotes(['LS-28_feat: a'], note), '- LS-28_feat: a', JSON.stringify(note));
 });

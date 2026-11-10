@@ -269,9 +269,11 @@ jobs:
               refuse "master holds $SHA already: nothing new since the last release"
             fi
             # The notes as the release script writes them: the note trimmed of spaces and tabs, a
-            # blank line, then "- <subject>" per develop commit master lacks, oldest first.
+            # blank line, then "- <subject>" per develop commit master lacks, oldest first, each
+            # subject trimmed of spaces and tabs too and skipped when nothing is left. Only spaces
+            # and tabs on both sides: awk's [[:space:]] and JavaScript's trim() take different sets.
             subjects="$(git log --reverse --no-merges --format=%s "${master:+$master..}$SHA" \
-              | awk '{ gsub(/^[[:space:]]+|[[:space:]]+$/, "") } $0 != "" { print "- " $0 }')"
+              | awk '{ gsub(/^[ \t]+|[ \t]+$/, "") } $0 != "" { print "- " $0 }')"
             note="$(printf '%s' "$NOTES" | awk '{ gsub(/^[ \t]+|[ \t]+$/, ""); print }')"
             notes="$subjects"
             [ -z "$note" ] || notes="$note"$'\n\n'"$subjects"

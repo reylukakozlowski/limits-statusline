@@ -165,8 +165,9 @@ function planRelease({ bump, note, exec, git }) {
   if (exec('git', ['rev-parse', '--quiet', '--verify', `refs/tags/${tag}`], {}).status === 0) {
     throw new Refusal(`tag ${tag} already exists.`);
   }
-  // What users lack: develop's commits that no release brought to master yet.
-  const subjects = lines(git('log', '--reverse', '--no-merges', '--format=%s', master ? `${master}..HEAD` : 'HEAD'));
+  // What users lack: develop's commits that no release brought to master yet. The subjects as git
+  // gives them, one per line: releaseNotes trims them as the Release workflow's promote job does.
+  const subjects = git('log', '--reverse', '--no-merges', '--format=%s', master ? `${master}..HEAD` : 'HEAD').split('\n');
   const notes = toRefusal(() => releaseNotes(subjects, note));
   return { current, version, tag, notes, head, master, branch };
 }
