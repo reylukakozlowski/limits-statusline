@@ -7,12 +7,14 @@
 // release.integration.test.mjs.
 // The workflow is read as text (the repository has no YAML parser), and the checks pin the lines
 // a careless edit would break. The scripts of the steps also run for real in bash: the promote
-// job's check against real git, the others with stand-ins for gh.
+// job's checks against real git and the real gh (with a local stand-in for GitHub's API), the
+// others with stand-ins for gh.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { runRelease } from '../../scripts/lib/release-cli.mjs';
@@ -30,6 +32,7 @@ const NOTE_STEP = 'Check the note';
 const AUTHOR_STEP = "Commit and tag as the repository's author";
 const RELEASE_STEP = 'Merge develop into master, test it and tag it';
 const BUNDLE_STEP = 'Bundle the release commit and its tag';
+const APPROVED_STEP = 'Check that the owner approved this run';
 const PROMOTE_STEP = 'Check the release commit and push it and its tag';
 const NOTES_STEP = 'Take the release notes from the tag';
 const CREATE_STEP = 'Create the GitHub release unless it exists';
@@ -155,9 +158,10 @@ test('each job gets only the token permissions it uses, and one release runs at 
   assert.match(WORKFLOW, /^permissions: \{\}$/m);
   assert.match(job('refuse'), /^ {4}permissions: \{\}$/m);
   assert.match(job('approval'), /^ {4}permissions: \{\}$/m);
-  // The promote job pushes with the deploy key; no token but publish's writes.
+  // The promote job pushes with the deploy key, and its token reads the run's approvals; no token
+  // but publish's writes.
   assert.match(job('merge'), /^ {4}permissions:\n {6}contents: read\n {4}\S/m);
-  assert.match(job('promote'), /^ {4}permissions:\n {6}contents: read\n {4}\S/m);
+  assert.match(job('promote'), /^ {4}permissions:\n {6}actions: read # the run's approvals\n {6}contents: read\n {4}\S/m);
   assert.match(job('publish'), /^ {4}permissions:\n {6}contents: write\n {4}\S/m);
   assert.match(WORKFLOW, /^concurrency:\n {2}group: release\n {2}cancel-in-progress: false$/m);
 });
@@ -221,10 +225,27 @@ test('only the promote job holds the deploy key, and it runs none of the reposit
   assert.match(checkout, /^ {10}fetch-depth: 0$/m);
   assert.match(checkout, /^ {10}ssh-key: \$\{\{ secrets\.PRODUCTION_DEPLOY_KEY \}\}$/m);
   assert.doesNotMatch(job('promote'), /setup-node|\bnode |\bnpm |scripts\//);
-  assert.deepEqual(stepNames('promote'), [PROMOTE_STEP]);
+  assert.deepEqual(stepNames('promote'), [APPROVED_STEP, PROMOTE_STEP]);
   // Only the promote job pushes, after its check.
   for (const name of ['refuse', 'approval', 'merge', 'publish']) assert.doesNotMatch(job(name), /git push/, name);
   assert.match(job('publish'), /^ {10}persist-credentials: false$/m);
+});
+
+// SKILL.md §5 of sealoop-workflow (a public repository): the job that pushes master first checks
+// the run's approvals, since a deleted environment comes back without its reviewer.
+test('the promote job first asks GitHub whether the owner approved this run in the approval job\'s environment, before the deploy key is checked out', () => {
+  const promote = job('promote');
+  assert.equal(stepNames('promote')[0], APPROVED_STEP);
+  assert.ok(promote.indexOf(`- name: ${APPROVED_STEP}`) < promote.indexOf('- uses: actions/checkout@'));
+  const check = step('promote', APPROVED_STEP);
+  for (const line of [
+    'REPOSITORY: ${{ github.repository }}', 'RUN_ID: ${{ github.run_id }}', 'OWNER: ${{ github.repository_owner }}', 'GH_TOKEN: ${{ github.token }}',
+  ]) {
+    assert.ok(check.includes(`\n          ${line}\n`), line);
+  }
+  assert.match(script(check), /gh api "repos\/\$REPOSITORY\/actions\/runs\/\$RUN_ID\/approvals"/);
+  const environment = /^ {4}environment: (.+)$/m.exec(job('approval'))[1];
+  assert.ok(script(check).includes(`.name == "${environment}"`), 'the environment the owner approves in');
 });
 
 test('the promote job checks what the merge job tested against the run\'s own commit, and pushes the tag and master at once', () => {
@@ -380,6 +401,104 @@ test('note step: a note of more than one line is refused, whichever line break i
     assert.equal(run.status, 1, JSON.stringify(notes));
     assert.match(run.output, /^::error::The note has more than one line: give it on one line\.$/m);
   }
+});
+
+// --- The promote job's approval check, through the real gh ----------------------------------------
+
+// gh sends the requests for its development host github.localhost to http://api.github.localhost/,
+// and so through HTTP_PROXY: a server of the test's own answers there in GitHub's place, and the
+// real gh, with the jq inside it, runs the step as on the runner, without the network. GitHub's
+// runners all have gh, so only a machine without it skips these tests.
+const HAS_GH = (() => {
+  const probe = spawnSync('gh', ['--version']);
+  return !probe.error && probe.status === 0;
+})();
+const NO_GH = NO_BASH || (!HAS_GH && !process.env.CI && 'gh is not installed');
+const OWNER = 'reylukakozlowski';
+// The step's env, as its YAML sets it, for run 42 of this repository.
+const RUN = { REPOSITORY: `${OWNER}/limits-statusline`, RUN_ID: '42', OWNER, GH_TOKEN: 'test-token' };
+
+/**
+ * One entry of GET /repos/{owner}/{repo}/actions/runs/{run_id}/approvals in the shape GitHub gave
+ * for this repository's runs (run 39643105646 among them), with fewer of the user's and the
+ * environments' fields.
+ */
+const review = ({ login = OWNER, state = 'approved', environments = ['release'] } = {}) => ({
+  user: { login, id: login === OWNER ? 27358836 : 1000, type: 'User', site_admin: false },
+  state,
+  comment: '',
+  environments: environments.map((name, index) => ({
+    id: 24794919264 + index, name, url: `https://api.github.com/repos/${RUN.REPOSITORY}/environments/${name}`, can_admins_bypass: true,
+  })),
+});
+
+/** The approval step in bash with the real gh, whose API answers every request with `status` and `body`. */
+async function approvalCheck(t, body, { status = 200 } = {}) {
+  const requests = [];
+  const server = createServer((request, response) => {
+    requests.push(`${request.method} ${request.url} ${request.headers.authorization}`);
+    response.writeHead(status, { 'content-type': 'application/json' });
+    response.end(JSON.stringify(body));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const config = mkdtempSync(join(tmpdir(), 'ls-release-gh-'));
+  t.after(() => rmSync(config, { recursive: true, force: true }));
+  const proxy = `http://127.0.0.1:${server.address().port}`;
+  // Nothing of this machine's gh: its login, host, token and proxies stay out.
+  const env = Object.fromEntries(Object.entries(process.env)
+    .filter(([key]) => !/^(GH_|GITHUB_(ENTERPRISE_)?TOKEN$|(HTTPS?|NO|ALL)_PROXY$)/i.test(key)));
+  const child = spawn(BASH, ['-e', '-c', script(step('promote', APPROVED_STEP))], {
+    env: { ...env, GH_HOST: 'github.localhost', GH_CONFIG_DIR: config, GH_NO_UPDATE_NOTIFIER: '1', HTTP_PROXY: proxy, http_proxy: proxy, ...RUN },
+  });
+  let output = '';
+  child.stdout.on('data', (chunk) => { output += chunk; });
+  child.stderr.on('data', (chunk) => { output += chunk; });
+  const code = await new Promise((resolve, reject) => {
+    child.on('error', reject);
+    child.on('close', resolve);
+  });
+  return { status: code, output, requests };
+}
+
+const APPROVED = [
+  ['the owner\'s approval in release, as every approved run of this repository had', [review()]],
+  ['the owner\'s approvals of production and of release, as run 39643105646 had', [review({ environments: ['production'] }), review()]],
+  ['one approval of both environments', [review({ environments: ['production', 'release'] })]],
+  ['a rejection, then the owner\'s approval of a run started again', [review({ state: 'rejected' }), review()]],
+];
+
+for (const [what, body] of APPROVED) {
+  test(`approval check: ${what} lets the job go on`, { skip: NO_GH }, async (t) => {
+    const run = await approvalCheck(t, body);
+    assert.equal(run.status, 0, run.output);
+    assert.match(run.output, /^reylukakozlowski approved this run in the environment release\.$/m);
+    // This run's approvals, asked for with the job's token.
+    assert.deepEqual(run.requests, [`GET http://api.github.localhost/repos/${RUN.REPOSITORY}/actions/runs/42/approvals token test-token`]);
+  });
+}
+
+const UNAPPROVED = [
+  ['no approval at all, as when release was deleted and came back without its reviewer', []],
+  ['an approval by someone else', [review({ login: 'someone-else' })]],
+  ['the owner\'s approval of production alone', [review({ environments: ['production'] })]],
+  ['the owner\'s rejection', [review({ state: 'rejected' })]],
+  ['an approval that names no environment', [{ ...review(), environments: [] }, { ...review(), environments: null }]],
+];
+
+for (const [what, body] of UNAPPROVED) {
+  test(`approval check: ${what} stops the job before the deploy key is checked out`, { skip: NO_GH }, async (t) => {
+    const run = await approvalCheck(t, body);
+    assert.equal(run.status, 1, run.output);
+    assert.match(run.output, /^::error::reylukakozlowski has not approved this run in the environment release \(Review deployments → Approve and deploy\)\. Nothing was pushed\.$/m);
+    assert.doesNotMatch(run.output, /^reylukakozlowski approved/m);
+  });
+}
+
+test('approval check: when GitHub does not list the run\'s approvals, the job stops', { skip: NO_GH }, async (t) => {
+  const run = await approvalCheck(t, { message: 'Resource not accessible by integration' }, { status: 403 });
+  assert.equal(run.status, 1, run.output);
+  assert.match(run.output, /^::error::GitHub did not list this run's approvals\. Nothing was pushed\.$/m);
 });
 
 // --- The promote job's check, against real git ---------------------------------------------------

@@ -208,15 +208,17 @@ can run and approve; it commits nothing to `develop` and makes no branch or pull
      commits that `master` lacks, oldest first. The job pushes nothing: the tag goes to the next
      job as a git bundle.
    - **Push to master**, in the `production` environment, holds the repository's deploy key and
-     runs none of the repository's code. It pushes the tag and `master` in one atomic push, both or
-     neither and never forced, and only when the tag is the release the previous job tested: named
-     `vX.Y.Z` and the highest such tag, annotated, on the commit the tests passed on; a merge whose
-     parents are `master`'s head and the run's commit, in this order, so no history but
-     `develop`'s reaches `master`; `develop`'s files at that commit with the manifest's version
-     line added and nothing else; the run's commit not yet in `master`; and a message and an
-     annotation whose notes the job works out itself from your note in the form and git, so the
-     job that ran the repository's code cannot put notes of its own into the release. Anything
-     else stops the run with nothing pushed. With the directory's push webhook set up, that push
+     runs none of the repository's code. First it asks GitHub for the run's approvals and stops
+     unless you approved this run in `release`: should `release` ever be deleted, GitHub would
+     create it again without its reviewer, and the run would get this far unapproved. It pushes
+     the tag and `master` in one atomic push, both or neither and never forced, and only when the
+     tag is the release the previous job tested: named `vX.Y.Z` and the highest such tag,
+     annotated, on the commit the tests passed on; a merge whose parents are `master`'s head and
+     the run's commit, in this order, so no history but `develop`'s reaches `master`; `develop`'s
+     files at that commit with the manifest's version line added and nothing else; the run's
+     commit not yet in `master`; and a message and an annotation whose notes the job works out
+     itself from your note in the form and git, so the job that ran the repository's code cannot
+     put notes of its own into the release. Anything else stops the run with nothing pushed. With the directory's push webhook set up, that push
      is what tells Anthropic's directory about the release; without it the directory finds it at
      its next scheduled check ([docs/directory-submission.md](docs/directory-submission.md#after-the-listing)).
    - **GitHub release** creates the GitHub release from the tag's notes and marks it Latest. Once
@@ -241,7 +243,9 @@ The step that failed says why, in an error at the top of the run's page.
   test failed on the release commit (fix it on `develop`). Then start a new run.
 - **Push to master**, before its push: nothing was pushed, since the push is atomic. Fix the
   cause (the error names it), then **Re-run failed jobs** within a day, while the bundle is kept,
-  or start a new run, which makes the same version again.
+  or start a new run, which makes the same version again. When it says you have not approved the
+  run, GitHub held it for no one: the `release` environment is missing its reviewer. Set it up
+  again with `repo-standard.mjs production` (below) and start a new run.
 - **Push to master** after its push, or **GitHub release**: the version is on `master` and
   tagged. **Re-run failed jobs**: **Push to master** pushes nothing when `master` already holds
   the tag, and **GitHub release** skips a release that exists. A new run would be refused, as
@@ -288,7 +292,7 @@ file has to stay on `develop`, the default branch, for **Run workflow** to appea
 ### Credentials
 
 The job **Push to master** pushes the tag and `master` over SSH with the deploy key; its
-`GITHUB_TOKEN` only reads. GitHub refuses that token a push of a commit that changes
+`GITHUB_TOKEN` only reads (the repository and the run's approvals). GitHub refuses that token a push of a commit that changes
 `.github/workflows`, which a release commit does whenever `develop` changed a workflow since the
 previous release; the deploy key has no such limit. The key is never in a job that runs the
 repository's code: the tests run in **Merge and test**, which has no credentials, and **Push to
@@ -314,7 +318,8 @@ its key, which the Tests workflow runs on every pull request into `develop` once
 review. Events that anyone can cause, such as an issue comment, run the workflows of `develop` with
 `develop` as their ref, so a workflow on such an event must never name `production`. Keep both
 environments: GitHub creates a missing environment that a workflow names, without any protection
-rules, so without `release` a run would wait for no approval.
+rules, so without `release` a run would wait for no approval; **Push to master** would then stop
+it, as GitHub lists no approval of yours for the run.
 
 So that no stranger runs workflows on the repository's runners, the setting
 **Approval for running fork pull request workflows from contributors** (Settings → Actions →
