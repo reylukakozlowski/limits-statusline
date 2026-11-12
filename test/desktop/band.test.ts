@@ -17,11 +17,14 @@ const USAGE = {
 
 const PROPS = { hasSurvey: false, isWorking: false, maxRows: 8, bodyColumns: 120 } as never
 
-const HISTORY_FILE = 'C:/Users/dev/.claude/limits-statusline/limit-history.json'
+const HOME_DIR = '/home/dev'
+const HISTORY_FILE = `${HOME_DIR}/.claude/limits-statusline/limit-history.json`
 
 // The shared limit history lives in `files`, never in the real configuration folder. The engine
-// hands hooks platform paths (backslashes on Windows), so files are keyed with forward slashes.
-const fileKey = (path: string) => path.replace(/\\/g, '/')
+// hands hooks absolute paths by the rules of the platform it runs on, so the fixtures are POSIX
+// paths, absolute on Linux and macOS ('C:/Users/dev' is not); Windows puts a rooted path on the
+// current drive, with backslashes ('E:\home\dev'), so files are keyed with forward slashes and no drive.
+const fileKey = (path: string) => path.replace(/\\/g, '/').replace(/^[A-Za-z]:(?=\/)/, '')
 const failing = async () => { throw new Error('denied') }
 
 type Answers = {
@@ -30,7 +33,7 @@ type Answers = {
 }
 
 function answerSession(on: any, {
-  processRun, files = {}, folders = [], cwd = 'C:/Users/dev/daily-claude', asked = [], refuse = false, writeFails = false,
+  processRun, files = {}, folders = [], cwd = `${HOME_DIR}/daily-claude`, asked = [], refuse = false, writeFails = false,
 }: Answers = {}) {
   on('session.usage', async () => ({ value: USAGE }))
   on('session.model', async () => ({ value: 'claude-opus-5-5' }))
@@ -38,7 +41,7 @@ function answerSession(on: any, {
   on('session.id', async () => ({ value: 'session-under-test' }))
   on('clock.now', async () => ({ value: NOW }))
   on('session.version', async () => ({ value: { version: '2.1.299' } }))
-  on('env.get', refuse ? failing : async ($: any, e: any) => ({ value: e.name === 'USERPROFILE' ? 'C:/Users/dev' : undefined }))
+  on('env.get', refuse ? failing : async ($: any, e: any) => ({ value: e.name === 'USERPROFILE' ? HOME_DIR : undefined }))
   on('settings.read', refuse ? failing : async () => ({ value: {} }))
   on('fs.exists', refuse ? failing : async ($: any, e: any) => {
     const path = fileKey(e.path)
@@ -137,7 +140,7 @@ test('/clear starts the line over, as a new terminal session would', async ($, o
 // Where `git` cannot run, the branch comes from `files` and `folders` alone: a missing file and a
 // folder both refuse to be read, as they do on disk. The engine's repository root is the main
 // working tree's, a worktree's too.
-const MAIN_TREE = 'C:/Users/dev/daily-claude'
+const MAIN_TREE = `${HOME_DIR}/daily-claude`
 const WORKTREE = `${MAIN_TREE}/.claude/worktrees/feature`
 
 type Disk = { files: Record<string, string>, folders?: string[], cwd: string, asked?: string[], repo?: boolean }
@@ -183,7 +186,7 @@ test("in a worktree, reads the worktree's own branch through its .git file, not 
 
 test('outside a repository shows no git and looks for no .git', async ($, on) => {
   const asked: string[] = []
-  answerWithoutGit(on, { cwd: 'C:/Users/dev/notes', files: {}, asked, repo: false })
+  answerWithoutGit(on, { cwd: `${HOME_DIR}/notes`, files: {}, asked, repo: false })
   await measure($, 40)
   const ui = await mount($, 'desktop')
   expect(await ui.find({ type: 'Text', text: /no git/ })).toBeDefined()
