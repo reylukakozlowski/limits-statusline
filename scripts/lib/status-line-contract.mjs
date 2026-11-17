@@ -16,10 +16,20 @@
  *   missing: string[],
  *   retyped: { path: string, expected: JsonType, documented: JsonType }[],
  *   unitChanged: { path: string, expected: string, documented: string | null }[],
+ *   newLimitFields: string[],
  *   newFields: string[],
  * }} ContractReport
- * ok: no field the plugin reads went missing or changed type or unit; newFields never affect it.
+ * ok: no field the plugin reads went missing or changed type or unit, and the page documents no
+ * new field of a plan limit (newLimitFields); the other newly documented fields (newFields)
+ * never affect it.
  */
+
+/**
+ * The object that holds the plan limits. A newly documented field in it is a limit the plugin
+ * could show (a weekly limit of one model, which Claude Code had on 2026-11-17 and did not pass
+ * to status lines), so it fails the check until the plugin reads it or UNREAD_FIELDS lists it.
+ */
+export const LIMITS_OBJECT = 'rate_limits';
 
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -145,14 +155,17 @@ export function checkContract({ types, descriptions }, { unread = UNREAD_FIELDS 
     }
   }
   const known = new Set([...STATUS_LINE_CONTRACT.map((entry) => entry.path), ...unread]);
-  const newFields = documentedFields(types, descriptions).filter((path) => !known.has(path));
+  const added = documentedFields(types, descriptions).filter((path) => !known.has(path));
+  const isLimitField = (path) => path.startsWith(`${LIMITS_OBJECT}.`);
+  const newLimitFields = added.filter(isLimitField);
   return {
-    ok: missing.length === 0 && retyped.length === 0 && unitChanged.length === 0,
+    ok: missing.length === 0 && retyped.length === 0 && unitChanged.length === 0 && newLimitFields.length === 0,
     checked: STATUS_LINE_CONTRACT.length,
     missing,
     retyped,
     unitChanged,
-    newFields,
+    newLimitFields,
+    newFields: added.filter((path) => !isLimitField(path)),
   };
 }
 

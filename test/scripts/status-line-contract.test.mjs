@@ -16,7 +16,7 @@ const check = (page = PAGE, options) => checkContract(parseStatusLineDocs(page),
 
 test('the page as it is documents every field the plugin reads as it expects, and nothing new', () => {
   // 26: the fields snapshot.mjs and run.mjs read (status-line-contract-drift.test.mjs pins the list).
-  assert.deepEqual(check(), { ok: true, checked: 26, missing: [], retyped: [], unitChanged: [], newFields: [] });
+  assert.deepEqual(check(), { ok: true, checked: 26, missing: [], retyped: [], unitChanged: [], newLimitFields: [], newFields: [] });
 });
 
 test('a field taken off the page breaks the contract, and only that field is named', () => {
@@ -92,10 +92,29 @@ test('more words around a unit, or other letter case, keep the contract', () => 
   assert.equal(report.ok, true, JSON.stringify(report.unitChanged));
 });
 
-test('a newly documented field is news, never a broken contract', () => {
-  const report = check(edited([FIVE_HOUR_RESET, `${FIVE_HOUR_RESET},\n>     "seven_day_fable": { "used_percentage": 5, "resets_at": 1800274200 }`]));
+test('a newly documented field outside the plan limits is news, never a broken contract', () => {
+  const report = check(edited(['"effort": { "level": "high" },', '"effort": { "level": "high" },\n>   "plan": { "name": "ultra" },']));
   assert.equal(report.ok, true);
-  assert.deepEqual(report.newFields, ['rate_limits.seven_day_fable.resets_at', 'rate_limits.seven_day_fable.used_percentage']);
+  assert.deepEqual([report.newFields, report.newLimitFields], [['plan.name'], []]);
+});
+
+// Claude Code has limits it does not pass to status lines (a weekly limit of one model, as of
+// 2.1.325). The day the page documents one the run has to fail, since a failed run is the only
+// notification. The names below are made up: only their place under rate_limits matters.
+test('a newly documented plan limit field fails the check, in the example or in a table alone', () => {
+  const inExample = check(edited([FIVE_HOUR_RESET, `${FIVE_HOUR_RESET},\n>     "seven_day_fable": { "used_percentage": 5, "resets_at": 1800274200 }`]));
+  assert.equal(inExample.ok, false);
+  assert.deepEqual(inExample.newLimitFields, ['rate_limits.seven_day_fable.resets_at', 'rate_limits.seven_day_fable.used_percentage']);
+  assert.deepEqual([inExample.missing, inExample.retyped, inExample.unitChanged, inExample.newFields], [[], [], [], []]);
+  const inTable = check(edited([rowOf('version'), `${rowOf('version')}\n| \`rate_limits.model_scoped\` | Weekly limits of single models |`]));
+  assert.equal(inTable.ok, false);
+  assert.deepEqual(inTable.newLimitFields, ['rate_limits.model_scoped']);
+});
+
+test('a plan limit field the plugin leaves unread on purpose does not fail the check', () => {
+  const page = edited([FIVE_HOUR_RESET, `${FIVE_HOUR_RESET},\n>     "spend_limit": { "used_percentage": 63 }`]);
+  assert.equal(check(page).ok, true, 'rate_limits.spend_limit.used_percentage is in UNREAD_FIELDS');
+  assert.deepEqual(check(page, { unread: [] }).newLimitFields, ['rate_limits.spend_limit.used_percentage']);
 });
 
 test('a field only a table names is news too, but a row for an object of the example is not', () => {

@@ -12,7 +12,8 @@
 #      engine;
 #   3. scripts/check-status-line-contract.mjs: every field of the status line input that the plugin
 #      reads is still in Anthropic's status line page, with the type and unit the plugin expects.
-#      Fields the page newly documents are listed as a warning and in the run's summary only.
+#      A newly documented field under rate_limits (a plan limit the plugin could show) fails it
+#      as well; other newly documented fields are a warning and a note in the run's summary.
 # The downloads (Claude Code and the page) happen here, in the workflow: the plugin's own code makes
 # no network request. A schedule runs on the default branch, develop; Actions → Compatibility → Run
 # workflow starts a run by hand. The token can only read the repository and the run holds no
