@@ -77,6 +77,36 @@ test('layout shows the branch and a dirty marker for a repository', () => {
   assert.equal(lineText(header), 'daily-claude | git develop* | ✦ Opus 5.5');
 });
 
+const LONG_BRANCH = { ...MOCKUP, project: 'limits-statusline', git: { isRepo: true, branch: 'feature/lko/develop/LS-81_posix-test-paths', isDirty: true } };
+const headerAt = (snapshot, columns) => lineText(buildLines(snapshot, { columns })[0]);
+
+// The whole header is 80 characters; a surface cuts a line at its end, where the model stands.
+test('a header too wide for the surface gives up the start of the branch and keeps the model', () => {
+  assert.equal(headerAt(LONG_BRANCH, 80), 'limits-statusline | git feature/lko/develop/LS-81_posix-test-paths* | ✦ Opus 5.5');
+  // 10 characters too many: the branch's 42 become 32, the ellipsis among them.
+  assert.equal(headerAt(LONG_BRANCH, 70), 'limits-statusline | git …/develop/LS-81_posix-test-paths* | ✦ Opus 5.5');
+  assert.equal(headerAt(LONG_BRANCH, 70).length, 70);
+  assert.equal(headerAt(LONG_BRANCH, undefined), headerAt(LONG_BRANCH, 80), 'an unknown width cuts nothing');
+});
+
+test('once the branch is down to 8 characters the project gives up its end, down to 8 as well', () => {
+  assert.equal(headerAt(LONG_BRANCH, 46), 'limits-statusline | git …t-paths* | ✦ Opus 5.5');
+  assert.equal(headerAt(LONG_BRANCH, 40), 'limits-sta… | git …t-paths* | ✦ Opus 5.5');
+  assert.equal(headerAt(LONG_BRANCH, 40).length, 40);
+  // Narrower than the shortest names allow: nothing more is cut here, the surface cuts the rest.
+  assert.equal(headerAt(LONG_BRANCH, 20), 'limits-… | git …t-paths* | ✦ Opus 5.5');
+});
+
+test('a header outside a repository shortens the project alone, and short names are left whole', () => {
+  const noRepo = { ...MOCKUP, project: 'a-project-with-a-very-long-folder-name' };
+  // 60 characters at 40 columns: the project's 38 become 18.
+  assert.equal(headerAt(noRepo, 40), 'a-project-with-a-… | no git | ✦ Opus 5.5');
+  assert.equal(headerAt(MOCKUP, 34), MOCKUP_LINES[0], 'the mockup header is 34 characters');
+  assert.equal(headerAt(MOCKUP, 33), 'daily-clau… | no git | ✦ Opus 5.5');
+  const shortNames = { ...MOCKUP, project: 'api', git: { isRepo: true, branch: 'main', isDirty: false } };
+  assert.equal(headerAt(shortNames, 10), 'api | git main | ✦ Opus 5.5');
+});
+
 test('layout turns the whole limit red when the projection passes 100%', () => {
   // 52% after 2.5h of a 5h window → 20.8%/h → 104% at reset.
   const limits = { ...MOCKUP.limits, fiveHour: { percentUsed: 52, resetsAtMs: NOW + 9_000_000 } };
