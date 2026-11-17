@@ -131,9 +131,11 @@ nights and days off. The **projection** (`→`) extends that pace to the reset:
 it answers "where do I end up if I keep going like this?". The plan's limits are shared by every
 session and by claude.ai, so the pace counts all of them: each session adds the figures it
 receives to a small shared history, and the line always shows the newest figure any session saw.
-Without readings from before it, a new window has no pace in its first 15 minutes (`→ —`,
-`↗ —`); when you work on across a reset, the pace carries on from the previous window. Without
-any history yet the pace is the average since the window opened. A large drop within a window is
+A pace needs readings over at least half of that look-back, because the projection multiplies it
+by all the time left: without readings from before it, a new 5-hour window has no pace in its
+first 15 minutes and a new week none in its first 12 hours (`→ —`, `↗ —`). When you work on
+across a reset, the pace carries on from the previous window. Without any history yet the pace
+is the average since the window opened. A large drop within a window is
 taken as a limit reset given on claude.ai, and usage counts again from there.
 
 For the 7-day limit the projection leaves out the last night before the reset, **02:00–07:00** on
@@ -252,10 +254,10 @@ With `CLAUDE_CONFIG_DIR` set, these folders live there instead of `~/.claude`.
 - **`7d —` and `5h —`** — the limits arrive with the first response of a session and only for
   Pro, Max and Ultra subscribers. A verified Ultra account has no 5-hour limit: while Claude Code
   sends no 5-hour window, `5h —` stays.
-- **The 7-day projection is very high on the first day after installing** — the 7-day pace looks
-  back 24 hours; until the shared history covers a day, the pace is the average since the weekly
-  reset, which early in the week counts only working hours. It settles once a day of history is
-  there.
+- **`7d` shows `→ —` and `↗ —` after installing** — the 7-day pace needs 12 hours of readings.
+  With no history from before the weekly reset, the projection appears once the week is 12 hours
+  old. Until the shared history covers a day, the pace is the average since the weekly reset,
+  which early in the week counts mostly working hours, so the projection runs high at first.
 - **Odd pace after switching accounts** — the shared history does not tell accounts apart; two
   accounts used in turn within a week mix their figures until the readings age out (48 hours).
 - **No effort or cache shown** — older Claude Code versions do not send them; update Claude Code.

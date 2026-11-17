@@ -210,6 +210,14 @@ test('a projection past 999% reads >999%, and the other line stays aligned with 
   for (const mark of ['→', '↻', '↗']) assert.equal(column(sevenDay, mark), column(fiveHour, mark), mark);
 });
 
+// Without the rule 3% in 20 minutes is 9%/h, 1467% by the reset and a red "100% in 10h46m".
+test('a week that opened 20 minutes ago, with no earlier readings, has no projection and no warning', () => {
+  const limits = { ...MOCKUP.limits, sevenDay: { percentUsed: 3, resetsAtMs: NOW + 7 * 24 * HOUR_MS - 20 * 60_000 } };
+  const { sevenDay } = byRole(buildLines({ ...MOCKUP, limits }, { columns: 120 }));
+  assert.equal(lineText(sevenDay), '7d  □□□□□□□□□□□□□□□□  3% →    —  ↻ 6d23h Fri 07:40  ↗ —');
+  assert.deepEqual(sevenDay.filter((part) => part.tone === TONE.alert || part.tone === TONE.warn), []);
+});
+
 test('a limit without a reset time shows its usage with dashes and keeps the other line aligned', () => {
   const limits = { ...MOCKUP.limits, sevenDay: { percentUsed: 39, resetsAtMs: null } };
   const [sevenDay, fiveHour] = plain(buildLines({ ...MOCKUP, limits }, { columns: 120 })).slice(3);
