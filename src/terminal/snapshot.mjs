@@ -49,8 +49,7 @@ export function snapshotFromStatusInput(input, { nowMs, git, contextHistory, tim
     },
     contextHistory: Array.isArray(contextHistory) ? contextHistory : [],
     limits: limitsFromStatusInput(data),
-    limitReadings: limitHistory.readings,
-    limitsSeenAtMs: limitHistory.seenAtMs,
+    limitHistory: { readings: limitHistory.readings, seenAtMs: limitHistory.seenAtMs },
     spendLimit: spendLimitFromStatusInput(data),
   };
 }
@@ -59,7 +58,7 @@ export function snapshotFromStatusInput(input, { nowMs, git, contextHistory, tim
  * `rate_limits.spend_limit`, which a Claude apps gateway sends: the share used and the reset with
  * every response, the amounts in US dollars when it has them.
  * @param {unknown} input parsed stdin JSON
- * @returns {import('../core/layout.mjs').SpendLimit | null}
+ * @returns {import('../core/metrics.mjs').SpendLimit | null}
  */
 export function spendLimitFromStatusInput(input) {
   const {

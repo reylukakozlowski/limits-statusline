@@ -26,8 +26,7 @@ export const MOCKUP = Object.freeze({
     sevenDay: { percentUsed: 39, resetsAtMs: NOW + 274_200_000 },
     fiveHour: { percentUsed: 12, resetsAtMs: NOW + 15_000_000 },
   },
-  limitReadings: { fiveHour: [], sevenDay: [] },
-  limitsSeenAtMs: { fiveHour: null, sevenDay: null },
+  limitHistory: { readings: { fiveHour: [], sevenDay: [] }, seenAtMs: { fiveHour: null, sevenDay: null } },
   spendLimit: null,
 });
 
@@ -55,7 +54,6 @@ export const EMPTY = Object.freeze({
   context: { usedTokens: null, windowTokens: null, percent: null },
   contextHistory: [],
   limits: { sevenDay: null, fiveHour: null },
-  limitReadings: { fiveHour: [], sevenDay: [] },
-  limitsSeenAtMs: { fiveHour: null, sevenDay: null },
+  limitHistory: { readings: { fiveHour: [], sevenDay: [] }, seenAtMs: { fiveHour: null, sevenDay: null } },
   spendLimit: null,
 });

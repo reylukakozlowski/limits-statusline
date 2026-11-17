@@ -2,7 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildLines, lineText } from '../../src/core/layout.mjs';
 import { TONE } from '../../src/core/thresholds.mjs';
+import { MS_PER_DAY as DAY_MS, MS_PER_HOUR as HOUR_MS, MS_PER_MINUTE as MINUTE_MS } from '../../src/core/time.mjs';
 import { MOCKUP, MOCKUP_LINES, EMPTY, NOW } from '../fixtures/snapshots.mjs';
+
+const NO_READINGS = MOCKUP.limitHistory.readings;
+/** The history with the times the two windows were last reported. */
+const seenAt = (seenAtMs) => ({ readings: NO_READINGS, seenAtMs });
+/** The history with shared readings. */
+const withReadings = (readings) => ({ readings, seenAtMs: MOCKUP.limitHistory.seenAtMs });
 
 const plain = (lines) => lines.map(lineText);
 const segmentWith = (line, text) => line.find((segment) => segment.text.includes(text));
@@ -32,13 +39,12 @@ test('buildLines colours by meaning: limit ok, context warn, cost and model', ()
   assert.equal(segmentWith(header, 'Opus 5.5').tone, TONE.model);
 });
 
-const DAY_MS = 86_400_000;
 const NO_FIGURES = { sevenDay: null, fiveHour: null };
 
 // Before a session's first response there are no figures yet, and after a 5-hour window's reset
 // none for it until the next response: a window seen within the week keeps its line, as a dash.
 test('a window without a figure keeps its line as a dash while the account is known to have it', () => {
-  const seen = { ...MOCKUP, limits: NO_FIGURES, limitsSeenAtMs: { sevenDay: NOW - 7 * DAY_MS, fiveHour: NOW - 60_000 } };
+  const seen = { ...MOCKUP, limits: NO_FIGURES, limitHistory: seenAt({ sevenDay: NOW - 7 * DAY_MS, fiveHour: NOW - MINUTE_MS }) };
   const { sevenDay, fiveHour } = byRole(buildLines(seen, { columns: 120 }));
   assert.equal(lineText(sevenDay), '7d  —');
   assert.equal(lineText(fiveHour), '5h  —');
@@ -48,7 +54,7 @@ test('a window without a figure keeps its line as a dash while the account is kn
 // A verified Ultra account has no 5-hour window, an API key no plan windows at all: a line for
 // a window that never comes would be a dash forever.
 test('a window not seen for more than a week, or never, has no line', () => {
-  const linesOf = (limits, limitsSeenAtMs) => plain(buildLines({ ...MOCKUP, limits, limitsSeenAtMs }, { columns: 120 }));
+  const linesOf = (limits, seenAtMs) => plain(buildLines({ ...MOCKUP, limits, limitHistory: seenAt(seenAtMs) }, { columns: 120 }));
   const weekOnly = linesOf({ ...MOCKUP.limits, fiveHour: null }, { sevenDay: NOW, fiveHour: null });
   assert.deepEqual(weekOnly, [MOCKUP_LINES[0], MOCKUP_LINES[1], MOCKUP_LINES[2], '7d  ■■■■■■□□□□□□□□□□ 39% →  69%  ↻ 3d04h Mon 12:10  ↗ 0.4%/h']);
   assert.deepEqual(linesOf(NO_FIGURES, { sevenDay: null, fiveHour: null }), MOCKUP_LINES.slice(0, 3));
@@ -61,12 +67,14 @@ test('a window not seen for more than a week, or never, has no line', () => {
 // and the reset with every response, the amounts when the gateway has them.
 test('a gateway spend limit has a line of its own: bar, share, amounts and reset, no pace', () => {
   const spendLine = (spendLimit, columns = 120) => plain(buildLines({ ...MOCKUP, limits: NO_FIGURES, spendLimit }, { columns })).at(-1);
-  const reset = NOW + 12 * DAY_MS + 4 * 3_600_000 + 10 * 60_000; // Wed 27 Jan 2027 12:10 UTC
+  const reset = NOW + 12 * DAY_MS + 4 * HOUR_MS + 10 * MINUTE_MS; // Wed 27 Jan 2027 12:10 UTC
   assert.equal(spendLine({ percentUsed: 63, resetsAtMs: reset, usedUsd: 314.12, limitUsd: 500 }),
     'usd ■■■■■■■■■■□□□□□□ 63%  $314.12/$500.00  ↻ 12d04h Wed 12:10');
   assert.equal(spendLine({ percentUsed: 63, resetsAtMs: reset, usedUsd: null, limitUsd: null }),
     'usd ■■■■■■■■■■□□□□□□ 63%  ↻ 12d04h Wed 12:10');
   assert.equal(spendLine({ percentUsed: 63, resetsAtMs: null, usedUsd: 314.12, limitUsd: null }), 'usd ■■■■■■■■■■□□□□□□ 63%');
+  // A reset already past is no reset to count down to.
+  assert.equal(spendLine({ percentUsed: 63, resetsAtMs: NOW - 1, usedUsd: null, limitUsd: null }), 'usd ■■■■■■■■■■□□□□□□ 63%');
   assert.equal(spendLine({ percentUsed: 137, resetsAtMs: reset, usedUsd: 685, limitUsd: 500 }, 44),
     'usd ■■■■■■■■■■ 137%  $685.00/$500.00  ↻ 12d04h', 'narrow: 10 cells, and the clock time goes first');
 });
@@ -200,13 +208,13 @@ test('without a known width or time zone the limit lines keep everything they ca
 });
 
 // Friday 19:00 UTC, the week resets on Sunday at 07:00: 66% at 1%/h over the last day.
-const FRIDAY_19 = NOW + 11 * 3_600_000;
-const SUNDAY_07 = FRIDAY_19 + 36 * 3_600_000;
+const FRIDAY_19 = NOW + 11 * HOUR_MS;
+const SUNDAY_07 = FRIDAY_19 + 36 * HOUR_MS;
 const WEEK_ENDING_AT_DAWN = {
   ...MOCKUP,
   nowMs: FRIDAY_19,
   limits: { ...MOCKUP.limits, sevenDay: { percentUsed: 66, resetsAtMs: SUNDAY_07 } },
-  limitReadings: { fiveHour: [], sevenDay: [[FRIDAY_19 - 86_400_000, 42, SUNDAY_07], [FRIDAY_19, 66, SUNDAY_07]] },
+  limitHistory: withReadings({ fiveHour: [], sevenDay: [[FRIDAY_19 - DAY_MS, 42, SUNDAY_07], [FRIDAY_19, 66, SUNDAY_07]] }),
 };
 
 test('the 7-day line runs to 02:00 when the week resets at 07:00: yellow, and no ⚠', () => {
@@ -232,13 +240,13 @@ test('in the first 15 minutes of a window there is no projection yet, shown as a
 });
 
 test('the limit lines read the shared history: the freshest figure and the pace of the last 30 minutes', () => {
-  const reset = NOW + 3 * 3_600_000;
-  const limitReadings = {
-    fiveHour: [[NOW - 3_600_000, 20, reset], [NOW - 1_800_000, 30, reset], [NOW - 60_000, 45, reset]],
+  const reset = NOW + 3 * HOUR_MS;
+  const limitHistory = withReadings({
+    fiveHour: [[NOW - HOUR_MS, 20, reset], [NOW - 30 * MINUTE_MS, 30, reset], [NOW - MINUTE_MS, 45, reset]],
     sevenDay: [],
-  };
+  });
   const limits = { ...MOCKUP.limits, fiveHour: { percentUsed: 40, resetsAtMs: reset } };
-  const { fiveHour } = byRole(buildLines({ ...MOCKUP, limits, limitReadings }, { columns: 120 }));
+  const { fiveHour } = byRole(buildLines({ ...MOCKUP, limits, limitHistory }, { columns: 120 }));
   // 45% (another session's newer figure), 15 points in half an hour → 30%/h → 135% at the reset.
   assert.match(lineText(fiveHour), /^5h {2}\S+ 45% → 135% .* ↗ 30\.0%\/h {2}⚠ 100% in 1h50m$/);
 });
@@ -254,14 +262,13 @@ test('the cache shows how long it stays warm, warns in its last five minutes and
 });
 
 test('the columns after the reset stay aligned when the 7-day countdown is longer (its last day)', () => {
-  const limits = { ...MOCKUP.limits, sevenDay: { percentUsed: 95, resetsAtMs: NOW + 13 * 3_600_000 + 20 * 60_000 } };
+  const limits = { ...MOCKUP.limits, sevenDay: { percentUsed: 95, resetsAtMs: NOW + 13 * HOUR_MS + 20 * MINUTE_MS } };
   const [sevenDay, fiveHour] = plain(buildLines({ ...MOCKUP, limits }, { columns: 120 })).slice(3);
   assert.match(sevenDay, /↻ 13h20m 21:20 {2}↗/);
   assert.match(fiveHour, /↻ 4h10m {2}12:10 {2}↗/);
   assert.equal(sevenDay.indexOf('↗'), fiveHour.indexOf('↗'));
 });
 
-const HOUR_MS = 3_600_000;
 const column = (line, mark) => lineText(line).indexOf(mark);
 
 // "100%" is a character longer than "12%": the usage column takes the longer one on both lines.
@@ -275,7 +282,7 @@ test('a limit at 100% keeps the columns of the two limit lines aligned', () => {
 
 // 90% used 20 minutes into a 5-hour window is 270%/h: 90 + 270 × 4h40m = 1350% at the reset.
 test('a projection past 999% reads >999%, and the other line stays aligned with it', () => {
-  const limits = { ...MOCKUP.limits, fiveHour: { percentUsed: 90, resetsAtMs: NOW + 5 * HOUR_MS - 20 * 60_000 } };
+  const limits = { ...MOCKUP.limits, fiveHour: { percentUsed: 90, resetsAtMs: NOW + 5 * HOUR_MS - 20 * MINUTE_MS } };
   const { sevenDay, fiveHour } = byRole(buildLines({ ...MOCKUP, limits }, { columns: 120 }));
   assert.ok(lineText(fiveHour).startsWith('5h  ■■■■■■■■■■■■■■□□ 90% → >999%  ↻ 4h40m'), lineText(fiveHour));
   assert.ok(lineText(sevenDay).startsWith('7d  ■■■■■■□□□□□□□□□□ 39% →   69%  ↻ '), lineText(sevenDay));
@@ -284,7 +291,7 @@ test('a projection past 999% reads >999%, and the other line stays aligned with 
 
 // Without the rule 3% in 20 minutes is 9%/h, 1467% by the reset and a red "100% in 10h46m".
 test('a week that opened 20 minutes ago, with no earlier readings, has no projection and no warning', () => {
-  const limits = { ...MOCKUP.limits, sevenDay: { percentUsed: 3, resetsAtMs: NOW + 7 * 24 * HOUR_MS - 20 * 60_000 } };
+  const limits = { ...MOCKUP.limits, sevenDay: { percentUsed: 3, resetsAtMs: NOW + 7 * DAY_MS - 20 * MINUTE_MS } };
   const { sevenDay } = byRole(buildLines({ ...MOCKUP, limits }, { columns: 120 }));
   assert.equal(lineText(sevenDay), '7d  □□□□□□□□□□□□□□□□  3% →    —  ↻ 6d23h Fri 07:40  ↗ —');
   assert.deepEqual(sevenDay.filter((part) => part.tone === TONE.alert || part.tone === TONE.warn), []);

@@ -11,10 +11,11 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runContractCheck } from '../../scripts/lib/status-line-contract-cli.mjs';
 import { STATUS_LINE_PAGE } from '../../scripts/lib/status-line-docs.mjs';
+import { STATUS_LINE_CONTRACT } from '../../scripts/lib/status-line-contract.mjs';
 import { edited, PAGE, withExample } from '../fixtures/status-line-page.mjs';
 
 const DOCS = '/runner/temp/statusline.md';
-const FIELDS = 31; // the contract's fields (status-line-contract-drift.test.mjs pins the list)
+const FIELDS = STATUS_LINE_CONTRACT.length; // status-line-contract-drift.test.mjs pins the list
 const MILLISECONDS = ['in Unix epoch seconds |', 'in Unix epoch milliseconds |'];
 
 /** Runs the check with `files` (path → text) as the only readable files. */

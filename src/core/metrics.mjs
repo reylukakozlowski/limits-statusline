@@ -10,6 +10,9 @@ export const FULL_PERCENT = 100;
 
 /**
  * @typedef {{ percentUsed: number, resetsAtMs: number | null }} LimitReading
+ * @typedef {{ percentUsed: number, resetsAtMs: number | null, usedUsd: number | null, limitUsd: number | null }} SpendLimit
+ *   a Claude apps gateway's spend limit: the share used (past 100 once exceeded), its reset, and
+ *   the amounts in US dollars when they were sent
  * @typedef {{ percentUsed: number, remainingMs: number | null, ratePerHour: number | null,
  *             projectedPercent: number | null, limitInMs: number | null }} LimitAnalysis
  * `remainingMs` runs to the reset; the projection counts no growth during the pause before it.
