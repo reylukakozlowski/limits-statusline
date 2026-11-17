@@ -46,6 +46,8 @@ const PERCENT_WIDTH = 3; // "54%"; a limit at "100%" widens the column on both l
 const PROJECTION_WIDTH = 4; // "117%"
 const PROJECTION_CAP = 999; // beyond it the figure says nothing more: ">999%"
 const GAP = '  ';
+const ELLIPSIS = '…';
+const SHORTEST_NAME = 8; // a branch or project is cut no shorter than this, the ellipsis included
 const POINTS_PER_CHAR = 2;
 
 const LIMIT_LINES = Object.freeze([
@@ -79,26 +81,40 @@ export function buildLines(snapshot, { columns } = {}) {
   const width = Number.isFinite(columns) && columns > 0 ? columns : null;
   const size = width !== null && width < FULL_LINE_COLUMNS ? NARROW : WIDE;
   return [
-    headerLine(snapshot),
+    headerLine(snapshot, width),
     sessionLine(snapshot),
     contextLine(snapshot, size),
     ...limitLines(snapshot, size, width),
   ];
 }
 
-function headerLine({ project, git, modelName }) {
-  return [
-    segment(project ?? DASH, TONE.accent),
+// The model comes last, and a surface cuts a line at its end. A header too wide for the surface
+// gives up the start of the branch first (its end tells the branches of one project apart),
+// then the end of the project.
+function headerLine({ project, git, modelName }, width) {
+  const draw = (projectName, branch) => [
+    segment(projectName, TONE.accent),
     separator(' | '),
-    gitSegment(git),
+    gitSegment(git, branch),
     separator(' | '),
     segment(`✦ ${modelName ?? DASH}`, TONE.model),
   ];
+  const names = { project: project ?? DASH, branch: git?.branch ?? DASH };
+  const excess = () => (width === null ? 0 : lineText(draw(names.project, names.branch)).length - width);
+  if (git?.isRepo) names.branch = shortened(names.branch, excess(), (text, length) => `${ELLIPSIS}${text.slice(-length)}`);
+  names.project = shortened(names.project, excess(), (text, length) => `${text.slice(0, length)}${ELLIPSIS}`);
+  return draw(names.project, names.branch);
 }
 
-function gitSegment(git) {
+/** `text` shorter by `excess` characters, as far as SHORTEST_NAME allows; `cut` keeps `length` of it. */
+function shortened(text, excess, cut) {
+  if (excess <= 0 || text.length <= SHORTEST_NAME) return text;
+  return cut(text, Math.max(SHORTEST_NAME, text.length - excess) - ELLIPSIS.length);
+}
+
+function gitSegment(git, branch) {
   if (!git?.isRepo) return segment('no git', TONE.muted);
-  return segment(`git ${git.branch ?? DASH}${git.isDirty ? '*' : ''}`);
+  return segment(`git ${branch}${git.isDirty ? '*' : ''}`);
 }
 
 function contextLine({ context, contextHistory }, size) {
