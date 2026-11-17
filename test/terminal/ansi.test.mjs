@@ -32,6 +32,13 @@ test('renderAnsi resets after every coloured segment', () => {
   assert.equal(out, `${ESC}[38;5;71ma${ESC}[0mb${ESC}[1;38;5;203mc${ESC}[0m`);
 });
 
+// A folder or a branch can be named with an escape sequence in it; the terminal would act on it.
+test('renderAnsi prints no control character of a text, only its own colour codes', () => {
+  const hostile = [[{ text: `proj${ESC}[2J${ESC}]0;title\u0007\r\nect\u009b1m`, tone: 'accent' }, { text: `${ESC}\u0000`, tone: 'ok' }]];
+  assert.equal(renderAnsi(hostile, { color: false }), 'proj[2J]0;titleect1m');
+  assert.equal(renderAnsi(hostile, { color: true }), `${ESC}[1;38;5;75mproj[2J]0;titleect1m${ESC}[0m`);
+});
+
 test('renderAnsi skips empty segments instead of emitting bare escape codes', () => {
   assert.equal(renderAnsi([[{ text: '', tone: 'ok' }, { text: 'x', tone: 'plain' }]], { color: true }), 'x');
 });

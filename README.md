@@ -27,7 +27,7 @@ there.
 |---|---|
 | Operating system | One that [Claude Code supports](https://code.claude.com/docs/en/setup#system-requirements): macOS 13+, Windows 10 1809+ or Linux. The automated tests run on macOS, Linux (Ubuntu) and Windows ([Tests workflow](.github/workflows/tests.yml)) |
 | Terminal status line | Claude Code with status line support and **Node.js 20+** on `PATH` (on macOS, for example, from [nodejs.org](https://nodejs.org/en/download), Homebrew or nvm) |
-| Branch in the header | `git` 2.15 or later on `PATH`; on macOS it comes with the Xcode Command Line Tools (`xcode-select --install`). Without it the terminal line says `no git` |
+| Branch in the header | `git` 2.15 or later on `PATH`; on macOS it comes with the Xcode Command Line Tools (`xcode-select --install`). Where git is missing, too slow or refuses the folder, the branch is read from the repository's `.git/HEAD`, without the `*` for uncommitted changes; `no git` means the folder is in no repository |
 | Desktop band | Claude Code 2.1.290 or later (the desktop app updates its own copy); the monospaced face from 2.1.299. No Node.js needed |
 | Weekly (7-day) and 5-hour limits | A claude.ai Pro, Max or Ultra subscription; the limits appear after the session's first response. Verified Ultra accounts have no 5-hour limit ([Ultra plan](https://support.claude.com/en/articles/17728952)) |
 | Prompt-cache ratio in the terminal | Exact with Claude Code 2.1.251+, estimated from the last request on older versions |
@@ -179,9 +179,10 @@ it from the directory, `-sealoop` when you added it from GitHub.
 
 - **Status line** (terminal): reads the JSON Claude Code passes on stdin, runs
   `git --no-optional-locks status --porcelain=v2 --branch --untracked-files=no` in the working
-  folder (`--no-optional-locks`, so it never takes git's index lock), and keeps a small context
-  history per session, the fill percentages only, in the data folder's `history/` (pruned after 7
-  days).
+  folder (`--no-optional-locks`, so it never takes git's index lock) with a 1-second time limit,
+  and keeps a small context history per session, the fill percentages only, in the data folder's
+  `history/` (pruned after 7 days). Where git gives no answer, it reads the branch from the
+  repository's `.git/HEAD`, as the band does.
 - **Plan limit history** (status line and desktop band alike): the 5-hour and 7-day percentages
   with their time and reset time, and each session's last figures, in
   `~/.claude/limits-statusline/limit-history.json`, kept for 1 hour (5-hour) and 48 hours
@@ -206,15 +207,16 @@ it from the directory, `-sealoop` when you added it from GitHub.
     session starts and each time Claude Code reports new session figures, to show the branch and,
     with `*`, whether tracked files have uncommitted changes. `git status` only reads the
     repository on your computer and contacts no remote. Nothing the band reads is passed to it:
-    the command and its options are fixed. Where the command cannot run (no `git`, or Claude Code
-    runs no commands there), the band reads the branch from the session's own `.git/HEAD` file
-    instead, looking for `.git` from the session's folder upward, as git does. In a git worktree
-    `.git` is a file that names the worktree's git folder, and the band reads `HEAD` there.
+    the command and its options are fixed. Where the command gives no answer (no `git`, a git that
+    fails or takes too long, or Claude Code runs no commands there), the band reads the branch
+    from the session's own `.git/HEAD` file instead, looking for `.git` from the session's folder
+    upward, as git does. In a git worktree `.git` is a file that names the worktree's git folder,
+    and the band reads `HEAD` there, unless the file names a folder on another computer.
   - **What it reads:** the session's figures from Claude Code (context fill, plan limits, cost,
     runtime, model, working folder, session id and version); from each model request (a
     `turn.step` hook) only the effort level, handing the request and the response on unchanged
     without looking at their text; from each finished turn only its token counts, for the cache
-    ratio; the plan limit history file; where `git` cannot run, whether Claude Code has the session
+    ratio; the plan limit history file; where `git` gives no answer, whether Claude Code has the session
     in a git repository and the session's `.git/HEAD` (in a worktree, its `.git` file and the
     `HEAD` file in the folder it names); the settings, of which it uses only `promptCacheTtl`; and
     the variables

@@ -1,6 +1,9 @@
-// Tone → 256-colour SGR codes. Plain text when colour is off (NO_COLOR).
+// Tone → 256-colour SGR codes. Plain text when colour is off (NO_COLOR). The texts come from
+// outside (a folder's name, a branch, a model's name), so the only control characters that
+// reach the terminal are the colour codes written here.
 
 const ESC = '\u001b';
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/g;
 const RESET = `${ESC}[0m`;
 
 export const TONE_SGR = Object.freeze({
@@ -27,7 +30,8 @@ export function renderAnsi(lines, { color }) {
 }
 
 function paint({ text, tone }, color) {
-  if (!text) return '';
+  const printable = String(text ?? '').replace(CONTROL_CHARACTERS, '');
+  if (!printable) return '';
   const sgr = color && Object.hasOwn(TONE_SGR, tone) ? TONE_SGR[tone] : '';
-  return sgr ? `${ESC}[${sgr}m${text}${RESET}` : text;
+  return sgr ? `${ESC}[${sgr}m${printable}${RESET}` : printable;
 }

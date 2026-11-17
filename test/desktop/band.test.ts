@@ -143,10 +143,19 @@ test('/clear starts the line over, as a new terminal session would', async ($, o
 const MAIN_TREE = `${HOME_DIR}/daily-claude`
 const WORKTREE = `${MAIN_TREE}/.claude/worktrees/feature`
 
-type Disk = { files: Record<string, string>, folders?: string[], cwd: string, asked?: string[], repo?: boolean }
+type Disk = {
+  files: Record<string, string>, folders?: string[], cwd: string, asked?: string[], repo?: boolean,
+  processRun?: (...args: any[]) => Promise<unknown>,
+}
 
-function answerWithoutGit(on: any, { files, folders = [], cwd, asked = [], repo = true }: Disk) {
-  answerSession(on, { files, folders, cwd, asked, processRun: async () => { throw new Error('CLI only') } })
+const CLI_ONLY = async () => { throw new Error('CLI only') }
+// git's exit when it will not read a repository it does not trust; "not a git repository" is 128 too.
+const GIT_REFUSES = async () => ({
+  value: { exitCode: 128, stdout: '', stderr: 'fatal: detected dubious ownership', isStdoutTruncated: false, isStderrTruncated: false },
+})
+
+function answerWithoutGit(on: any, { files, folders = [], cwd, asked = [], repo = true, processRun = CLI_ONLY }: Disk) {
+  answerSession(on, { files, folders, cwd, asked, processRun })
   on('session.repo', async () => ({ value: repo ? { root: MAIN_TREE, remote: null, internal: false, name: null } : null }))
   on('fs.read', async ($: any, e: any) => {
     const text = files[fileKey(e.path)]
@@ -164,6 +173,20 @@ test('reads the branch from .git/HEAD above the session folder when $.process is
   await measure($, 40)
   const ui = await mount($, 'desktop')
   expect(await ui.find({ type: 'Text', text: /git develop/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('reads the branch from .git/HEAD when git status fails inside a repository', async ($, on) => {
+  answerWithoutGit(on, {
+    cwd: `${MAIN_TREE}/src`,
+    folders: [`${MAIN_TREE}/.git`],
+    files: { [`${MAIN_TREE}/.git/HEAD`]: 'ref: refs/heads/develop\n' },
+    processRun: GIT_REFUSES,
+  })
+  await measure($, 40)
+  const ui = await mount($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /git develop/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /no git/ })).toBeUndefined()
   await ui.unmount()
 })
 
