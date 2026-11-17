@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { configFolderFor, withMeasuredLimits } from '../../src/desktop/limit-history.mjs';
+import { configFolderFor, unreadableFileWatch, withMeasuredLimits } from '../../src/desktop/limit-history.mjs';
 import { EMPTY_LIMIT_HISTORY } from '../../src/core/limit-history.mjs';
 import { claudeConfigDir, limitHistoryPath } from '../../src/core/paths.mjs';
 
@@ -23,6 +23,16 @@ test('the band names the same history file as the terminal, also for a folder en
     const folder = configFolderFor(configDirVariable, undefined, home);
     assert.equal(`${folder}/limits-statusline/limit-history.json`, limitHistoryPath(claudeConfigDir(configDirVariable, home)));
   }
+});
+
+// One minute, UNREADABLE_GRACE_MS, counted from the first time the file was found unreadable.
+test('an unreadable history file may be replaced only once it has stayed unreadable for a minute', () => {
+  const watch = unreadableFileWatch();
+  assert.equal(watch.mayReplace(NOW), false, 'found unreadable just now');
+  assert.equal(watch.mayReplace(NOW + 59_999), false);
+  assert.equal(watch.mayReplace(NOW + 60_000), true);
+  watch.readable();
+  assert.equal(watch.mayReplace(NOW + 120_000), false, 'read in between: the minute starts over');
 });
 
 test('no folder when no configuration folder is known', () => {

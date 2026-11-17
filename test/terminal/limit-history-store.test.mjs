@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { recordLimitHistory, transcriptWrittenAtMs } from '../../src/terminal/limit-history-store.mjs';
@@ -35,11 +35,30 @@ test('a second session adds to the same file; a repeat leaves the file untouched
   assert.deepEqual(readdirSync(join(file, '..')), ['limit-history.json']); // no temporary file left behind
 });
 
-test('an unreadable file starts over instead of failing', (t) => {
+/** A file with `text`, last written `agoMs` before NOW. */
+function fileWritten(t, text, agoMs) {
   const file = join(tempDir(t), 'limit-history.json');
-  writeFileSync(file, '{ half a fi');
-  const readings = recordLimitHistory(file, { sessionId: 'a', limits: limits(12), nowMs: NOW });
-  assert.deepEqual(readings.fiveHour, [[NOW, 12, RESET]]);
+  writeFileSync(file, text);
+  utimesSync(file, new Date(NOW - agoMs), new Date(NOW - agoMs));
+  return file;
+}
+
+// A file read while another session writes it is half a file. Replacing it with this session's
+// reading alone would lose every other session's readings.
+test('a file that cannot be read and was written within the last minute is left as it is', (t) => {
+  for (const text of ['{ half a fi', '', JSON.stringify({ version: 2, readings: {}, sessions: {} })]) {
+    const file = fileWritten(t, text, 59_000);
+    const readings = recordLimitHistory(file, { sessionId: 'a', limits: limits(12), nowMs: NOW });
+    assert.deepEqual(readings.fiveHour, [[NOW, 12, RESET]], 'this run still draws its own reading');
+    assert.equal(readFileSync(file, 'utf8'), text);
+    assert.deepEqual(readdirSync(join(file, '..')), ['limit-history.json']);
+  }
+});
+
+test('a file that has stayed unreadable for a minute is broken, and is replaced', (t) => {
+  const file = fileWritten(t, '{ half a fi', 60_000);
+  recordLimitHistory(file, { sessionId: 'a', limits: limits(12), nowMs: NOW });
+  assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')).readings.fiveHour, [[NOW, 12, RESET]]);
 });
 
 test('an unwritable place still returns this run\'s readings and never throws', (t) => {
@@ -47,6 +66,15 @@ test('an unwritable place still returns this run\'s readings and never throws', 
   writeFileSync(blocker, 'a file where the folder should be');
   const readings = recordLimitHistory(join(blocker, 'limit-history.json'), { sessionId: 'a', limits: limits(12), nowMs: NOW });
   assert.deepEqual(readings.fiveHour, [[NOW, 12, RESET]]);
+});
+
+test('a write that fails leaves no temporary file behind', (t) => {
+  const dir = tempDir(t);
+  const file = join(dir, 'limit-history.json');
+  mkdirSync(file); // a folder where the file should be: the rename onto it fails
+  const readings = recordLimitHistory(file, { sessionId: 'a', limits: limits(12), nowMs: NOW });
+  assert.deepEqual(readings.fiveHour, [[NOW, 12, RESET]]);
+  assert.deepEqual(readdirSync(dir), ['limit-history.json']);
 });
 
 test('transcriptWrittenAtMs is the transcript\'s modification time, or null without one', (t) => {

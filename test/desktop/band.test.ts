@@ -291,6 +291,18 @@ test('records the plan figures a measurement reports in the shared history', asy
   expect(Object.keys(history.sessions)).toEqual(['session-under-test'])
 })
 
+// A file read while another session writes it is half a file: replacing it would lose the others' readings.
+test('a shared history that cannot be read is left as it is, and the band is still drawn', async ($, on) => {
+  const files: Record<string, string> = { [HISTORY_FILE]: '{ half a fi' }
+  answerSession(on, { files })
+  on('fs.read', async ($: any, e: any) => ({ value: files[fileKey(e.path)] ?? '' }))
+  await $.session.measure({ context: { tokens: 0, window: 1_000_000, percent: 54 }, rateLimits: USAGE.rateLimits, changed: ['rateLimits'] } as never)
+  expect(files[HISTORY_FILE]).toBe('{ half a fi')
+  const ui = await mount($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /7d/ })).toBeDefined()
+  await ui.unmount()
+})
+
 test('a measurement of the context alone writes no history', async ($, on) => {
   const files: Record<string, string> = {}
   answerSession(on, { files })
