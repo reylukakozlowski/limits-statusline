@@ -53,7 +53,7 @@ approved. `develop` is the working branch and never reaches users.
    - How long your service keeps data received from Claude: **Not retained**. There is no service;
      the local files and how long they stay are in PRIVACY.md.
    - Intended for people under 18: **No**; it is a developer tool.
-5. **Compliance**: contact email `lukakozlowski@outlook.com` (the address in `plugin.json` and
+5. **Compliance**: contact email `lukakozlowski@sealoop.com` (the address in `plugin.json` and
    `PRIVACY.md`). Read the [Anthropic Software Directory
    Terms](https://support.claude.com/en/articles/13145338-anthropic-software-directory-terms) and
    [Policy](https://support.claude.com/en/articles/13145358-anthropic-software-directory-policy)

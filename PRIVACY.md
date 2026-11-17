@@ -74,5 +74,5 @@ The plugin is a developer tool for Claude Code and is not directed at children.
 
 ## Contact
 
-Questions about this statement: Luka Kozlowski (SeaLoop), lukakozlowski@outlook.com, or a
+Questions about this statement: Luka Kozlowski (SeaLoop), lukakozlowski@sealoop.com, or a
 [GitHub issue](https://github.com/reylukakozlowski/limits-statusline/issues).
