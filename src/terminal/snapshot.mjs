@@ -18,10 +18,11 @@ export function workingDirectory(input) {
 /**
  * @param {unknown} input parsed stdin JSON
  * @param {{ nowMs: number, git: import('../core/git-status.mjs').GitState | null, contextHistory: number[],
- *           timeZone?: string | null, limitReadings?: import('../core/limit-history.mjs').LimitReadings }} extras
+ *           timeZone?: string | null, limitHistory?: import('../core/limit-history.mjs').LimitHistory }} extras
+ *   `limitHistory`: the shared history, for the pace and for which windows the account has
  * @returns {import('../core/layout.mjs').Snapshot}
  */
-export function snapshotFromStatusInput(input, { nowMs, git, contextHistory, timeZone = null, limitReadings }) {
+export function snapshotFromStatusInput(input, { nowMs, git, contextHistory, timeZone = null, limitHistory = EMPTY_LIMIT_HISTORY }) {
   const data = record(input);
   const workspace = record(data.workspace);
   const model = record(data.model);
@@ -39,6 +40,7 @@ export function snapshotFromStatusInput(input, { nowMs, git, contextHistory, tim
     cacheHitRatio: number(record(data.prompt_cache).hit_ratio) ?? cacheFromUsage(context.current_usage),
     promptCache: promptCacheState(data.prompt_cache),
     effort: text(record(data.effort).level),
+    fastMode: typeof data.fast_mode === 'boolean' ? data.fast_mode : null,
     linesChanged: linesChanged(cost),
     context: {
       usedTokens: number(context.total_input_tokens),
@@ -47,7 +49,27 @@ export function snapshotFromStatusInput(input, { nowMs, git, contextHistory, tim
     },
     contextHistory: Array.isArray(contextHistory) ? contextHistory : [],
     limits: limitsFromStatusInput(data),
-    limitReadings: limitReadings ?? EMPTY_LIMIT_HISTORY.readings,
+    limitHistory: { readings: limitHistory.readings, seenAtMs: limitHistory.seenAtMs },
+    spendLimit: spendLimitFromStatusInput(data),
+  };
+}
+
+/**
+ * `rate_limits.spend_limit`, which a Claude apps gateway sends: the share used and the reset with
+ * every response, the amounts in US dollars when it has them.
+ * @param {unknown} input parsed stdin JSON
+ * @returns {import('../core/metrics.mjs').SpendLimit | null}
+ */
+export function spendLimitFromStatusInput(input) {
+  const {
+    used_percentage: used, resets_at: resetsAt, used_usd: usedUsd, limit_usd: limitUsd,
+  } = record(record(record(input).rate_limits).spend_limit);
+  if (number(used) === null) return null;
+  return {
+    percentUsed: used,
+    resetsAtMs: number(resetsAt) === null ? null : resetsAt * MS_PER_SECOND,
+    usedUsd: number(usedUsd),
+    limitUsd: number(limitUsd),
   };
 }
 

@@ -7,14 +7,14 @@
 // get the answers as plain values.
 
 import { atom, read, update } from 'claude-code';
-import { parseGitStatus } from '../core/git-status.mjs';
+import { dotGitPaths, gitDirFromFile, gitFromHead } from '../core/git-head.mjs';
+import { NOT_A_REPO, parseGitStatus } from '../core/git-status.mjs';
 import { buildLines } from '../core/layout.mjs';
-import { EMPTY_LIMIT_HISTORY, parseLimitHistory, serializeLimitHistory } from '../core/limit-history.mjs';
+import { EMPTY_LIMIT_HISTORY, readLimitHistory, serializeLimitHistory } from '../core/limit-history.mjs';
 import { limitHistoryPath } from '../core/paths.mjs';
 import { renderBand } from './band-view.mjs';
-import { cacheTtlFromEngine } from './cache-ttl.mjs';
-import { NOT_A_REPO, dotGitPaths, gitDirFromFile, gitFromHead } from './git.mjs';
-import { configFolderFor, withMeasuredLimits } from './limit-history.mjs';
+import { cacheTtlFromEngine, observedCacheTtlMs } from './cache-ttl.mjs';
+import { configFolderFor, unreadableFileWatch, withMeasuredLimits } from './limit-history.mjs';
 import { shouldDraw, supportsTypography } from './policy.mjs';
 import { snapshotFromSession } from './snapshot.mjs';
 import { afterClear, initialTracker, withContext, withEffort, withGit, withTurnUsage } from './tracker.mjs';
@@ -27,6 +27,7 @@ const REDRAW_EVERY_MS = 60_000;
 /** @param {import('claude-code').On} on @param {import('claude-code').PluginOptions} options */
 export function registerBand(on, options) {
   const mode = options?.band;
+  const historyFile = unreadableFileWatch();
 
   on('session.start', async ($, e, next) => {
     await refreshGit($);
@@ -49,7 +50,7 @@ export function registerBand(on, options) {
   // observed just now: the shared history gets it with the right time.
   on('session.measure', async ($, e, next) => {
     await update($, tracker, (state) => withContext(state ?? initialTracker(), e.context?.percent));
-    if (e.changed?.includes('rateLimits')) await recordMeasuredLimits($, e.rateLimits, await $.clock.now());
+    if (e.changed?.includes('rateLimits')) await recordMeasuredLimits($, e.rateLimits, await $.clock.now(), historyFile);
     await refreshGit($);
     return next(e);
   });
@@ -62,13 +63,14 @@ export function registerBand(on, options) {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (!shouldDraw(mode, e.surface) || e.props.hasSurvey) return next(e);
-    const [usage, modelRaw, cwd, state, nowMs, typography, limitReadings] = await Promise.all([
+    const [usage, modelRaw, cwd, state, nowMs, typography, limitHistory] = await Promise.all([
       $.session.usage(), $.session.model(), $.session.cwd(), read($, tracker), $.clock.now(), hasTypography($),
-      loadLimitReadings($),
+      loadLimitHistory($),
     ]);
-    const cacheTtlMs = await readCacheTtl($, usage?.rateLimits, nowMs);
+    // The lifetime the API reported, else the one Claude Code's settings and the plan imply.
+    const cacheTtlMs = observedCacheTtlMs(state) ?? await readCacheTtl($, usage?.rateLimits, nowMs);
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const snapshot = snapshotFromSession({ usage, modelRaw, cwd, tracker: state, nowMs, timeZone, limitReadings, cacheTtlMs });
+    const snapshot = snapshotFromSession({ usage, modelRaw, cwd, tracker: state, nowMs, timeZone, limitHistory, cacheTtlMs });
     const lines = buildLines(snapshot, { columns: e.props.bodyColumns });
     return renderBand(lines, $.ui.resolve(e), h, { typography });
   });
@@ -81,16 +83,18 @@ async function refreshGit($) {
 
 /** @returns {Promise<import('../core/git-status.mjs').GitState | null>} null when nothing could be asked */
 async function probeGit($) {
+  let status = null;
   try {
     // The whole call as fixed text, options too, so that the directory reads the whole command:
     // the terminal's GIT_STATUS_ARGS, run in the session's folder (the default), for at most
     // 1.5 s. --no-optional-locks: never take the index lock from the user's own git.
-    const status = await $.process.run(['git', '--no-optional-locks', 'status', '--porcelain=v2', '--branch', '--untracked-files=no'],
+    status = await $.process.run(['git', '--no-optional-locks', 'status', '--porcelain=v2', '--branch', '--untracked-files=no'],
       { timeoutMs: 1500 });
-    return parseGitStatus(status);
   } catch {
-    return readGitHead($);
+    // `$.process` is CLI only, or git could not start.
   }
+  // A git that failed says nothing about the folder: the session's own HEAD does.
+  return parseGitStatus(status) ?? readGitHead($);
 }
 
 // The engine's repository says whether the session is in one, but its root is the main working
@@ -149,8 +153,8 @@ async function readCacheTtl($, rateLimits, nowMs) {
   }
 }
 
-// The shared limit history: every call settles, so a file that cannot be used leaves the band with
-// less to show, never without one.
+// The shared limit history. Every call below settles, so a file that cannot be used leaves the
+// band with less to show, never without one.
 
 /** @returns {Promise<string | null>} the configuration folder, null when none is known */
 async function configFolder($) {
@@ -165,27 +169,36 @@ async function configFolder($) {
   }
 }
 
-async function readLimitHistory($, configDir) {
+/** @returns the shared history, the empty one where there is no file yet, null for a file that cannot be read */
+async function storedLimitHistory($, configDir) {
   const file = limitHistoryPath(configDir);
   try {
-    return (await $.fs.exists(file)) ? parseLimitHistory(await $.fs.read(file)) : EMPTY_LIMIT_HISTORY;
+    return (await $.fs.exists(file)) ? readLimitHistory(await $.fs.read(file)) : EMPTY_LIMIT_HISTORY;
   } catch {
-    return EMPTY_LIMIT_HISTORY;
+    return null;
   }
 }
 
-/** @returns {Promise<import('../core/limit-history.mjs').LimitReadings>} the shared readings to draw from */
-async function loadLimitReadings($) {
+/** @returns {Promise<import('../core/limit-history.mjs').LimitHistory>} the shared history to draw from */
+async function loadLimitHistory($) {
   const configDir = await configFolder($);
-  return (configDir === null ? EMPTY_LIMIT_HISTORY : await readLimitHistory($, configDir)).readings;
+  return (configDir === null ? null : await storedLimitHistory($, configDir)) ?? EMPTY_LIMIT_HISTORY;
 }
 
-/** Adds this session's plan figures, measured just now, to the shared history. */
-async function recordMeasuredLimits($, rateLimits, nowMs) {
+/**
+ * Adds this session's plan figures, measured just now, to the shared history.
+ * @param {ReturnType<typeof unreadableFileWatch>} historyFile since when the file could not be read
+ */
+async function recordMeasuredLimits($, rateLimits, nowMs, historyFile) {
   const configDir = await configFolder($);
   if (configDir === null) return;
   try {
-    const history = await readLimitHistory($, configDir);
+    const stored = await storedLimitHistory($, configDir);
+    // A file that cannot be read may be one another session is writing: it is left alone until
+    // it has stayed unreadable, so its readings are not replaced by this session's alone.
+    if (stored === null && !historyFile.mayReplace(nowMs)) return;
+    if (stored !== null) historyFile.readable();
+    const history = stored ?? EMPTY_LIMIT_HISTORY;
     const sessionId = await $.session.id();
     const next = withMeasuredLimits(history, { sessionId, rateLimits, nowMs });
     // The file's name as fixed text, so that the directory reads which file the mod writes; only

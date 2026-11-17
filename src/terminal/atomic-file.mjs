@@ -6,6 +6,11 @@ import fs from 'node:fs';
 /** @param {string} file @param {string} content */
 export function writeAtomic(file, content) {
   const temporary = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(temporary, content);
-  fs.renameSync(temporary, file);
+  try {
+    fs.writeFileSync(temporary, content);
+    fs.renameSync(temporary, file);
+  } catch (error) {
+    fs.rmSync(temporary, { force: true });
+    throw error;
+  }
 }

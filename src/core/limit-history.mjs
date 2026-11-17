@@ -20,6 +20,21 @@ export const HISTORY_RETENTION_MS = Object.freeze(Object.fromEntries(
 /** Sessions whose last figures are remembered; the least recently seen fall off first. */
 export const MAX_SESSIONS = 64;
 
+/**
+ * A history file that cannot be read may be one another session is writing right now; replacing
+ * it with this session's readings alone would lose everyone else's. One that still cannot be
+ * read after this long is broken, and is replaced.
+ */
+export const UNREADABLE_GRACE_MS = MS_PER_MINUTE;
+
+/**
+ * @param {number} unreadableSinceMs since when the file has been unreadable: when it was last
+ *   written, or when it was first found unreadable
+ * @param {number} nowMs
+ * @returns {boolean} whether the file is broken and may be replaced
+ */
+export const isBrokenFile = (unreadableSinceMs, nowMs) => nowMs - unreadableSinceMs >= UNREADABLE_GRACE_MS;
+
 /** Reset times this close together name the same window (the API may round them). */
 export const SAME_WINDOW_TOLERANCE_MS = 10 * MS_PER_MINUTE;
 
@@ -28,7 +43,9 @@ export const SAME_WINDOW_TOLERANCE_MS = 10 * MS_PER_MINUTE;
  * @typedef {{ fiveHour: LimitPoint[], sevenDay: LimitPoint[] }} LimitReadings
  * @typedef {[percentUsed: number, resetsAtMs: number]} SeenFigure
  * @typedef {{ atMs: number, fiveHour: SeenFigure | null, sevenDay: SeenFigure | null }} SessionSeen
- * @typedef {{ readings: LimitReadings, sessions: Record<string, SessionSeen> }} LimitHistory
+ * @typedef {{ fiveHour: number | null, sevenDay: number | null }} LimitSeen when each kind of
+ *   window was last reported by any session, null when never
+ * @typedef {{ readings: LimitReadings, sessions: Record<string, SessionSeen>, seenAtMs: LimitSeen }} LimitHistory
  * @typedef {{ fiveHour: import('./metrics.mjs').LimitReading | null,
  *             sevenDay: import('./metrics.mjs').LimitReading | null }} Limits
  */
@@ -37,6 +54,7 @@ export const SAME_WINDOW_TOLERANCE_MS = 10 * MS_PER_MINUTE;
 export const EMPTY_LIMIT_HISTORY = Object.freeze({
   readings: Object.freeze({ fiveHour: Object.freeze([]), sevenDay: Object.freeze([]) }),
   sessions: Object.freeze({}),
+  seenAtMs: Object.freeze({ fiveHour: null, sevenDay: null }),
 });
 
 /** @param {number} a @param {number} b reset times */
@@ -61,15 +79,17 @@ export function recordLimits(history, { sessionId, limits, nowMs, lastResponseAt
 
   const firstSeenAtMs = Number.isFinite(lastResponseAtMs) ? Math.min(lastResponseAtMs, nowMs) : nowMs;
   const readings = { ...history.readings };
+  const seenAtMs = { ...history.seenAtMs };
   const figures = { fiveHour: seen?.fiveHour ?? null, sevenDay: seen?.sevenDay ?? null };
   for (const kind of changed) {
     const { percentUsed, resetsAtMs } = limits[kind];
     const atMs = figures[kind] ? nowMs : firstSeenAtMs;
     readings[kind] = prune(withPoint(readings[kind], [atMs, percentUsed, resetsAtMs], kind), kind, nowMs);
     figures[kind] = [percentUsed, resetsAtMs];
+    seenAtMs[kind] = nowMs;
   }
   const sessions = keepRecentSessions({ ...history.sessions, [sessionId]: { atMs: nowMs, ...figures } }, nowMs);
-  return { readings, sessions };
+  return { readings, sessions, seenAtMs };
 }
 
 function isSameFigure(figure, reading) {
@@ -111,24 +131,31 @@ export function serializeLimitHistory(history) {
 }
 
 /**
- * Reads the file's text back; anything unreadable, of another version or malformed is dropped,
- * entry by entry, so one bad line never costs the rest.
+ * Reads the file's text back. Malformed entries are dropped one by one, so one bad line never
+ * costs the rest.
  * @param {unknown} text
- * @returns {LimitHistory}
+ * @returns {LimitHistory | null} null when the text is no history of this version: not JSON
+ *   (a file half written), or another version's
  */
-export function parseLimitHistory(text) {
+export function readLimitHistory(text) {
   let data;
   try {
     data = JSON.parse(typeof text === 'string' ? text : '');
   } catch {
-    return EMPTY_LIMIT_HISTORY;
+    return null;
   }
-  if (data === null || typeof data !== 'object' || data.version !== LIMIT_HISTORY_VERSION) return EMPTY_LIMIT_HISTORY;
+  if (data === null || typeof data !== 'object' || data.version !== LIMIT_HISTORY_VERSION) return null;
   const readings = Object.fromEntries(LIMIT_KINDS.map((kind) => [kind, validPoints(data.readings?.[kind])]));
   const sessions = Object.fromEntries(Object.entries(data.sessions ?? {})
     .filter(([, session]) => isSession(session))
     .map(([id, { atMs, fiveHour = null, sevenDay = null }]) => [id, { atMs, fiveHour, sevenDay }]));
-  return { readings, sessions };
+  return { readings, sessions, seenAtMs: seenFrom(data.seenAtMs, readings) };
+}
+
+// A file written before the times were kept has none: the newest reading of a kind stands in.
+function seenFrom(stored, readings) {
+  const newest = (points) => (points.length === 0 ? null : Math.max(...points.map(([atMs]) => atMs)));
+  return Object.fromEntries(LIMIT_KINDS.map((kind) => [kind, Number.isFinite(stored?.[kind]) ? stored[kind] : newest(readings[kind])]));
 }
 
 const isPoint = (point) => Array.isArray(point) && point.length === 3

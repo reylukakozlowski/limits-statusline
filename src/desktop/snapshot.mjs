@@ -12,12 +12,13 @@ import { initialTracker } from './tracker.mjs';
  * @param {{
  *   usage: Record<string, unknown> | null, modelRaw: unknown, cwd: unknown,
  *   tracker: import('./tracker.mjs').Tracker | null, nowMs: number, timeZone?: string | null,
- *   limitReadings?: import('../core/limit-history.mjs').LimitReadings, cacheTtlMs?: number | null,
- * }} sources `cacheTtlMs`: the main conversation's cache lifetime, null when unknown
+ *   limitHistory?: import('../core/limit-history.mjs').LimitHistory, cacheTtlMs?: number | null,
+ * }} sources `limitHistory`: the shared history, for the pace and for which windows the account has;
+ *   `cacheTtlMs`: the main conversation's cache lifetime, null when unknown
  * @returns {import('../core/layout.mjs').Snapshot}
  */
 export function snapshotFromSession({
-  usage, modelRaw, cwd, tracker, nowMs, timeZone = null, limitReadings, cacheTtlMs = null,
+  usage, modelRaw, cwd, tracker, nowMs, timeZone = null, limitHistory = EMPTY_LIMIT_HISTORY, cacheTtlMs = null,
 }) {
   const figures = recordOf(usage);
   const state = tracker ?? initialTracker();
@@ -38,7 +39,10 @@ export function snapshotFromSession({
     }),
     promptCache: Number.isFinite(cacheTtlMs) ? promptCacheAfter(state.lastTurn ?? null, cacheTtlMs) : null,
     effort: state.effort ?? null,
-    linesChanged: null, // the mods API has no count of changed lines; the terminal gets Claude Code's own
+    // The mods API reports neither fast mode nor a count of changed lines; the terminal gets
+    // Claude Code's own.
+    fastMode: null,
+    linesChanged: null,
     context: {
       usedTokens: numberOrNull(context.tokens),
       windowTokens: numberOrNull(context.window),
@@ -46,8 +50,21 @@ export function snapshotFromSession({
     },
     contextHistory: [...state.history],
     limits: limitsFromRateLimits(figures.rateLimits, nowMs),
-    limitReadings: limitReadings ?? EMPTY_LIMIT_HISTORY.readings,
+    limitHistory: { readings: limitHistory.readings, seenAtMs: limitHistory.seenAtMs },
+    spendLimit: spendLimitFromRateLimits(figures.rateLimits, nowMs),
   };
+}
+
+/**
+ * A Claude apps gateway's spend limit among the windows. The mods API gives its share and its
+ * reset; the amounts in US dollars reach only the terminal status line.
+ * @param {unknown} windows `rateLimits` of `$.session.usage()`
+ * @param {number} nowMs
+ * @returns {import('../core/metrics.mjs').SpendLimit | null}
+ */
+export function spendLimitFromRateLimits(windows, nowMs) {
+  const reading = limitReading(Array.isArray(windows) ? windows : [], 'spend_limit', nowMs);
+  return reading === null ? null : { ...reading, usedUsd: null, limitUsd: null };
 }
 
 /**

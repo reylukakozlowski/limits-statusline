@@ -1,11 +1,11 @@
 {
   "name": "limits-statusline",
-  "version": "1.0.16",
+  "version": "1.0.17",
   "displayName": "Limits Status Line",
   "description": "Status line for Claude Code: the 5-hour and weekly plan usage limits with recent pace, usage projected to the reset, reset countdown and a red warning with the time left when a limit would run out first, plus session cost, runtime, prompt cache, effort, project, git and model, and context fill.",
   "author": {
     "name": "Luka Kozlowski",
-    "email": "lukakozlowski@outlook.com"
+    "email": "lukakozlowski@sealoop.com"
   },
   "homepage": "https://github.com/reylukakozlowski/limits-statusline#readme",
   "repository": "https://github.com/reylukakozlowski/limits-statusline",

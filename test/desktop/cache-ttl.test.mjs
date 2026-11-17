@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cacheTtlFromEngine } from '../../src/desktop/cache-ttl.mjs';
+import { cacheTtlFromEngine, observedCacheTtlMs } from '../../src/desktop/cache-ttl.mjs';
+import { initialTracker } from '../../src/desktop/tracker.mjs';
 
 const NOW = 1_800_000_000_000;
 const RESET = NOW + 15_000_000;
@@ -9,6 +10,18 @@ const FIVE_MINUTES = 300_000;
 
 const fiveHour = (percentUsed, resetsAtMs) => ({ kind: 'five_hour', percentUsed, resetsAt: new Date(resetsAtMs).toISOString() });
 const ttl = (rateLimits, { env = {}, settings = {} } = {}) => cacheTtlFromEngine({ env, settings, rateLimits, nowMs: NOW });
+
+test('the lifetime a turn reported is known as it is; without one, or with anything else, it is not', () => {
+  assert.equal(observedCacheTtlMs({ ...initialTracker(), cacheTtl: '1h' }), ONE_HOUR);
+  assert.equal(observedCacheTtlMs({ ...initialTracker(), cacheTtl: '5m' }), FIVE_MINUTES);
+  for (const cacheTtl of [null, undefined, '2h', 'toString', 300_000]) {
+    assert.equal(observedCacheTtlMs({ ...initialTracker(), cacheTtl }), null, String(cacheTtl));
+  }
+  assert.equal(observedCacheTtlMs(null), null);
+  // A tracker kept by an older version of the band has no cacheTtl at all.
+  const { cacheTtl: _dropped, ...older } = initialTracker();
+  assert.equal(observedCacheTtlMs(older), null);
+});
 
 test('an hour on a plan within its limits, five minutes over it or off a plan', () => {
   const sevenDay = { kind: 'seven_day', percentUsed: 20, resetsAt: new Date(NOW + 86_400_000).toISOString() };

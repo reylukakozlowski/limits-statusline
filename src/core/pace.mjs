@@ -3,10 +3,8 @@
 // 7-day pace can look back a whole day across the weekly reset.
 
 import { isSameWindow } from './limit-history.mjs';
-import { MS_PER_HOUR, MS_PER_MINUTE } from './time.mjs';
-
-/** Below this much covered time a rate is noise (a window that just reset). */
-export const MIN_ELAPSED_MS = 15 * MS_PER_MINUTE;
+import { minPaceSpanMs } from './limit-windows.mjs';
+import { MS_PER_HOUR } from './time.mjs';
 
 /**
  * A fall of at least this many points within one window is a limit reset given on claude.ai
@@ -32,7 +30,7 @@ export function recentRate(points, reading, window, nowMs) {
   if (!reading || !Number.isFinite(reading.percentUsed) || !Number.isFinite(reading.resetsAtMs)) return null;
   const series = cumulativeUsage(seriesPoints(pointsUpTo(points, nowMs), reading, window, nowMs));
   const fromMs = Math.max(nowMs - window.paceLookbackMs, series[0][0]);
-  if (nowMs - fromMs < MIN_ELAPSED_MS) return null;
+  if (nowMs - fromMs < minPaceSpanMs(window)) return null;
   return (series.at(-1)[1] - valueAt(series, fromMs)) / ((nowMs - fromMs) / MS_PER_HOUR);
 }
 

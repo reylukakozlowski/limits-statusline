@@ -13,6 +13,6 @@
     "test:mod": "claude plugin test .",
     "simulate:pace": "node scripts/pace-simulation.mjs"
   },
-  "author": "Luka Kozlowski <lukakozlowski@outlook.com>",
+  "author": "Luka Kozlowski <lukakozlowski@sealoop.com>",
   "license": "MIT"
 }

@@ -18,6 +18,7 @@ export const MOCKUP = Object.freeze({
   cacheHitRatio: 0.99,
   promptCache: { warm: true, expiresAtMs: NOW + 3_120_000 },
   effort: 'xhigh',
+  fastMode: false,
   linesChanged: { added: 156, removed: 23 },
   context: { usedTokens: 543_000, windowTokens: 1_000_000, percent: 54 },
   contextHistory: [35, 36, 36, 40, 42, 45, 50, 54],
@@ -25,7 +26,8 @@ export const MOCKUP = Object.freeze({
     sevenDay: { percentUsed: 39, resetsAtMs: NOW + 274_200_000 },
     fiveHour: { percentUsed: 12, resetsAtMs: NOW + 15_000_000 },
   },
-  limitReadings: { fiveHour: [], sevenDay: [] },
+  limitHistory: { readings: { fiveHour: [], sevenDay: [] }, seenAtMs: { fiveHour: null, sevenDay: null } },
+  spendLimit: null,
 });
 
 export const MOCKUP_LINES = Object.freeze([
@@ -47,9 +49,11 @@ export const EMPTY = Object.freeze({
   cacheHitRatio: null,
   promptCache: null,
   effort: null,
+  fastMode: null,
   linesChanged: null,
   context: { usedTokens: null, windowTokens: null, percent: null },
   contextHistory: [],
   limits: { sevenDay: null, fiveHour: null },
-  limitReadings: { fiveHour: [], sevenDay: [] },
+  limitHistory: { readings: { fiveHour: [], sevenDay: [] }, seenAtMs: { fiveHour: null, sevenDay: null } },
+  spendLimit: null,
 });

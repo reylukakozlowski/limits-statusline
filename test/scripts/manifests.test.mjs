@@ -12,8 +12,8 @@ const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const read = (path) => readFileSync(join(ROOT, path), 'utf8');
 const json = (path) => JSON.parse(read(path));
 
-const AUTHOR = { name: 'Luka Kozlowski', email: 'lukakozlowski@outlook.com' };
-const OWNER = { name: 'SeaLoop', email: 'lukakozlowski@outlook.com' };
+const AUTHOR = { name: 'Luka Kozlowski', email: 'lukakozlowski@sealoop.com' };
+const OWNER = { name: 'SeaLoop', email: 'lukakozlowski@sealoop.com' };
 
 const pkg = json('package.json');
 const plugin = json('.claude-plugin/plugin.json');
@@ -43,6 +43,19 @@ test('identity is exactly Luka Kozlowski, his email and SeaLoop', () => {
     if (entry.author) assert.deepEqual(entry.author, AUTHOR);
   }
   assert.match(read('LICENSE'), /Copyright \(c\) 2026 Luka Kozlowski \(SeaLoop\)/);
+});
+
+// README named one address and PRIVACY, SECURITY and the manifests another: a reader could not
+// tell which one is read.
+test('every file that gives a contact address gives the same one', () => {
+  const files = ['README.md', 'PRIVACY.md', 'SECURITY.md', 'package.json', 'docs/directory-submission.md',
+    '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json'];
+  for (const file of files) {
+    // The owner's addresses; the directory guide also names an address of Anthropic's.
+    const addresses = read(file).match(/lukakozlowski@[\w-]+(?:\.[\w-]+)+/g) ?? [];
+    assert.ok(addresses.length > 0, `${file} gives an address`);
+    assert.deepEqual([...new Set(addresses)], [AUTHOR.email], file);
+  }
 });
 
 test('the plugin name is permanent-safe and matches its marketplace entry', () => {
@@ -198,7 +211,7 @@ test('directory policy: README has three or more use cases, support, privacy and
   assert.match(readme, /^## Support$/m);
   assert.match(readme, /\(PRIVACY\.md\)/);
   assert.match(readme, /\(SECURITY\.md\)/);
-  assert.match(read('SECURITY.md'), /lukakozlowski@outlook\.com/);
+  assert.match(read('SECURITY.md'), /lukakozlowski@sealoop\.com/);
   for (const doc of ['README.md', 'PRIVACY.md']) {
     assert.doesNotMatch(read(doc), /plugins\/data\/limits-statusline-sealoop/, `${doc} names one install source only`);
   }

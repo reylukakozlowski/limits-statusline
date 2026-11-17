@@ -1,8 +1,8 @@
 // The status line contract check as the Compatibility workflow runs it: reads a copy of Anthropic's
 // status line page, which the workflow downloads, and reports what the contract found as workflow
 // annotations on stdout and as a section of the run's summary.
-// Exit codes: 0 the contract holds (newly documented fields only warn), 1 the contract is broken,
-// 2 nothing was checked (no page given, the page unreadable, or its layout not recognised).
+// Exit codes: 0 the contract holds (newly documented fields only warn), 1 the contract is broken
+// or the page documents a new plan limit field, 2 nothing was checked (no page given, the page unreadable, or its layout not recognised).
 
 import { parseArgs } from 'node:util';
 import { parseStatusLineDocs, STATUS_LINE_PAGE } from './status-line-docs.mjs';
@@ -53,7 +53,7 @@ export function runContractCheck({ argv, readText, writeSummary, stdout }) {
   }
   say(report.ok
     ? `${NAME}: the ${report.checked} fields the plugin reads are documented with the types and units it expects.`
-    : `${NAME}: ${problems.length} of the plugin's ${report.checked} fields changed in ${STATUS_LINE_PAGE}; the plugin needs a look.`);
+    : `${NAME}: ${problems.length} ${problems.length === 1 ? 'finding' : 'findings'} in ${STATUS_LINE_PAGE}; the plugin needs a look.`);
   writeSummary?.(summaryMarkdown(report, problems));
   return report.ok ? 0 : 1;
 }
@@ -69,13 +69,14 @@ function summaryMarkdown(report, problems) {
   return parts.join('');
 }
 
-function problemTexts({ missing, retyped, unitChanged }) {
+function problemTexts({ missing, retyped, unitChanged, newLimitFields }) {
   return [
     ...missing.map((path) => `${path} is no longer documented`),
     ...retyped.map(({ path, expected, documented }) => `${path} is documented as ${documented}, not ${expected}`),
     ...unitChanged.map(({ path, expected, documented }) => (documented === null
       ? `${path} has no description that says "${expected}"`
       : `${path} no longer says "${expected}": "${documented}"`)),
+    ...newLimitFields.map((path) => `${path} is newly documented: a plan limit the plugin does not read yet`),
   ];
 }
 

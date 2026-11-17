@@ -16,10 +16,20 @@
  *   missing: string[],
  *   retyped: { path: string, expected: JsonType, documented: JsonType }[],
  *   unitChanged: { path: string, expected: string, documented: string | null }[],
+ *   newLimitFields: string[],
  *   newFields: string[],
  * }} ContractReport
- * ok: no field the plugin reads went missing or changed type or unit; newFields never affect it.
+ * ok: no field the plugin reads went missing or changed type or unit, and the page documents no
+ * new field of a plan limit (newLimitFields); the other newly documented fields (newFields)
+ * never affect it.
  */
+
+/**
+ * The object that holds the plan limits. A newly documented field in it is a limit the plugin
+ * could show (a weekly limit of one model, which Claude Code had on 2026-11-17 and did not pass
+ * to status lines), so it fails the check until the plugin reads it or UNREAD_FIELDS lists it.
+ */
+export const LIMITS_OBJECT = 'rate_limits';
 
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -62,10 +72,16 @@ export const STATUS_LINE_CONTRACT = Object.freeze([
   field('prompt_cache.expires_at', 'number', unit('epoch seconds')),
   field('prompt_cache.hit_ratio', 'number', unit('from 0 to 1')),
   field('effort.level', 'string'),
+  field('fast_mode', 'boolean'),
   field('rate_limits.five_hour.used_percentage', 'number', unit('from 0 to 100')),
   field('rate_limits.five_hour.resets_at', 'number', unit('Unix epoch seconds')),
   field('rate_limits.seven_day.used_percentage', 'number', unit('from 0 to 100')),
   field('rate_limits.seven_day.resets_at', 'number', unit('Unix epoch seconds')),
+  // A Claude apps gateway's spend limit; the page's table states no unit for the first two.
+  field('rate_limits.spend_limit.used_percentage', 'number'),
+  field('rate_limits.spend_limit.resets_at', 'number'),
+  field('rate_limits.spend_limit.used_usd', 'number', unit('US dollars')),
+  field('rate_limits.spend_limit.limit_usd', 'number', unit('US dollars')),
   // The keys of the context and limit histories (run.mjs).
   field('session_id', 'string'),
   field('transcript_path', 'string'),
@@ -82,7 +98,6 @@ export const UNREAD_FIELDS = Object.freeze([
   'context_window.total_output_tokens',
   'cost.total_api_duration_ms',
   'exceeds_200k_tokens',
-  'fast_mode',
   'output_style.name',
   'pr.kind',
   'pr.number',
@@ -102,11 +117,7 @@ export const UNREAD_FIELDS = Object.freeze([
   'prompt_cache.requests',
   'prompt_cache.ttl',
   'prompt_id',
-  'rate_limits.spend_limit.limit_usd',
   'rate_limits.spend_limit.period',
-  'rate_limits.spend_limit.resets_at',
-  'rate_limits.spend_limit.used_percentage',
-  'rate_limits.spend_limit.used_usd',
   'session_name',
   'thinking.enabled',
   'version',
@@ -145,14 +156,17 @@ export function checkContract({ types, descriptions }, { unread = UNREAD_FIELDS 
     }
   }
   const known = new Set([...STATUS_LINE_CONTRACT.map((entry) => entry.path), ...unread]);
-  const newFields = documentedFields(types, descriptions).filter((path) => !known.has(path));
+  const added = documentedFields(types, descriptions).filter((path) => !known.has(path));
+  const isLimitField = (path) => path.startsWith(`${LIMITS_OBJECT}.`);
+  const newLimitFields = added.filter(isLimitField);
   return {
-    ok: missing.length === 0 && retyped.length === 0 && unitChanged.length === 0,
+    ok: missing.length === 0 && retyped.length === 0 && unitChanged.length === 0 && newLimitFields.length === 0,
     checked: STATUS_LINE_CONTRACT.length,
     missing,
     retyped,
     unitChanged,
-    newFields,
+    newLimitFields,
+    newFields: added.filter((path) => !isLimitField(path)),
   };
 }
 

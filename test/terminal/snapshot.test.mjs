@@ -14,9 +14,33 @@ test('the full stdin fixture maps onto the mockup snapshot', () => {
   assert.deepEqual(snapshot, MOCKUP);
 });
 
+test('fast_mode is read as sent, and unknown when it is absent or no boolean', () => {
+  const fastOf = (input) => snapshotFromStatusInput(input, options).fastMode;
+  assert.equal(fastOf({ fast_mode: true }), true);
+  assert.equal(fastOf({ fast_mode: false }), false);
+  for (const input of [{}, { fast_mode: 'true' }, { fast_mode: 1 }, { fast_mode: null }]) assert.equal(fastOf(input), null, JSON.stringify(input));
+});
+
+// rate_limits.spend_limit: used_percentage and resets_at (Unix epoch seconds) come with every
+// response, used_usd and limit_usd only when the gateway has them (the status line page).
+test('the gateway spend limit is read with its amounts, and is absent without a share', () => {
+  const spendOf = (spend_limit) => snapshotFromStatusInput({ rate_limits: { spend_limit } }, options).spendLimit;
+  assert.deepEqual(spendOf({ used_percentage: 63, resets_at: 1_801_000_000, used_usd: 314.12, limit_usd: 500, period: 'monthly' }),
+    { percentUsed: 63, resetsAtMs: 1_801_000_000_000, usedUsd: 314.12, limitUsd: 500 });
+  assert.deepEqual(spendOf({ used_percentage: 137, resets_at: 1_801_000_000 }),
+    { percentUsed: 137, resetsAtMs: 1_801_000_000_000, usedUsd: null, limitUsd: null });
+  assert.deepEqual(spendOf({ used_percentage: 5, resets_at: '2027-02-01', used_usd: '3', limit_usd: null }),
+    { percentUsed: 5, resetsAtMs: null, usedUsd: null, limitUsd: null });
+  for (const none of [undefined, null, {}, { used_usd: 3, limit_usd: 5 }, { used_percentage: '63' }]) {
+    assert.equal(spendOf(none), null, JSON.stringify(none));
+  }
+});
+
 test('the shared limit readings passed in reach the snapshot', () => {
-  const limitReadings = { fiveHour: [[NOW, 12, NOW + 15_000_000]], sevenDay: [] };
-  assert.equal(snapshotFromStatusInput({}, { ...options, limitReadings }).limitReadings, limitReadings);
+  const limitHistory = { readings: { fiveHour: [[NOW, 12, NOW + 15_000_000]], sevenDay: [] }, sessions: {}, seenAtMs: { fiveHour: NOW, sevenDay: null } };
+  const snapshot = snapshotFromStatusInput({}, { ...options, limitHistory });
+  // The readings and the times, without the sessions: the layout needs no session ids.
+  assert.deepEqual(snapshot.limitHistory, { readings: limitHistory.readings, seenAtMs: limitHistory.seenAtMs });
 });
 
 test('limitsFromStatusInput reads the two plan windows on their own, before a snapshot is built', () => {

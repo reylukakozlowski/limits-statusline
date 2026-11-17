@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  EMPTY_LIMIT_HISTORY, HISTORY_RETENTION_MS, MAX_SESSIONS, parseLimitHistory, recordLimits, serializeLimitHistory,
+  EMPTY_LIMIT_HISTORY, HISTORY_RETENTION_MS, MAX_SESSIONS, UNREADABLE_GRACE_MS, isBrokenFile, readLimitHistory,
+  recordLimits, serializeLimitHistory,
 } from '../../src/core/limit-history.mjs';
 
 const NOW = 1_800_000_000_000;
@@ -137,22 +138,49 @@ test('recordLimits skips windows without a usable reading and sessions without a
 
 test('serialize and parse round-trip a history', () => {
   const history = record(record(EMPTY_LIMIT_HISTORY, 'a', 12, NOW, 39), 'b', 13, NOW + 2 * MINUTE, 39.5);
-  assert.deepEqual(parseLimitHistory(serializeLimitHistory(history)), history);
+  assert.deepEqual(readLimitHistory(serializeLimitHistory(history)), history);
 });
 
-test('parseLimitHistory turns anything broken into the empty history and drops bad entries', () => {
-  for (const text of ['', 'not json', '[]', 'null', '{"version":99,"readings":{}}', undefined, 42]) {
-    assert.deepEqual(parseLimitHistory(text), EMPTY_LIMIT_HISTORY, String(text));
-  }
+test('readLimitHistory drops bad entries one by one and keeps the rest', () => {
   const mixed = JSON.stringify({
     version: 1,
     readings: { fiveHour: [[NOW, 12, FIVE_RESET], ['x', 1, 2], [NOW, -5, FIVE_RESET], [NOW, 12]], sevenDay: 'nope' },
     sessions: { a: { atMs: NOW, fiveHour: [12, FIVE_RESET], sevenDay: null }, b: 'nope', c: { atMs: 'x' } },
   });
-  assert.deepEqual(parseLimitHistory(mixed), {
+  assert.deepEqual(readLimitHistory(mixed), {
     readings: { fiveHour: [[NOW, 12, FIVE_RESET]], sevenDay: [] },
     sessions: { a: { atMs: NOW, fiveHour: [12, FIVE_RESET], sevenDay: null } },
+    // No times in the file (one written before they were kept): the newest reading stands in.
+    seenAtMs: { fiveHour: NOW, sevenDay: null },
   });
+});
+
+test('the history keeps when each kind of window was last reported, and reads it back', () => {
+  const first = record(EMPTY_LIMIT_HISTORY, 'a', 12, NOW);
+  assert.deepEqual(first.seenAtMs, { fiveHour: NOW, sevenDay: null });
+  const second = record(first, 'b', null, NOW + 5 * MINUTE, 40);
+  assert.deepEqual(second.seenAtMs, { fiveHour: NOW, sevenDay: NOW + 5 * MINUTE });
+  assert.deepEqual(readLimitHistory(serializeLimitHistory(second)).seenAtMs, second.seenAtMs);
+  // A time kept in the file wins over the readings, which age out sooner.
+  const stored = JSON.stringify({ version: 1, readings: { fiveHour: [], sevenDay: [] }, sessions: {}, seenAtMs: { fiveHour: NOW - 3 * 86_400_000, sevenDay: 'x' } });
+  assert.deepEqual(readLimitHistory(stored).seenAtMs, { fiveHour: NOW - 3 * 86_400_000, sevenDay: null });
+});
+
+test('a file is broken once it has been unreadable for a minute', () => {
+  assert.equal(UNREADABLE_GRACE_MS, 60_000);
+  assert.equal(isBrokenFile(NOW - 59_999, NOW), false);
+  assert.equal(isBrokenFile(NOW - 60_000, NOW), true);
+  // A time that cannot be told (Infinity), or one ahead of this clock, never counts as broken.
+  assert.equal(isBrokenFile(Infinity, NOW), false);
+  assert.equal(isBrokenFile(NOW + 3_600_000, NOW), false);
+});
+
+test('readLimitHistory tells a file that is no history of this version from an empty one', () => {
+  for (const text of ['', '{ half a fi', 'not json', 'null', '[]', '{"version":2,"readings":{},"sessions":{}}', undefined, 42]) {
+    assert.equal(readLimitHistory(text), null, String(text));
+  }
+  assert.deepEqual(readLimitHistory('{"version":1}'),
+    { readings: { fiveHour: [], sevenDay: [] }, sessions: {}, seenAtMs: { fiveHour: null, sevenDay: null } });
 });
 
 test('the empty history is frozen, so a caller cannot change it by accident', () => {

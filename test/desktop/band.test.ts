@@ -17,28 +17,32 @@ const USAGE = {
 
 const PROPS = { hasSurvey: false, isWorking: false, maxRows: 8, bodyColumns: 120 } as never
 
-const HISTORY_FILE = 'C:/Users/dev/.claude/limits-statusline/limit-history.json'
+const HOME_DIR = '/home/dev'
+const HISTORY_FILE = `${HOME_DIR}/.claude/limits-statusline/limit-history.json`
 
 // The shared limit history lives in `files`, never in the real configuration folder. The engine
-// hands hooks platform paths (backslashes on Windows), so files are keyed with forward slashes.
-const fileKey = (path: string) => path.replace(/\\/g, '/')
+// hands hooks absolute paths by the rules of the platform it runs on, so the fixtures are POSIX
+// paths, absolute on Linux and macOS ('C:/Users/dev' is not); Windows puts a rooted path on the
+// current drive, with backslashes ('E:\home\dev'), so files are keyed with forward slashes and no drive.
+const fileKey = (path: string) => path.replace(/\\/g, '/').replace(/^[A-Za-z]:(?=\/)/, '')
 const failing = async () => { throw new Error('denied') }
 
 type Answers = {
   processRun?: ($: any, e: any) => Promise<unknown>, files?: Record<string, string>, folders?: string[], cwd?: string,
-  asked?: string[], refuse?: boolean, writeFails?: boolean,
+  asked?: string[], refuse?: boolean, writeFails?: boolean, usage?: Record<string, unknown>,
 }
 
 function answerSession(on: any, {
-  processRun, files = {}, folders = [], cwd = 'C:/Users/dev/daily-claude', asked = [], refuse = false, writeFails = false,
+  processRun, files = {}, folders = [], cwd = `${HOME_DIR}/daily-claude`, asked = [], refuse = false, writeFails = false,
+  usage = USAGE,
 }: Answers = {}) {
-  on('session.usage', async () => ({ value: USAGE }))
+  on('session.usage', async () => ({ value: usage }))
   on('session.model', async () => ({ value: 'claude-opus-5-5' }))
   on('session.cwd', async () => ({ value: cwd }))
   on('session.id', async () => ({ value: 'session-under-test' }))
   on('clock.now', async () => ({ value: NOW }))
   on('session.version', async () => ({ value: { version: '2.1.299' } }))
-  on('env.get', refuse ? failing : async ($: any, e: any) => ({ value: e.name === 'USERPROFILE' ? 'C:/Users/dev' : undefined }))
+  on('env.get', refuse ? failing : async ($: any, e: any) => ({ value: e.name === 'USERPROFILE' ? HOME_DIR : undefined }))
   on('settings.read', refuse ? failing : async () => ({ value: {} }))
   on('fs.exists', refuse ? failing : async ($: any, e: any) => {
     const path = fileKey(e.path)
@@ -137,13 +141,22 @@ test('/clear starts the line over, as a new terminal session would', async ($, o
 // Where `git` cannot run, the branch comes from `files` and `folders` alone: a missing file and a
 // folder both refuse to be read, as they do on disk. The engine's repository root is the main
 // working tree's, a worktree's too.
-const MAIN_TREE = 'C:/Users/dev/daily-claude'
+const MAIN_TREE = `${HOME_DIR}/daily-claude`
 const WORKTREE = `${MAIN_TREE}/.claude/worktrees/feature`
 
-type Disk = { files: Record<string, string>, folders?: string[], cwd: string, asked?: string[], repo?: boolean }
+type Disk = {
+  files: Record<string, string>, folders?: string[], cwd: string, asked?: string[], repo?: boolean,
+  processRun?: (...args: any[]) => Promise<unknown>,
+}
 
-function answerWithoutGit(on: any, { files, folders = [], cwd, asked = [], repo = true }: Disk) {
-  answerSession(on, { files, folders, cwd, asked, processRun: async () => { throw new Error('CLI only') } })
+const CLI_ONLY = async () => { throw new Error('CLI only') }
+// git's exit when it will not read a repository it does not trust; "not a git repository" is 128 too.
+const GIT_REFUSES = async () => ({
+  value: { exitCode: 128, stdout: '', stderr: 'fatal: detected dubious ownership', isStdoutTruncated: false, isStderrTruncated: false },
+})
+
+function answerWithoutGit(on: any, { files, folders = [], cwd, asked = [], repo = true, processRun = CLI_ONLY }: Disk) {
+  answerSession(on, { files, folders, cwd, asked, processRun })
   on('session.repo', async () => ({ value: repo ? { root: MAIN_TREE, remote: null, internal: false, name: null } : null }))
   on('fs.read', async ($: any, e: any) => {
     const text = files[fileKey(e.path)]
@@ -161,6 +174,20 @@ test('reads the branch from .git/HEAD above the session folder when $.process is
   await measure($, 40)
   const ui = await mount($, 'desktop')
   expect(await ui.find({ type: 'Text', text: /git develop/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('reads the branch from .git/HEAD when git status fails inside a repository', async ($, on) => {
+  answerWithoutGit(on, {
+    cwd: `${MAIN_TREE}/src`,
+    folders: [`${MAIN_TREE}/.git`],
+    files: { [`${MAIN_TREE}/.git/HEAD`]: 'ref: refs/heads/develop\n' },
+    processRun: GIT_REFUSES,
+  })
+  await measure($, 40)
+  const ui = await mount($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /git develop/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /no git/ })).toBeUndefined()
   await ui.unmount()
 })
 
@@ -183,7 +210,7 @@ test("in a worktree, reads the worktree's own branch through its .git file, not 
 
 test('outside a repository shows no git and looks for no .git', async ($, on) => {
   const asked: string[] = []
-  answerWithoutGit(on, { cwd: 'C:/Users/dev/notes', files: {}, asked, repo: false })
+  answerWithoutGit(on, { cwd: `${HOME_DIR}/notes`, files: {}, asked, repo: false })
   await measure($, 40)
   const ui = await mount($, 'desktop')
   expect(await ui.find({ type: 'Text', text: /no git/ })).toBeDefined()
@@ -265,6 +292,18 @@ test('records the plan figures a measurement reports in the shared history', asy
   expect(Object.keys(history.sessions)).toEqual(['session-under-test'])
 })
 
+// A file read while another session writes it is half a file: replacing it would lose the others' readings.
+test('a shared history that cannot be read is left as it is, and the band is still drawn', async ($, on) => {
+  const files: Record<string, string> = { [HISTORY_FILE]: '{ half a fi' }
+  answerSession(on, { files })
+  on('fs.read', async ($: any, e: any) => ({ value: files[fileKey(e.path)] ?? '' }))
+  await $.session.measure({ context: { tokens: 0, window: 1_000_000, percent: 54 }, rateLimits: USAGE.rateLimits, changed: ['rateLimits'] } as never)
+  expect(files[HISTORY_FILE]).toBe('{ half a fi')
+  const ui = await mount($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /7d/ })).toBeDefined()
+  await ui.unmount()
+})
+
 test('a measurement of the context alone writes no history', async ($, on) => {
   const files: Record<string, string> = {}
   answerSession(on, { files })
@@ -296,6 +335,35 @@ test('shows how long the cache stays warm after a cached turn, and nothing of it
   const cleared = await mount($, 'desktop')
   expect(await cleared.find({ type: 'Text', text: /1h00m/ })).toBeUndefined()
   await cleared.unmount()
+})
+
+// The session is on a plan within its limits and no variable or setting says otherwise, which
+// would mean an hour: the turn's own cache write, made for five minutes, decides.
+test('the cache countdown runs for the lifetime the turn\'s cache write was made for', async ($, on) => {
+  answerSession(on)
+  const usage = {
+    input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 400, cache_read_input_tokens: 990,
+    ephemeral_5m_input_tokens: 400, ephemeral_1h_input_tokens: 0, model: 'm',
+  }
+  await $.turn.complete({ turnId: 't1', answer: 'done', durationMs: 1000, isAborted: false, reason: 'answer', usage } as never)
+  const ui = await mount($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /cache 71% 5m/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /1h00m/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+// Behind a Claude apps gateway the session has a spend limit and no plan windows, and the shared
+// history has never seen one: the band draws the usd line and no 7d or 5h line.
+test('behind a gateway draws the spend limit and no line for the plan windows it never saw', async ($, on) => {
+  const gateway = { ...USAGE, rateLimits: [{ kind: 'spend_limit', percentUsed: 63, resetsAt: iso(NOW + 15_000_000) }] }
+  answerSession(on, { usage: gateway })
+  const ui = await mount($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /^usd/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /63%/ })).toBeDefined()
+  // The labels are padded to four cells; `5h40m` is the session's runtime.
+  expect(await ui.find({ type: 'Text', text: /^7d {2}/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^5h {2}/ })).toBeUndefined()
+  await ui.unmount()
 })
 
 test('still draws the band when the environment, files and settings refuse', async ($, on) => {

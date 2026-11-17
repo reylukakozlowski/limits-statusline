@@ -30,23 +30,26 @@ All of it stays on your computer, as the next two sections describe.
 ## What it reads
 
 - What Claude Code gives every status line and mod: session cost and duration, lines changed,
-  context window fill and size, prompt-cache counts and expiry, effort, model, plan limit usage
-  and reset times, and the working folder. It does not read prompts, responses, the conversation
+  context window fill and size, prompt-cache counts and expiry, effort, whether fast mode is on,
+  model, plan limit usage and reset times, a gateway's spend limit (its share, its reset and the
+  amounts in dollars), and the working folder. It does not read prompts, responses, the conversation
   history or Claude's memory. In the desktop app the band takes the effort from each model request
   (a `turn.step` hook) and hands the request and the response on without looking at their text.
 - The time the session's transcript file was last written (its modification time only, never
   its contents), to stamp a plan limit reading with when it arrived.
-- From local `git`, the current branch and whether tracked files changed. In the desktop app,
-  where `git` cannot run, the band instead asks Claude Code whether the session is in a repository
-  (only the answer yes or no is used) and reads the session's own `.git/HEAD`; in a git worktree,
-  its `.git` file and the `HEAD` file in the folder that file names.
+- From local `git`, the current branch and whether tracked files changed. Where `git` gives no
+  answer (it is missing, takes too long or refuses the folder), the branch is read from the
+  repository's own `.git/HEAD` instead; in a git worktree, from its `.git` file and the `HEAD`
+  file in the folder that file names, never one on another computer. In the desktop app the band
+  first asks Claude Code whether the session is in a repository (only the answer yes or no is
+  used).
 - Your `settings.json` file itself, whole, only when you run `/limits-statusline:setup` (only
   `statusLine` is changed).
-- In the desktop app, on every redraw, the settings as Claude Code has them, whole (only
-  `promptCacheTtl` is used) and the variables `FORCE_PROMPT_CACHING_5M`,
-  `CLAUDE_CODE_PROMPT_CACHE_TTL` and `ENABLE_PROMPT_CACHING_1H`, to know how long the prompt
-  cache stays warm, and `CLAUDE_CONFIG_DIR`, `USERPROFILE` and `HOME`, to find the limit history
-  file.
+- In the desktop app, on each redraw until a response has reported how long its cache writes
+  last, the settings as Claude Code has them, whole (only `promptCacheTtl` is used) and the
+  variables `FORCE_PROMPT_CACHING_5M`, `CLAUDE_CODE_PROMPT_CACHE_TTL` and
+  `ENABLE_PROMPT_CACHING_1H`, to know how long the prompt cache stays warm; and on every redraw
+  `CLAUDE_CONFIG_DIR`, `USERPROFILE` and `HOME`, to find the limit history file.
 
 ## What it writes, and for how long
 
@@ -55,9 +58,9 @@ Everything stays on your computer, under `~/.claude` (or `CLAUDE_CONFIG_DIR` whe
 | What | Where | Kept |
 |---|---|---|
 | Context fill history: one list of percentages per session | `plugins/data/limits-statusline-<source>/history/` | Pruned after 7 days |
-| Plan limit history: the 5-hour and 7-day usage percentages with their time and reset time, and each session's id with the last figures it reported, shared by the status line and the desktop band | `limits-statusline/limit-history.json` | Whenever a reading is added, readings older than 1 hour (5-hour) or 48 hours (7-day) are pruned except the newest of them, and sessions not seen for 48 hours or beyond the 64 most recent; the file stays until you delete it |
+| Plan limit history: the 5-hour and 7-day usage percentages with their time and reset time, each session's id with the last figures it reported, and when each of the two windows was last reported, shared by the status line and the desktop band | `limits-statusline/limit-history.json` | Whenever a reading is added, readings older than 1 hour (5-hour) or 48 hours (7-day) are pruned except the newest of them, and sessions not seen for 48 hours or beyond the 64 most recent; the file stays until you delete it |
 | A copy of the plugin's status line code with a fingerprint of that code, and a setup marker with the path of the `settings.json` setup changed | `plugins/data/limits-statusline-<source>/` | Until you uninstall the plugin |
-| The desktop band's figures (effort, cache counts, context history, git state with the branch name) | The session state Claude Code holds for the plugin's mod | For the session; the plugin keeps none of it beyond the session |
+| The desktop band's figures (effort, cache counts and lifetime, context history, git state with the branch name) | The session state Claude Code holds for the plugin's mod | For the session; the plugin keeps none of it beyond the session |
 | The `statusLine` entry | `settings.json` | Until `/limits-statusline:setup --uninstall` |
 | Your previous status line and an exact copy of the previous `settings.json` | `limits-statusline/` | Until you delete them; `--uninstall` uses the previous status line and removes it |
 
@@ -71,5 +74,5 @@ The plugin is a developer tool for Claude Code and is not directed at children.
 
 ## Contact
 
-Questions about this statement: Luka Kozlowski (SeaLoop), lukakozlowski@outlook.com, or a
+Questions about this statement: Luka Kozlowski (SeaLoop), lukakozlowski@sealoop.com, or a
 [GitHub issue](https://github.com/reylukakozlowski/limits-statusline/issues).

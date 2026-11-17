@@ -3,19 +3,21 @@
 
 import fs from 'node:fs';
 import { dirname } from 'node:path';
-import { EMPTY_LIMIT_HISTORY, parseLimitHistory, recordLimits, serializeLimitHistory } from '../core/limit-history.mjs';
+import {
+  EMPTY_LIMIT_HISTORY, isBrokenFile, readLimitHistory, recordLimits, serializeLimitHistory,
+} from '../core/limit-history.mjs';
 import { writeAtomic } from './atomic-file.mjs';
 
 /**
- * Adds the session's changed readings to the file and returns the readings to draw from.
+ * Adds the session's changed readings to the file and returns the history to draw from.
  * @param {string} file
  * @param {{ sessionId: unknown, limits: Parameters<typeof recordLimits>[1]['limits'], nowMs: number }} update
- * @returns {import('../core/limit-history.mjs').LimitReadings}
+ * @returns {import('../core/limit-history.mjs').LimitHistory}
  */
 export function recordLimitHistory(file, update) {
-  const history = readHistory(file);
+  const { history, isReplaceable } = readHistory(file, update.nowMs);
   const next = recordLimits(history, update);
-  if (next !== history) {
+  if (next !== history && isReplaceable) {
     try {
       fs.mkdirSync(dirname(file), { recursive: true });
       writeAtomic(file, serializeLimitHistory(next));
@@ -23,7 +25,7 @@ export function recordLimitHistory(file, update) {
       // Another run will try again; this one still draws with its own new readings.
     }
   }
-  return next.readings;
+  return next;
 }
 
 /**
@@ -41,10 +43,25 @@ export function transcriptWrittenAtMs(transcriptPath) {
   }
 }
 
-function readHistory(file) {
+// The history and whether this run may write the file. A file that is there and cannot be used
+// (another session is writing it, or something holds it) is left alone: this run draws with its
+// own readings and the next one reads again. Only one that stayed unreadable is replaced.
+function readHistory(file, nowMs) {
+  let history = null;
   try {
-    return parseLimitHistory(fs.readFileSync(file, 'utf8'));
+    history = readLimitHistory(fs.readFileSync(file, 'utf8'));
+  } catch (error) {
+    if (error?.code === 'ENOENT') return { history: EMPTY_LIMIT_HISTORY, isReplaceable: true };
+  }
+  if (history) return { history, isReplaceable: true };
+  return { history: EMPTY_LIMIT_HISTORY, isReplaceable: isBrokenFile(writtenAtMs(file), nowMs) };
+}
+
+/** When the file was last written; now-like (never replaceable) when that cannot be told. */
+function writtenAtMs(file) {
+  try {
+    return fs.statSync(file).mtimeMs;
   } catch {
-    return EMPTY_LIMIT_HISTORY;
+    return Infinity;
   }
 }

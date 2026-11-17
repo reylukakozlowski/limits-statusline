@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FULL_PERCENT, analyzeLimit, cacheHitRatio } from '../../src/core/metrics.mjs';
-import { LIMIT_KINDS, LIMIT_WINDOWS, retentionMs } from '../../src/core/limit-windows.mjs';
+import {
+  LIMIT_KINDS, LIMIT_SEEN_FOR_MS, LIMIT_WINDOWS, accountHasWindow, minPaceSpanMs, retentionMs,
+} from '../../src/core/limit-windows.mjs';
 import { nightBeforeReset } from '../../src/core/night.mjs';
-import { MIN_ELAPSED_MS } from '../../src/core/pace.mjs';
 
 const HOUR = 3_600_000;
 const near = (actual, expected, tolerance) =>
@@ -26,8 +27,20 @@ test('the windows are five hours and seven days, with 30-minute and one-day look
   assert.equal(SEVEN_DAY.bucketMs, 300_000);
   assert.equal(retentionMs(FIVE_HOUR), 3_600_000);
   assert.equal(retentionMs(SEVEN_DAY), 172_800_000);
-  assert.equal(MIN_ELAPSED_MS, 900_000);
+  assert.equal(minPaceSpanMs(FIVE_HOUR), 900_000);
+  assert.equal(minPaceSpanMs(SEVEN_DAY), 43_200_000);
   assert.equal(FULL_PERCENT, 100);
+});
+
+// Claude Code sends an account's windows with every response: a week without one means none.
+test('an account has a window it has a figure for, or one reported within the last week', () => {
+  const NOW = 1_800_000_000_000;
+  const reading = { percentUsed: 12, resetsAtMs: NOW + 1 };
+  assert.equal(LIMIT_SEEN_FOR_MS, 604_800_000);
+  assert.equal(accountHasWindow(reading, null, NOW), true);
+  assert.equal(accountHasWindow(null, NOW - LIMIT_SEEN_FOR_MS, NOW), true);
+  assert.equal(accountHasWindow(null, NOW - LIMIT_SEEN_FOR_MS - 1, NOW), false);
+  for (const never of [null, undefined, NaN, 'x']) assert.equal(accountHasWindow(null, never, NOW), false, String(never));
 });
 
 test('only the 7-day window pauses before its reset, for the night', () => {

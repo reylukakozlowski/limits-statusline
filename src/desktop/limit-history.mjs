@@ -2,7 +2,7 @@
 // status line keeps, in the folder where Claude Code keeps its configuration. The band reads and
 // writes it through `$` (band.mjs); this file keeps what is decided from the answers.
 
-import { recordLimits } from '../core/limit-history.mjs';
+import { isBrokenFile, recordLimits } from '../core/limit-history.mjs';
 import { claudeConfigDir } from '../core/paths.mjs';
 import { limitsFromRateLimits } from './snapshot.mjs';
 
@@ -18,6 +18,26 @@ export function configFolderFor(configDirVariable, userProfile, home) {
   // USERPROFILE first: on Windows Node's home folder is USERPROFILE even where HOME is set.
   const configDir = claudeConfigDir(configDirVariable, userProfile || home);
   return configDir === null ? null : configDir.replace(/[\\/]+$/, '');
+}
+
+/**
+ * Whether a history file that cannot be read may be replaced: only once it has stayed unreadable
+ * (isBrokenFile), since one found unreadable may be a file another session is writing. The band
+ * has no file times, so this remembers when it first found the file unreadable.
+ */
+export function unreadableFileWatch() {
+  let sinceMs = null;
+  return {
+    /** The file was read. */
+    readable() {
+      sinceMs = null;
+    },
+    /** @param {number} nowMs @returns {boolean} whether the unreadable file may be replaced now */
+    mayReplace(nowMs) {
+      sinceMs ??= nowMs;
+      return isBrokenFile(sinceMs, nowMs);
+    },
+  };
 }
 
 /**

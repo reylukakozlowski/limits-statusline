@@ -27,9 +27,10 @@ there.
 |---|---|
 | Operating system | One that [Claude Code supports](https://code.claude.com/docs/en/setup#system-requirements): macOS 13+, Windows 10 1809+ or Linux. The automated tests run on macOS, Linux (Ubuntu) and Windows ([Tests workflow](.github/workflows/tests.yml)) |
 | Terminal status line | Claude Code with status line support and **Node.js 20+** on `PATH` (on macOS, for example, from [nodejs.org](https://nodejs.org/en/download), Homebrew or nvm) |
-| Branch in the header | `git` 2.15 or later on `PATH`; on macOS it comes with the Xcode Command Line Tools (`xcode-select --install`). Without it the terminal line says `no git` |
+| Branch in the header | `git` 2.15 or later on `PATH`; on macOS it comes with the Xcode Command Line Tools (`xcode-select --install`). Where git is missing, too slow or refuses the folder, the branch is read from the repository's `.git/HEAD`, without the `*` for uncommitted changes; `no git` means the folder is in no repository |
 | Desktop band | Claude Code 2.1.290 or later (the desktop app updates its own copy); the monospaced face from 2.1.299. No Node.js needed |
-| Weekly (7-day) and 5-hour limits | A claude.ai Pro, Max or Ultra subscription; the limits appear after the session's first response. Verified Ultra accounts have no 5-hour limit ([Ultra plan](https://support.claude.com/en/articles/17728952)) |
+| Weekly (7-day) and 5-hour limits | A claude.ai Pro, Max or Ultra subscription; the limits appear after the session's first response. Verified Ultra accounts have no 5-hour limit ([Ultra plan](https://support.claude.com/en/articles/17728952)), so they get no `5h` line |
+| Spend limit (`usd`) | A [Claude apps gateway with a spend limit](https://code.claude.com/docs/en/claude-apps-gateway-spend-limits); the line needs Claude Code 2.1.251+, and the amounts in dollars need 2.1.284+ on both Claude Code and the gateway and are shown in the terminal only |
 | Prompt-cache ratio in the terminal | Exact with Claude Code 2.1.251+, estimated from the last request on older versions |
 
 ## Install
@@ -87,7 +88,7 @@ and the command above restores it as long as the plugin is installed.
 1. **Turn the status line on, after a look at what changes.** Type
    `/limits-statusline:setup --dry-run`: it prints the `statusLine` command it would write and
    writes nothing. Then type `/limits-statusline:setup`: it writes the entry, saves the status line
-   you had, and the five lines appear at the bottom of the terminal after your next message.
+   you had, and the status lines appear at the bottom of the terminal after your next message.
 2. **See whether the 5-hour limit runs out before it resets.** Work as usual and read the `5h`
    line:
 
@@ -120,9 +121,11 @@ and the command above restores it as long as the plugin is installed.
 | `cache 99%` | `prompt_cache.hit_ratio` | Share of input tokens served from the prompt cache |
 | `52m` / `cold` | `prompt_cache.expires_at` | How long the prompt cache stays warm without a new prompt (yellow in its last 5 minutes), or that it went cold and the next prompt rebuilds it |
 | `xhigh` | `effort.level` | Reasoning effort of the session (desktop: shown after the first request) |
+| `fast` | `fast_mode` | Shown in yellow while [fast mode](https://code.claude.com/docs/en/fast-mode) is on, which costs more than standard speed (terminal only) |
 | `+156 -23` | `cost.total_lines_added`, `total_lines_removed` | Lines of code added and removed in the session (terminal only) |
 | `ctx 54% 543k/1.0M` | `context_window` | Context window fill; the line shows how it moved during the session |
-| `7d` / `5h` | `rate_limits` | The weekly (7-day) and 5-hour plan limits: usage now `→` projected at the reset, `↻` time and clock time of the reset, `↗` pace, `⚠` when the limit runs out before the reset |
+| `7d` / `5h` | `rate_limits` | The weekly (7-day) and 5-hour plan limits: usage now `→` projected at the reset, `↻` time and clock time of the reset, `↗` pace, `⚠` when the limit runs out before the reset. A window the account has not been sent for a week has no line |
+| `usd` | `rate_limits.spend_limit` | Behind a Claude apps gateway: the share of your spend limit used (past 100% once exceeded), your spend and the limit in dollars when the gateway sends them (terminal only), and `↻` the reset of its period. No pace or projection |
 
 **Pace** is how fast the usage grew recently, shown per hour: over the last **30 minutes** for the
 5-hour limit and over the last **24 hours** for the 7-day limit, so the 7-day pace includes your
@@ -130,9 +133,11 @@ nights and days off. The **projection** (`→`) extends that pace to the reset:
 it answers "where do I end up if I keep going like this?". The plan's limits are shared by every
 session and by claude.ai, so the pace counts all of them: each session adds the figures it
 receives to a small shared history, and the line always shows the newest figure any session saw.
-Without readings from before it, a new window has no pace in its first 15 minutes (`→ —`,
-`↗ —`); when you work on across a reset, the pace carries on from the previous window. Without
-any history yet the pace is the average since the window opened. A large drop within a window is
+A pace needs readings over at least half of that look-back, because the projection multiplies it
+by all the time left: without readings from before it, a new 5-hour window has no pace in its
+first 15 minutes and a new week none in its first 12 hours (`→ —`, `↗ —`). When you work on
+across a reset, the pace carries on from the previous window. Without any history yet the pace
+is the average since the window opened. A large drop within a window is
 taken as a limit reset given on claude.ai, and usage counts again from there.
 
 For the 7-day limit the projection leaves out the last night before the reset, **02:00–07:00** on
@@ -150,10 +155,12 @@ The context bar is green below 50%, orange to 80% and red above. The context lin
 its lowest to its highest point, so it shows the shape of the trend; the percentage next to the
 bar is the absolute figure.
 
-In the desktop app the cache countdown is estimated: Claude Code keeps the cache warm for an hour
-after the last response on a plan within its limits and five minutes otherwise, unless
-`promptCacheTtl` or a prompt-cache variable says else. Lines changed are shown in the terminal
-only, because the desktop app does not give plugins that count.
+In the desktop app the cache countdown is worked out from the last response: its cache writes say
+whether they were made for five minutes or for an hour, and the countdown runs that long. Until a
+response has said so, and on Claude Code versions that do not report it, the band assumes what
+Claude Code documents: an hour on a plan within its limits and five minutes otherwise, unless
+`promptCacheTtl` or a prompt-cache variable says else. Lines changed and fast mode are shown in
+the terminal only, because the desktop app does not give plugins either.
 
 ## Settings
 
@@ -176,13 +183,14 @@ it from the directory, `-sealoop` when you added it from GitHub.
 
 - **Status line** (terminal): reads the JSON Claude Code passes on stdin, runs
   `git --no-optional-locks status --porcelain=v2 --branch --untracked-files=no` in the working
-  folder (`--no-optional-locks`, so it never takes git's index lock), and keeps a small context
-  history per session, the fill percentages only, in the data folder's `history/` (pruned after 7
-  days).
+  folder (`--no-optional-locks`, so it never takes git's index lock) with a 1-second time limit,
+  and keeps a small context history per session, the fill percentages only, in the data folder's
+  `history/` (pruned after 7 days). Where git gives no answer, it reads the branch from the
+  repository's `.git/HEAD`, as the band does.
 - **Plan limit history** (status line and desktop band alike): the 5-hour and 7-day percentages
-  with their time and reset time, and each session's last figures, in
-  `~/.claude/limits-statusline/limit-history.json`, kept for 1 hour (5-hour) and 48 hours
-  (7-day). A figure a session reports for the first time may be an old one, so the status line
+  with their time and reset time, each session's last figures, and when each of the two windows
+  was last reported, in `~/.claude/limits-statusline/limit-history.json`. The readings are kept
+  for 1 hour (5-hour) and 48 hours (7-day). A figure a session reports for the first time may be an old one, so the status line
   stamps it with the time the session's transcript was last written (the file's time only, never
   its contents).
 - **Setup** (`/limits-statusline:setup`): copies the status line runtime (the plugin's own
@@ -203,20 +211,21 @@ it from the directory, `-sealoop` when you added it from GitHub.
     session starts and each time Claude Code reports new session figures, to show the branch and,
     with `*`, whether tracked files have uncommitted changes. `git status` only reads the
     repository on your computer and contacts no remote. Nothing the band reads is passed to it:
-    the command and its options are fixed. Where the command cannot run (no `git`, or Claude Code
-    runs no commands there), the band reads the branch from the session's own `.git/HEAD` file
-    instead, looking for `.git` from the session's folder upward, as git does. In a git worktree
-    `.git` is a file that names the worktree's git folder, and the band reads `HEAD` there.
+    the command and its options are fixed. Where the command gives no answer (no `git`, a git that
+    fails or takes too long, or Claude Code runs no commands there), the band reads the branch
+    from the session's own `.git/HEAD` file instead, looking for `.git` from the session's folder
+    upward, as git does. In a git worktree `.git` is a file that names the worktree's git folder,
+    and the band reads `HEAD` there, unless the file names a folder on another computer.
   - **What it reads:** the session's figures from Claude Code (context fill, plan limits, cost,
     runtime, model, working folder, session id and version); from each model request (a
     `turn.step` hook) only the effort level, handing the request and the response on unchanged
     without looking at their text; from each finished turn only its token counts, for the cache
-    ratio; the plan limit history file; where `git` cannot run, whether Claude Code has the session
+    ratio and the cache's lifetime; the plan limit history file; where `git` gives no answer, whether Claude Code has the session
     in a git repository and the session's `.git/HEAD` (in a worktree, its `.git` file and the
-    `HEAD` file in the folder it names); the settings, of which it uses only `promptCacheTtl`; and
-    the variables
+    `HEAD` file in the folder it names); until a turn has reported the cache's lifetime, the
+    settings, of which it uses only `promptCacheTtl`, and the variables
     `FORCE_PROMPT_CACHING_5M`, `CLAUDE_CODE_PROMPT_CACHE_TTL` and `ENABLE_PROMPT_CACHING_1H`, to
-    know how long the prompt cache stays warm, and `CLAUDE_CONFIG_DIR`, `USERPROFILE` and `HOME`,
+    know how long the prompt cache stays warm; and `CLAUDE_CONFIG_DIR`, `USERPROFILE` and `HOME`,
     only to find the configuration folder.
   - **What it sends, and where:** nothing, and nowhere. It makes no network requests, and the
     `git status` above is the only program it starts. What it reads is drawn in the band and kept
@@ -227,8 +236,8 @@ it from the directory, `-sealoop` when you added it from GitHub.
     start-up, settings or instructions file, and no tool runs it or takes it as settings or
     instructions. The code names the file in the write itself; only its folder comes from
     `CLAUDE_CONFIG_DIR` or your home folder, as Claude Code's own configuration folder does.
-  - **What it keeps:** the effort, cache counts, time of the last response, context history and git
-    state, in the state Claude Code holds for the mod during the session.
+  - **What it keeps:** the effort, cache counts and lifetime, time of the last response, context
+    history and git state, in the state Claude Code holds for the mod during the session.
 
 With `CLAUDE_CONFIG_DIR` set, these folders live there instead of `~/.claude`.
 
@@ -248,13 +257,22 @@ With `CLAUDE_CONFIG_DIR` set, these folders live there instead of `~/.claude`.
 - **The bottom line went blank after the plugin was removed or moved to another source** — run
   `/limits-statusline:setup` again with the plugin installed: it rebuilds the runtime copy and
   points `settings.json` at it, or use `--uninstall` to put your previous status line back.
-- **`7d —` and `5h —`** — the limits arrive with the first response of a session and only for
-  Pro, Max and Ultra subscribers. A verified Ultra account has no 5-hour limit: while Claude Code
-  sends no 5-hour window, `5h —` stays.
-- **The 7-day projection is very high on the first day after installing** — the 7-day pace looks
-  back 24 hours; until the shared history covers a day, the pace is the average since the weekly
-  reset, which early in the week counts only working hours. It settles once a day of history is
-  there.
+- **`7d —`, `5h —`, or no limit line at all** — the limits arrive with the first response of a
+  session and only for Pro, Max and Ultra subscribers. A limit's line is drawn only for a window
+  the account has: one that Claude Code has not sent for a week (a verified Ultra account has no
+  5-hour window, an API key has neither) has no line, and a window that only reset keeps its line
+  as a dash until the next response. Right after installing there is no history yet, so the limit
+  lines appear with the session's first response. Behind a Claude apps gateway with a spend limit,
+  a `usd` line shows its share, the amounts when the gateway sends them, and the reset.
+- **No line for the weekly Fable limit** — Claude Code has a separate weekly limit for Fable
+  models (its [changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md), 2.1.323),
+  but as of 2.1.325 it sends status lines and mods only the 5-hour and 7-day windows and a
+  gateway's spend limit (the [status line page](https://code.claude.com/docs/en/statusline) lists
+  no other), so the plugin cannot show it.
+- **`7d` shows `→ —` and `↗ —` after installing** — the 7-day pace needs 12 hours of readings.
+  With no history from before the weekly reset, the projection appears once the week is 12 hours
+  old. Until the shared history covers a day, the pace is the average since the weekly reset,
+  which early in the week counts mostly working hours, so the projection runs high at first.
 - **Odd pace after switching accounts** — the shared history does not tell accounts apart; two
   accounts used in turn within a week mix their figures until the readings age out (48 hours).
 - **No effort or cache shown** — older Claude Code versions do not send them; update Claude Code.

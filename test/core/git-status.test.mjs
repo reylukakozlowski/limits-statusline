@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { GIT_STATUS_ARGS, parseGitStatus } from '../../src/core/git-status.mjs';
+import { GIT_STATUS_ARGS, NOT_A_REPO, parseGitStatus } from '../../src/core/git-status.mjs';
 
 const head = (name, oid = '0123456789abcdef0123456789abcdef01234567') =>
   `# branch.oid ${oid}\n# branch.head ${name}\n`;
@@ -27,9 +27,14 @@ test('parseGitStatus keeps the branch of a repository without commits', () => {
   assert.equal(parseGitStatus({ exitCode: 0, stdout: head('develop', '(initial)') }).branch, 'develop');
 });
 
-test('parseGitStatus treats a failing git as no repository', () => {
-  const none = { isRepo: false, branch: null, isDirty: false };
-  assert.deepEqual(parseGitStatus({ exitCode: 128, stdout: '' }), none);
-  assert.deepEqual(parseGitStatus({ exitCode: 0, stdout: undefined }), none);
-  assert.deepEqual(parseGitStatus(null), none);
+// Exit 128 is git's "not a git repository" and also its refusal of a repository it does not
+// trust (safe.directory): a failed git does not say which.
+test('a git that failed or did not run gives no answer, which is not "no repository"', () => {
+  assert.equal(parseGitStatus({ exitCode: 128, stdout: '' }), null);
+  assert.equal(parseGitStatus({ exitCode: 0, stdout: undefined }), null);
+  assert.equal(parseGitStatus(null), null);
+});
+
+test('outside a repository there is no git', () => {
+  assert.deepEqual(NOT_A_REPO, { isRepo: false, branch: null, isDirty: false });
 });

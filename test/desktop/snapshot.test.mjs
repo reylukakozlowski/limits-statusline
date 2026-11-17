@@ -32,12 +32,21 @@ const SOURCES = Object.freeze({
 });
 
 test('mods API figures map onto the mockup snapshot, without the changed lines the API does not have', () => {
-  assert.deepEqual(snapshotFromSession(SOURCES), { ...MOCKUP, linesChanged: null });
+  // The mods API reports neither changed lines nor fast mode.
+  assert.deepEqual(snapshotFromSession(SOURCES), {
+    ...MOCKUP,
+    linesChanged: null,
+    fastMode: null,
+    // The gateway's window of USAGE: its share and reset; the mods API has no amounts.
+    spendLimit: { percentUsed: 80, resetsAtMs: NOW + 1, usedUsd: null, limitUsd: null },
+  });
 });
 
 test('the shared limit readings passed in reach the snapshot', () => {
-  const limitReadings = { fiveHour: [[NOW, 12, NOW + 15_000_000]], sevenDay: [] };
-  assert.equal(snapshotFromSession({ ...SOURCES, limitReadings }).limitReadings, limitReadings);
+  const limitHistory = { readings: { fiveHour: [[NOW, 12, NOW + 15_000_000]], sevenDay: [] }, sessions: {}, seenAtMs: { fiveHour: NOW, sevenDay: null } };
+  const snapshot = snapshotFromSession({ ...SOURCES, limitHistory });
+  // The readings and the times, without the sessions: the layout needs no session ids.
+  assert.deepEqual(snapshot.limitHistory, { readings: limitHistory.readings, seenAtMs: limitHistory.seenAtMs });
 });
 
 test('the cache state is estimated from the last turn and the lifetime, and unknown without either', () => {
@@ -50,6 +59,14 @@ test('the cache state is estimated from the last turn and the lifetime, and unkn
   // A tracker kept by an older version of the band has no lastTurn at all.
   const { lastTurn: _dropped, ...older } = TRACKER;
   assert.equal(snapshotFromSession({ ...SOURCES, tracker: older }).promptCache, null);
+});
+
+test('the spend limit is the spend_limit window: absent without one, and once its reset has passed', () => {
+  const spendOf = (rateLimits) => snapshotFromSession({ ...SOURCES, usage: { ...USAGE, rateLimits } }).spendLimit;
+  assert.equal(spendOf([{ kind: 'five_hour', percentUsed: 12, resetsAt: iso(NOW + 15_000_000) }]), null);
+  assert.equal(spendOf([{ kind: 'spend_limit', percentUsed: 80, resetsAt: iso(NOW) }]), null);
+  assert.deepEqual(spendOf([{ kind: 'spend_limit', percentUsed: 137 }]), { percentUsed: 137, resetsAtMs: null, usedUsd: null, limitUsd: null });
+  assert.equal(spendOf(undefined), null);
 });
 
 test('nothing known yet gives the all-null snapshot', () => {

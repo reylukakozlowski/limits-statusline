@@ -11,10 +11,11 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runContractCheck } from '../../scripts/lib/status-line-contract-cli.mjs';
 import { STATUS_LINE_PAGE } from '../../scripts/lib/status-line-docs.mjs';
+import { STATUS_LINE_CONTRACT } from '../../scripts/lib/status-line-contract.mjs';
 import { edited, PAGE, withExample } from '../fixtures/status-line-page.mjs';
 
 const DOCS = '/runner/temp/statusline.md';
-const FIELDS = 26; // the contract's fields (status-line-contract-drift.test.mjs pins the list)
+const FIELDS = STATUS_LINE_CONTRACT.length; // status-line-contract-drift.test.mjs pins the list
 const MILLISECONDS = ['in Unix epoch seconds |', 'in Unix epoch milliseconds |'];
 
 /** Runs the check with `files` (path → text) as the only readable files. */
@@ -53,7 +54,7 @@ test('a broken contract exits 1 with one error per changed field and a failing s
     '::error::status line contract: rate_limits.five_hour.resets_at no longer says "Unix epoch seconds": "When the window resets, in Unix epoch milliseconds"',
     '::error::status line contract: rate_limits.seven_day.resets_at no longer says "Unix epoch seconds": "When the window resets, in Unix epoch milliseconds"',
   ]);
-  assert.equal(result.lines.at(-1), `status line contract: 2 of the plugin's ${FIELDS} fields changed in ${STATUS_LINE_PAGE}; the plugin needs a look.`);
+  assert.equal(result.lines.at(-1), `status line contract: 2 findings in ${STATUS_LINE_PAGE}; the plugin needs a look.`);
   assert.match(result.summary, /^### ❌ Status line contract\n[\s\S]*\n- rate_limits\.five_hour\.resets_at no longer says/);
 });
 
@@ -80,6 +81,17 @@ test('newly documented fields only warn: the run still passes and the summary li
   assert.deepEqual(levels(result.lines, 'error'), []);
   assert.deepEqual(levels(result.lines, 'warning'), ['::warning::status line contract: newly documented fields the plugin does not read: plan.name.']);
   assert.match(result.summary, /^### ✅ [\s\S]*Newly documented, not read by the plugin:\n\n- `plan\.name`\n$/);
+});
+
+test('a newly documented plan limit field exits 1 with an error that names it', () => {
+  const fiveHour = '"five_hour": { "used_percentage": 12, "resets_at": 1800015000 }';
+  const result = run(withPage(edited([fiveHour, `${fiveHour},\n>     "seven_day_fable": { "used_percentage": 5 }`])));
+  assert.equal(result.code, 1);
+  assert.deepEqual(result.lines, [
+    '::error::status line contract: rate_limits.seven_day_fable.used_percentage is newly documented: a plan limit the plugin does not read yet',
+    `status line contract: 1 finding in ${STATUS_LINE_PAGE}; the plugin needs a look.`,
+  ]);
+  assert.match(result.summary, /^### ❌ Status line contract\n[\s\S]*\n- rate_limits\.seven_day_fable\.used_percentage is newly documented/);
 });
 
 test('without --docs, or with an unknown option, nothing is read and the run fails with 2', () => {
@@ -123,7 +135,7 @@ test('the entry point reads the page it is given, appends to GITHUB_STEP_SUMMARY
   const node = (args) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', env: { GITHUB_STEP_SUMMARY: summary } });
   const passed = node(['--docs', fixture]);
   assert.equal(passed.status, 0, passed.stderr);
-  assert.match(passed.stdout, /^status line contract: the 26 fields the plugin reads are documented/);
+  assert.match(passed.stdout, new RegExp(`^status line contract: the ${FIELDS} fields the plugin reads are documented`));
   assert.match(readFileSync(summary, 'utf8'), /^### ✅ Status line contract\n/);
   const usage = node([]);
   assert.equal(usage.status, 2);
