@@ -42,8 +42,9 @@ const WIDE = Object.freeze({ barWidth: BAR_CELLS, lineChars: LINE_CHARS });
 const NARROW = Object.freeze({ barWidth: 10, lineChars: 0 });
 const FULL_LINE_COLUMNS = 52; // "ctx " + 16 cells + " 54%" + "  543k/1.0M" + "  " + 15-char line
 const LABEL_WIDTH = 4; // "ctx ", "7d  ", "5h  "; the session line is indented to match
-const PERCENT_WIDTH = 3;
+const PERCENT_WIDTH = 3; // "54%"; a limit at "100%" widens the column on both limit lines
 const PROJECTION_WIDTH = 4; // "117%"
+const PROJECTION_CAP = 999; // beyond it the figure says nothing more: ">999%"
 const GAP = '  ';
 const POINTS_PER_CHAR = 2;
 
@@ -63,6 +64,7 @@ const LIMIT_DETAILS = Object.freeze([
 const segment = (text, tone = TONE.plain) => ({ text, tone });
 const separator = (text) => segment(text, TONE.muted);
 const indent = () => segment(' '.repeat(LABEL_WIDTH));
+const widest = (texts, least = 0) => Math.max(least, ...texts.map((text) => text.length));
 
 /** @param {Line} line */
 export const lineText = (line) => line.map((part) => part.text).join('');
@@ -145,11 +147,24 @@ function limitLines(snapshot, size, width) {
     const reading = snapshot.limits?.[kind] ?? null;
     const analysis = analyzeLimit(reading, LIMIT_WINDOWS[kind], clock, snapshot.limitReadings?.[kind] ?? []);
     const clockText = formatClock(reading?.resetsAtMs, clock);
-    return { label, analysis, countdown: formatCountdown(analysis?.remainingMs), clockText: clockText === DASH ? null : clockText };
+    return {
+      label,
+      analysis,
+      percentText: formatPercent(analysis?.percentUsed),
+      projectionText: projectionText(analysis?.projectedPercent),
+      countdown: formatCountdown(analysis?.remainingMs),
+      clockText: clockText === DASH ? null : clockText,
+    };
   });
+  // Each column is as wide as its longest value on either line, so what follows it lines up.
+  const drawn = limits.filter(({ analysis }) => analysis);
+  const widths = {
+    percent: widest(drawn.map(({ percentText }) => percentText), PERCENT_WIDTH),
+    projection: widest(drawn.map((limit) => limit.projectionText), PROJECTION_WIDTH),
+  };
   const draw = (details) => {
-    const resets = resetColumn(limits.filter(({ analysis }) => analysis), details.showClock);
-    return limits.map((limit) => limitLine(limit, { size, details, reset: resets.get(limit) }));
+    const resets = resetColumn(drawn, details.showClock);
+    return limits.map((limit) => limitLine(limit, { size, details, widths, reset: resets.get(limit) }));
   };
   const fits = (lines) => width === null || lines.every((line) => lineText(line).length <= width);
   for (const details of LIMIT_DETAILS) {
@@ -162,7 +177,6 @@ function limitLines(snapshot, size, width) {
 // The reset column of each limit line: `3h50m`, or with the clock time `3h50m 18:10`; the
 // countdowns and the clock times are each padded to the longest, so the columns after them line up.
 function resetColumn(limits, showClock) {
-  const widest = (texts) => Math.max(0, ...texts.map((text) => text.length));
   const countdownWidth = widest(limits.map(({ countdown }) => countdown));
   const clockWidth = showClock ? widest(limits.map(({ clockText }) => clockText ?? '')) : 0;
   return new Map(limits.map((limit) => {
@@ -171,7 +185,7 @@ function resetColumn(limits, showClock) {
   }));
 }
 
-function limitLine({ label, analysis }, { size, details, reset }) {
+function limitLine({ label, analysis, projectionText: projection }, { size, details, widths, reset }) {
   const labelSegment = segment(label.padEnd(LABEL_WIDTH), TONE.muted);
   if (!analysis) return [labelSegment, segment(DASH, TONE.muted)];
   const tone = limitTone(analysis);
@@ -180,9 +194,9 @@ function limitLine({ label, analysis }, { size, details, reset }) {
   const rateTone = Number.isFinite(analysis.ratePerHour) && tone !== TONE.ok ? tone : TONE.muted;
   return [
     labelSegment,
-    ...barSegments(analysis.percentUsed, tone, size.barWidth),
+    ...barSegments(analysis.percentUsed, tone, size.barWidth, widths.percent),
     separator(' → '),
-    segment(formatPercent(analysis.projectedPercent).padStart(PROJECTION_WIDTH), hasProjection ? tone : TONE.muted),
+    segment(projection.padStart(widths.projection), hasProjection ? tone : TONE.muted),
     segment(GAP),
     segment(`↻ ${reset}`, TONE.muted),
     segment(GAP),
@@ -193,12 +207,14 @@ function limitLine({ label, analysis }, { size, details, reset }) {
   ];
 }
 
-function barSegments(percent, tone, width) {
+const projectionText = (percent) => (Math.round(percent) > PROJECTION_CAP ? `>${PROJECTION_CAP}%` : formatPercent(percent));
+
+function barSegments(percent, tone, width, percentWidth = PERCENT_WIDTH) {
   const { filled, empty } = progressBar(percent, width);
   return [
     segment(filled, tone),
     segment(empty, TONE.muted),
     segment(' '),
-    segment(formatPercent(percent).padStart(PERCENT_WIDTH), tone),
+    segment(formatPercent(percent).padStart(percentWidth), tone),
   ];
 }
