@@ -7,13 +7,13 @@
 // get the answers as plain values.
 
 import { atom, read, update } from 'claude-code';
-import { parseGitStatus } from '../core/git-status.mjs';
+import { dotGitPaths, gitDirFromFile, gitFromHead } from '../core/git-head.mjs';
+import { NOT_A_REPO, parseGitStatus } from '../core/git-status.mjs';
 import { buildLines } from '../core/layout.mjs';
 import { EMPTY_LIMIT_HISTORY, parseLimitHistory, serializeLimitHistory } from '../core/limit-history.mjs';
 import { limitHistoryPath } from '../core/paths.mjs';
 import { renderBand } from './band-view.mjs';
 import { cacheTtlFromEngine } from './cache-ttl.mjs';
-import { NOT_A_REPO, dotGitPaths, gitDirFromFile, gitFromHead } from './git.mjs';
 import { configFolderFor, withMeasuredLimits } from './limit-history.mjs';
 import { shouldDraw, supportsTypography } from './policy.mjs';
 import { snapshotFromSession } from './snapshot.mjs';
@@ -81,16 +81,18 @@ async function refreshGit($) {
 
 /** @returns {Promise<import('../core/git-status.mjs').GitState | null>} null when nothing could be asked */
 async function probeGit($) {
+  let status = null;
   try {
     // The whole call as fixed text, options too, so that the directory reads the whole command:
     // the terminal's GIT_STATUS_ARGS, run in the session's folder (the default), for at most
     // 1.5 s. --no-optional-locks: never take the index lock from the user's own git.
-    const status = await $.process.run(['git', '--no-optional-locks', 'status', '--porcelain=v2', '--branch', '--untracked-files=no'],
+    status = await $.process.run(['git', '--no-optional-locks', 'status', '--porcelain=v2', '--branch', '--untracked-files=no'],
       { timeoutMs: 1500 });
-    return parseGitStatus(status);
   } catch {
-    return readGitHead($);
+    // `$.process` is CLI only, or git could not start.
   }
+  // A git that failed says nothing about the folder: the session's own HEAD does.
+  return parseGitStatus(status) ?? readGitHead($);
 }
 
 // The engine's repository says whether the session is in one, but its root is the main working

@@ -36,10 +36,12 @@ All of it stays on your computer, as the next two sections describe.
   (a `turn.step` hook) and hands the request and the response on without looking at their text.
 - The time the session's transcript file was last written (its modification time only, never
   its contents), to stamp a plan limit reading with when it arrived.
-- From local `git`, the current branch and whether tracked files changed. In the desktop app,
-  where `git` cannot run, the band instead asks Claude Code whether the session is in a repository
-  (only the answer yes or no is used) and reads the session's own `.git/HEAD`; in a git worktree,
-  its `.git` file and the `HEAD` file in the folder that file names.
+- From local `git`, the current branch and whether tracked files changed. Where `git` gives no
+  answer (it is missing, takes too long or refuses the folder), the branch is read from the
+  repository's own `.git/HEAD` instead; in a git worktree, from its `.git` file and the `HEAD`
+  file in the folder that file names, never one on another computer. In the desktop app the band
+  first asks Claude Code whether the session is in a repository (only the answer yes or no is
+  used).
 - Your `settings.json` file itself, whole, only when you run `/limits-statusline:setup` (only
   `statusLine` is changed).
 - In the desktop app, on every redraw, the settings as Claude Code has them, whole (only
