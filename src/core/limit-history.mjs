@@ -8,7 +8,7 @@
 // session's last response: stamping it "now" would put an old figure after newer ones.
 
 import { LIMIT_KINDS, LIMIT_WINDOWS, retentionMs } from './limit-windows.mjs';
-import { MS_PER_DAY, MS_PER_MINUTE } from './time.mjs';
+import { MS_PER_MINUTE } from './time.mjs';
 
 export const LIMIT_HISTORY_VERSION = 1;
 
@@ -28,12 +28,12 @@ export const MAX_SESSIONS = 64;
 export const UNREADABLE_GRACE_MS = MS_PER_MINUTE;
 
 /**
- * How long a plan window counts as one the account has after it was last reported. Claude Code
- * sends an account's windows with every response, so a window not reported for a week of use is
- * one the account does not have (a verified Ultra account has no 5-hour window), and its line
- * is not drawn; a window that only reset meanwhile was reported within the week.
+ * @param {number} unreadableSinceMs since when the file has been unreadable: when it was last
+ *   written, or when it was first found unreadable
+ * @param {number} nowMs
+ * @returns {boolean} whether the file is broken and may be replaced
  */
-export const LIMIT_SEEN_FOR_MS = 7 * MS_PER_DAY;
+export const isBrokenFile = (unreadableSinceMs, nowMs) => nowMs - unreadableSinceMs >= UNREADABLE_GRACE_MS;
 
 /** Reset times this close together name the same window (the API may round them). */
 export const SAME_WINDOW_TOLERANCE_MS = 10 * MS_PER_MINUTE;
@@ -56,13 +56,6 @@ export const EMPTY_LIMIT_HISTORY = Object.freeze({
   sessions: Object.freeze({}),
   seenAtMs: Object.freeze({ fiveHour: null, sevenDay: null }),
 });
-
-/**
- * @param {number | null | undefined} seenAtMs when the window was last reported
- * @param {number} nowMs
- * @returns {boolean} whether the account still counts as having that window
- */
-export const wasSeenLately = (seenAtMs, nowMs) => Number.isFinite(seenAtMs) && nowMs - seenAtMs <= LIMIT_SEEN_FOR_MS;
 
 /** @param {number} a @param {number} b reset times */
 export const isSameWindow = (a, b) => Math.abs(a - b) <= SAME_WINDOW_TOLERANCE_MS;
@@ -164,13 +157,6 @@ function seenFrom(stored, readings) {
   const newest = (points) => (points.length === 0 ? null : Math.max(...points.map(([atMs]) => atMs)));
   return Object.fromEntries(LIMIT_KINDS.map((kind) => [kind, Number.isFinite(stored?.[kind]) ? stored[kind] : newest(readings[kind])]));
 }
-
-/**
- * The history to draw from: the file's, or the empty one when it cannot be read.
- * @param {unknown} text
- * @returns {LimitHistory}
- */
-export const parseLimitHistory = (text) => readLimitHistory(text) ?? EMPTY_LIMIT_HISTORY;
 
 const isPoint = (point) => Array.isArray(point) && point.length === 3
   && Number.isFinite(point[0]) && isPercent(point[1]) && Number.isFinite(point[2]);

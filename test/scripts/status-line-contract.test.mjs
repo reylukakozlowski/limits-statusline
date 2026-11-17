@@ -15,8 +15,10 @@ const HIT_RATIO_ROW = '| `hit_ratio` | Cache reads as a share of all input, from
 const check = (page = PAGE, options) => checkContract(parseStatusLineDocs(page), options);
 
 test('the page as it is documents every field the plugin reads as it expects, and nothing new', () => {
-  // 31: the fields snapshot.mjs and run.mjs read (status-line-contract-drift.test.mjs pins the list).
-  assert.deepEqual(check(), { ok: true, checked: 31, missing: [], retyped: [], unitChanged: [], newLimitFields: [], newFields: [] });
+  // status-line-contract-drift.test.mjs pins which fields the contract lists.
+  assert.deepEqual(check(), {
+    ok: true, checked: STATUS_LINE_CONTRACT.length, missing: [], retyped: [], unitChanged: [], newLimitFields: [], newFields: [],
+  });
 });
 
 test('a field taken off the page breaks the contract, and only that field is named', () => {

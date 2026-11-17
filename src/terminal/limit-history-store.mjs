@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import { dirname } from 'node:path';
 import {
-  EMPTY_LIMIT_HISTORY, UNREADABLE_GRACE_MS, readLimitHistory, recordLimits, serializeLimitHistory,
+  EMPTY_LIMIT_HISTORY, isBrokenFile, readLimitHistory, recordLimits, serializeLimitHistory,
 } from '../core/limit-history.mjs';
 import { writeAtomic } from './atomic-file.mjs';
 
@@ -47,15 +47,14 @@ export function transcriptWrittenAtMs(transcriptPath) {
 // (another session is writing it, or something holds it) is left alone: this run draws with its
 // own readings and the next one reads again. Only one that stayed unreadable is replaced.
 function readHistory(file, nowMs) {
-  let text;
+  let history = null;
   try {
-    text = fs.readFileSync(file, 'utf8');
+    history = readLimitHistory(fs.readFileSync(file, 'utf8'));
   } catch (error) {
-    return { history: EMPTY_LIMIT_HISTORY, isReplaceable: error?.code === 'ENOENT' };
+    if (error?.code === 'ENOENT') return { history: EMPTY_LIMIT_HISTORY, isReplaceable: true };
   }
-  const history = readLimitHistory(text);
   if (history) return { history, isReplaceable: true };
-  return { history: EMPTY_LIMIT_HISTORY, isReplaceable: nowMs - writtenAtMs(file) >= UNREADABLE_GRACE_MS };
+  return { history: EMPTY_LIMIT_HISTORY, isReplaceable: isBrokenFile(writtenAtMs(file), nowMs) };
 }
 
 /** When the file was last written; now-like (never replaceable) when that cannot be told. */

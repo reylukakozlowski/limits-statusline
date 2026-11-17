@@ -39,8 +39,8 @@ test('the gateway spend limit is read with its amounts, and is absent without a 
 test('the shared limit readings passed in reach the snapshot', () => {
   const limitHistory = { readings: { fiveHour: [[NOW, 12, NOW + 15_000_000]], sevenDay: [] }, sessions: {}, seenAtMs: { fiveHour: NOW, sevenDay: null } };
   const snapshot = snapshotFromStatusInput({}, { ...options, limitHistory });
-  assert.equal(snapshot.limitReadings, limitHistory.readings);
-  assert.equal(snapshot.limitsSeenAtMs, limitHistory.seenAtMs);
+  // The readings and the times, without the sessions: the layout needs no session ids.
+  assert.deepEqual(snapshot.limitHistory, { readings: limitHistory.readings, seenAtMs: limitHistory.seenAtMs });
 });
 
 test('limitsFromStatusInput reads the two plan windows on their own, before a snapshot is built', () => {

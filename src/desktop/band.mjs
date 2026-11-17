@@ -20,7 +20,6 @@ import { snapshotFromSession } from './snapshot.mjs';
 import { afterClear, initialTracker, withContext, withEffort, withGit, withTurnUsage } from './tracker.mjs';
 
 const tracker = atom({ plugin: 'limits-statusline', key: 'tracker' }, initialTracker());
-const historyFile = unreadableFileWatch();
 
 // Reset countdowns tick in minutes; redraw once a minute even while the session is idle.
 const REDRAW_EVERY_MS = 60_000;
@@ -28,6 +27,7 @@ const REDRAW_EVERY_MS = 60_000;
 /** @param {import('claude-code').On} on @param {import('claude-code').PluginOptions} options */
 export function registerBand(on, options) {
   const mode = options?.band;
+  const historyFile = unreadableFileWatch();
 
   on('session.start', async ($, e, next) => {
     await refreshGit($);
@@ -50,7 +50,7 @@ export function registerBand(on, options) {
   // observed just now: the shared history gets it with the right time.
   on('session.measure', async ($, e, next) => {
     await update($, tracker, (state) => withContext(state ?? initialTracker(), e.context?.percent));
-    if (e.changed?.includes('rateLimits')) await recordMeasuredLimits($, e.rateLimits, await $.clock.now());
+    if (e.changed?.includes('rateLimits')) await recordMeasuredLimits($, e.rateLimits, await $.clock.now(), historyFile);
     await refreshGit($);
     return next(e);
   });
@@ -153,8 +153,8 @@ async function readCacheTtl($, rateLimits, nowMs) {
   }
 }
 
-// The shared limit history: every call settles, so a file that cannot be used leaves the band with
-// less to show, never without one.
+// The shared limit history. Every call below settles, so a file that cannot be used leaves the
+// band with less to show, never without one.
 
 /** @returns {Promise<string | null>} the configuration folder, null when none is known */
 async function configFolder($) {
@@ -185,8 +185,11 @@ async function loadLimitHistory($) {
   return (configDir === null ? null : await storedLimitHistory($, configDir)) ?? EMPTY_LIMIT_HISTORY;
 }
 
-/** Adds this session's plan figures, measured just now, to the shared history. */
-async function recordMeasuredLimits($, rateLimits, nowMs) {
+/**
+ * Adds this session's plan figures, measured just now, to the shared history.
+ * @param {ReturnType<typeof unreadableFileWatch>} historyFile since when the file could not be read
+ */
+async function recordMeasuredLimits($, rateLimits, nowMs, historyFile) {
   const configDir = await configFolder($);
   if (configDir === null) return;
   try {

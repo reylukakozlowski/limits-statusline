@@ -50,8 +50,7 @@ export function snapshotFromSession({
     },
     contextHistory: [...state.history],
     limits: limitsFromRateLimits(figures.rateLimits, nowMs),
-    limitReadings: limitHistory.readings,
-    limitsSeenAtMs: limitHistory.seenAtMs,
+    limitHistory: { readings: limitHistory.readings, seenAtMs: limitHistory.seenAtMs },
     spendLimit: spendLimitFromRateLimits(figures.rateLimits, nowMs),
   };
 }
@@ -61,7 +60,7 @@ export function snapshotFromSession({
  * reset; the amounts in US dollars reach only the terminal status line.
  * @param {unknown} windows `rateLimits` of `$.session.usage()`
  * @param {number} nowMs
- * @returns {import('../core/layout.mjs').SpendLimit | null}
+ * @returns {import('../core/metrics.mjs').SpendLimit | null}
  */
 export function spendLimitFromRateLimits(windows, nowMs) {
   const reading = limitReading(Array.isArray(windows) ? windows : [], 'spend_limit', nowMs);

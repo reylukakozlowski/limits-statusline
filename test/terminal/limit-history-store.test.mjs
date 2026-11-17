@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { writeAtomic } from '../../src/terminal/atomic-file.mjs';
 import { recordLimitHistory, transcriptWrittenAtMs } from '../../src/terminal/limit-history-store.mjs';
 
 const NOW = 1_800_000_000_000;
@@ -69,10 +70,22 @@ test('an unwritable place still returns this run\'s readings and never throws', 
   assert.deepEqual(readings.fiveHour, [[NOW, 12, RESET]]);
 });
 
-test('a write that fails leaves no temporary file behind', (t) => {
+test('an atomic write whose rename fails throws and leaves no temporary file behind', (t) => {
   const dir = tempDir(t);
   const file = join(dir, 'limit-history.json');
   mkdirSync(file); // a folder where the file should be: the rename onto it fails
+  assert.throws(() => writeAtomic(file, '{}'));
+  assert.deepEqual(readdirSync(dir), ['limit-history.json']);
+  writeAtomic(join(dir, 'other.json'), '{"a":1}');
+  assert.deepEqual(readdirSync(dir).sort(), ['limit-history.json', 'other.json']);
+  assert.equal(readFileSync(join(dir, 'other.json'), 'utf8'), '{"a":1}');
+});
+
+// A folder where the file should be cannot be read as a file and is nothing to write over.
+test('a path that cannot be read as a file is left alone like any unreadable file', (t) => {
+  const dir = tempDir(t);
+  const file = join(dir, 'limit-history.json');
+  mkdirSync(file);
   const { readings } = recordLimitHistory(file, { sessionId: 'a', limits: limits(12), nowMs: NOW });
   assert.deepEqual(readings.fiveHour, [[NOW, 12, RESET]]);
   assert.deepEqual(readdirSync(dir), ['limit-history.json']);
