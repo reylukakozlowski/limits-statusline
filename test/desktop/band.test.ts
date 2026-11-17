@@ -336,6 +336,21 @@ test('shows how long the cache stays warm after a cached turn, and nothing of it
   await cleared.unmount()
 })
 
+// The session is on a plan within its limits and no variable or setting says otherwise, which
+// would mean an hour: the turn's own cache write, made for five minutes, decides.
+test('the cache countdown runs for the lifetime the turn\'s cache write was made for', async ($, on) => {
+  answerSession(on)
+  const usage = {
+    input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 400, cache_read_input_tokens: 990,
+    ephemeral_5m_input_tokens: 400, ephemeral_1h_input_tokens: 0, model: 'm',
+  }
+  await $.turn.complete({ turnId: 't1', answer: 'done', durationMs: 1000, isAborted: false, reason: 'answer', usage } as never)
+  const ui = await mount($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /cache 71% 5m/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /1h00m/ })).toBeUndefined()
+  await ui.unmount()
+})
+
 test('still draws the band when the environment, files and settings refuse', async ($, on) => {
   answerSession(on, { refuse: true })
   await $.session.measure({ context: { tokens: 0, window: 1_000_000, percent: 54 }, rateLimits: USAGE.rateLimits, changed: ['rateLimits'] } as never)
