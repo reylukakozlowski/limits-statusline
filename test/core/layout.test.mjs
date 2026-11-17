@@ -189,6 +189,27 @@ test('the columns after the reset stay aligned when the 7-day countdown is longe
   assert.equal(sevenDay.indexOf('↗'), fiveHour.indexOf('↗'));
 });
 
+const HOUR_MS = 3_600_000;
+const column = (line, mark) => lineText(line).indexOf(mark);
+
+// "100%" is a character longer than "12%": the usage column takes the longer one on both lines.
+test('a limit at 100% keeps the columns of the two limit lines aligned', () => {
+  const limits = { ...MOCKUP.limits, sevenDay: { ...MOCKUP.limits.sevenDay, percentUsed: 100 } };
+  const { sevenDay, fiveHour } = byRole(buildLines({ ...MOCKUP, limits }, { columns: 120 }));
+  assert.ok(lineText(sevenDay).startsWith('7d  ■■■■■■■■■■■■■■■■ 100% → '), lineText(sevenDay));
+  assert.ok(lineText(fiveHour).startsWith('5h  ■■□□□□□□□□□□□□□□  12% → '), lineText(fiveHour));
+  for (const mark of ['→', '↻', '↗']) assert.equal(column(sevenDay, mark), column(fiveHour, mark), mark);
+});
+
+// 90% used 20 minutes into a 5-hour window is 270%/h: 90 + 270 × 4h40m = 1350% at the reset.
+test('a projection past 999% reads >999%, and the other line stays aligned with it', () => {
+  const limits = { ...MOCKUP.limits, fiveHour: { percentUsed: 90, resetsAtMs: NOW + 5 * HOUR_MS - 20 * 60_000 } };
+  const { sevenDay, fiveHour } = byRole(buildLines({ ...MOCKUP, limits }, { columns: 120 }));
+  assert.ok(lineText(fiveHour).startsWith('5h  ■■■■■■■■■■■■■■□□ 90% → >999%  ↻ 4h40m'), lineText(fiveHour));
+  assert.ok(lineText(sevenDay).startsWith('7d  ■■■■■■□□□□□□□□□□ 39% →   69%  ↻ '), lineText(sevenDay));
+  for (const mark of ['→', '↻', '↗']) assert.equal(column(sevenDay, mark), column(fiveHour, mark), mark);
+});
+
 test('a limit without a reset time shows its usage with dashes and keeps the other line aligned', () => {
   const limits = { ...MOCKUP.limits, sevenDay: { percentUsed: 39, resetsAtMs: null } };
   const [sevenDay, fiveHour] = plain(buildLines({ ...MOCKUP, limits }, { columns: 120 })).slice(3);
