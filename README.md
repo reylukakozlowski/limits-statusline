@@ -153,10 +153,12 @@ The context bar is green below 50%, orange to 80% and red above. The context lin
 its lowest to its highest point, so it shows the shape of the trend; the percentage next to the
 bar is the absolute figure.
 
-In the desktop app the cache countdown is estimated: Claude Code keeps the cache warm for an hour
-after the last response on a plan within its limits and five minutes otherwise, unless
-`promptCacheTtl` or a prompt-cache variable says else. Lines changed are shown in the terminal
-only, because the desktop app does not give plugins that count.
+In the desktop app the cache countdown is worked out from the last response: its cache writes say
+whether they were made for five minutes or for an hour, and the countdown runs that long. Until a
+response has said so, and on Claude Code versions that do not report it, the band assumes what
+Claude Code documents: an hour on a plan within its limits and five minutes otherwise, unless
+`promptCacheTtl` or a prompt-cache variable says else. Lines changed and fast mode are shown in
+the terminal only, because the desktop app does not give plugins either.
 
 ## Settings
 
@@ -216,12 +218,12 @@ it from the directory, `-sealoop` when you added it from GitHub.
     runtime, model, working folder, session id and version); from each model request (a
     `turn.step` hook) only the effort level, handing the request and the response on unchanged
     without looking at their text; from each finished turn only its token counts, for the cache
-    ratio; the plan limit history file; where `git` gives no answer, whether Claude Code has the session
+    ratio and the cache's lifetime; the plan limit history file; where `git` gives no answer, whether Claude Code has the session
     in a git repository and the session's `.git/HEAD` (in a worktree, its `.git` file and the
-    `HEAD` file in the folder it names); the settings, of which it uses only `promptCacheTtl`; and
-    the variables
+    `HEAD` file in the folder it names); until a turn has reported the cache's lifetime, the
+    settings, of which it uses only `promptCacheTtl`, and the variables
     `FORCE_PROMPT_CACHING_5M`, `CLAUDE_CODE_PROMPT_CACHE_TTL` and `ENABLE_PROMPT_CACHING_1H`, to
-    know how long the prompt cache stays warm, and `CLAUDE_CONFIG_DIR`, `USERPROFILE` and `HOME`,
+    know how long the prompt cache stays warm; and `CLAUDE_CONFIG_DIR`, `USERPROFILE` and `HOME`,
     only to find the configuration folder.
   - **What it sends, and where:** nothing, and nowhere. It makes no network requests, and the
     `git status` above is the only program it starts. What it reads is drawn in the band and kept
@@ -232,8 +234,8 @@ it from the directory, `-sealoop` when you added it from GitHub.
     start-up, settings or instructions file, and no tool runs it or takes it as settings or
     instructions. The code names the file in the write itself; only its folder comes from
     `CLAUDE_CONFIG_DIR` or your home folder, as Claude Code's own configuration folder does.
-  - **What it keeps:** the effort, cache counts, time of the last response, context history and git
-    state, in the state Claude Code holds for the mod during the session.
+  - **What it keeps:** the effort, cache counts and lifetime, time of the last response, context
+    history and git state, in the state Claude Code holds for the mod during the session.
 
 With `CLAUDE_CONFIG_DIR` set, these folders live there instead of `~/.claude`.
 

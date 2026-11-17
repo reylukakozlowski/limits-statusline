@@ -13,7 +13,7 @@ import { buildLines } from '../core/layout.mjs';
 import { EMPTY_LIMIT_HISTORY, readLimitHistory, serializeLimitHistory } from '../core/limit-history.mjs';
 import { limitHistoryPath } from '../core/paths.mjs';
 import { renderBand } from './band-view.mjs';
-import { cacheTtlFromEngine } from './cache-ttl.mjs';
+import { cacheTtlFromEngine, observedCacheTtlMs } from './cache-ttl.mjs';
 import { configFolderFor, unreadableFileWatch, withMeasuredLimits } from './limit-history.mjs';
 import { shouldDraw, supportsTypography } from './policy.mjs';
 import { snapshotFromSession } from './snapshot.mjs';
@@ -67,7 +67,8 @@ export function registerBand(on, options) {
       $.session.usage(), $.session.model(), $.session.cwd(), read($, tracker), $.clock.now(), hasTypography($),
       loadLimitReadings($),
     ]);
-    const cacheTtlMs = await readCacheTtl($, usage?.rateLimits, nowMs);
+    // The lifetime the API reported, else the one Claude Code's settings and the plan imply.
+    const cacheTtlMs = observedCacheTtlMs(state) ?? await readCacheTtl($, usage?.rateLimits, nowMs);
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const snapshot = snapshotFromSession({ usage, modelRaw, cwd, tracker: state, nowMs, timeZone, limitReadings, cacheTtlMs });
     const lines = buildLines(snapshot, { columns: e.props.bodyColumns });
