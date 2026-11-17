@@ -120,6 +120,7 @@ and the command above restores it as long as the plugin is installed.
 | `cache 99%` | `prompt_cache.hit_ratio` | Share of input tokens served from the prompt cache |
 | `52m` / `cold` | `prompt_cache.expires_at` | How long the prompt cache stays warm without a new prompt (yellow in its last 5 minutes), or that it went cold and the next prompt rebuilds it |
 | `xhigh` | `effort.level` | Reasoning effort of the session (desktop: shown after the first request) |
+| `fast` | `fast_mode` | Shown in yellow while [fast mode](https://code.claude.com/docs/en/fast-mode) is on, which costs more than standard speed (terminal only) |
 | `+156 -23` | `cost.total_lines_added`, `total_lines_removed` | Lines of code added and removed in the session (terminal only) |
 | `ctx 54% 543k/1.0M` | `context_window` | Context window fill; the line shows how it moved during the session |
 | `7d` / `5h` | `rate_limits` | The weekly (7-day) and 5-hour plan limits: usage now `→` projected at the reset, `↻` time and clock time of the reset, `↗` pace, `⚠` when the limit runs out before the reset |

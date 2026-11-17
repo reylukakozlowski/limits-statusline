@@ -30,7 +30,7 @@ All of it stays on your computer, as the next two sections describe.
 ## What it reads
 
 - What Claude Code gives every status line and mod: session cost and duration, lines changed,
-  context window fill and size, prompt-cache counts and expiry, effort, model, plan limit usage
+  context window fill and size, prompt-cache counts and expiry, effort, whether fast mode is on, model, plan limit usage
   and reset times, and the working folder. It does not read prompts, responses, the conversation
   history or Claude's memory. In the desktop app the band takes the effort from each model request
   (a `turn.step` hook) and hands the request and the response on without looking at their text.

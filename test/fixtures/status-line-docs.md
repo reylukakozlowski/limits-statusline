@@ -25,6 +25,7 @@ Claude Code sends these fields to your script on stdin:
 | `context_window.used_percentage` | The percentage of the window in use |
 | `context_window.current_usage` | Token counts of the last call |
 | `effort.level` | The session's effort level |
+| `fast_mode` | Whether fast mode is on for the session |
 | `rate_limits.five_hour.used_percentage`, `rate_limits.seven_day.used_percentage` | How much of the window is used, from 0 to 100 |
 | `rate_limits.five_hour.resets_at`, `rate_limits.seven_day.resets_at` | When the window resets, in Unix epoch seconds |
 | `prompt_cache` | Cache statistics, described below |
@@ -57,6 +58,7 @@ Claude Code sends these fields to your script on stdin:
 >     "current_usage": { "input_tokens": 100, "output_tokens": 20, "cache_creation_input_tokens": 400, "cache_read_input_tokens": 1000 }
 >   },
 >   "prompt_cache": { "warm": true, "ttl": "1h", "expires_at": 1800003120, "hit_ratio": 0.6 },
+>   "fast_mode": false,
 >   "effort": { "level": "high" },
 >   "rate_limits": {
 >     "five_hour": { "used_percentage": 12, "resets_at": 1800015000 },

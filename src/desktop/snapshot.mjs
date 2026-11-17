@@ -38,7 +38,10 @@ export function snapshotFromSession({
     }),
     promptCache: Number.isFinite(cacheTtlMs) ? promptCacheAfter(state.lastTurn ?? null, cacheTtlMs) : null,
     effort: state.effort ?? null,
-    linesChanged: null, // the mods API has no count of changed lines; the terminal gets Claude Code's own
+    // The mods API reports neither fast mode nor a count of changed lines; the terminal gets
+    // Claude Code's own.
+    fastMode: null,
+    linesChanged: null,
     context: {
       usedTokens: numberOrNull(context.tokens),
       windowTokens: numberOrNull(context.window),

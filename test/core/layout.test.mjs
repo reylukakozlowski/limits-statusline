@@ -50,6 +50,19 @@ test('layout drops missing session items without doubled separators', () => {
   assert.equal(lineText(session), '    5h40m · cache 99% 52m · +156 -23');
 });
 
+// Fast mode costs twice the standard price on Fable 5.2 and draws from usage credits
+// (https://code.claude.com/docs/en/fast-mode), hence the warning colour.
+test('fast mode shows after the effort in the warning colour, and only while it is on', () => {
+  const sessionOf = (fastMode) => byRole(buildLines({ ...MOCKUP, fastMode }, { columns: 120 })).session;
+  assert.equal(lineText(sessionOf(true)), '    $20.33 · 5h40m · cache 99% 52m · xhigh · fast · +156 -23');
+  assert.equal(segmentWith(sessionOf(true), 'fast').tone, TONE.warn);
+  for (const off of [false, null, undefined, 'true', 1]) {
+    assert.equal(lineText(sessionOf(off)), MOCKUP_LINES[1], String(off));
+  }
+  const alone = byRole(buildLines({ ...EMPTY, fastMode: true }, { columns: 120 })).session;
+  assert.equal(lineText(alone), '    fast');
+});
+
 test('layout keeps an empty session line in its place as a dash', () => {
   const noSession = {
     ...MOCKUP, costUsd: null, durationMs: null, cacheHitRatio: null, effort: null, linesChanged: null,
