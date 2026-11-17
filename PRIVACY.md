@@ -30,8 +30,9 @@ All of it stays on your computer, as the next two sections describe.
 ## What it reads
 
 - What Claude Code gives every status line and mod: session cost and duration, lines changed,
-  context window fill and size, prompt-cache counts and expiry, effort, whether fast mode is on, model, plan limit usage
-  and reset times, and the working folder. It does not read prompts, responses, the conversation
+  context window fill and size, prompt-cache counts and expiry, effort, whether fast mode is on,
+  model, plan limit usage and reset times, a gateway's spend limit (its share, its reset and the
+  amounts in dollars), and the working folder. It does not read prompts, responses, the conversation
   history or Claude's memory. In the desktop app the band takes the effort from each model request
   (a `turn.step` hook) and hands the request and the response on without looking at their text.
 - The time the session's transcript file was last written (its modification time only, never
@@ -57,7 +58,7 @@ Everything stays on your computer, under `~/.claude` (or `CLAUDE_CONFIG_DIR` whe
 | What | Where | Kept |
 |---|---|---|
 | Context fill history: one list of percentages per session | `plugins/data/limits-statusline-<source>/history/` | Pruned after 7 days |
-| Plan limit history: the 5-hour and 7-day usage percentages with their time and reset time, and each session's id with the last figures it reported, shared by the status line and the desktop band | `limits-statusline/limit-history.json` | Whenever a reading is added, readings older than 1 hour (5-hour) or 48 hours (7-day) are pruned except the newest of them, and sessions not seen for 48 hours or beyond the 64 most recent; the file stays until you delete it |
+| Plan limit history: the 5-hour and 7-day usage percentages with their time and reset time, each session's id with the last figures it reported, and when each of the two windows was last reported, shared by the status line and the desktop band | `limits-statusline/limit-history.json` | Whenever a reading is added, readings older than 1 hour (5-hour) or 48 hours (7-day) are pruned except the newest of them, and sessions not seen for 48 hours or beyond the 64 most recent; the file stays until you delete it |
 | A copy of the plugin's status line code with a fingerprint of that code, and a setup marker with the path of the `settings.json` setup changed | `plugins/data/limits-statusline-<source>/` | Until you uninstall the plugin |
 | The desktop band's figures (effort, cache counts and lifetime, context history, git state with the branch name) | The session state Claude Code holds for the plugin's mod | For the session; the plugin keeps none of it beyond the session |
 | The `statusLine` entry | `settings.json` | Until `/limits-statusline:setup --uninstall` |

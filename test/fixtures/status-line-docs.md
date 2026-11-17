@@ -28,6 +28,8 @@ Claude Code sends these fields to your script on stdin:
 | `fast_mode` | Whether fast mode is on for the session |
 | `rate_limits.five_hour.used_percentage`, `rate_limits.seven_day.used_percentage` | How much of the window is used, from 0 to 100 |
 | `rate_limits.five_hour.resets_at`, `rate_limits.seven_day.resets_at` | When the window resets, in Unix epoch seconds |
+| `rate_limits.spend_limit.used_percentage`, `rate_limits.spend_limit.resets_at` | Behind a gateway, how much of the spend limit is used and when its period resets |
+| `rate_limits.spend_limit.used_usd`, `rate_limits.spend_limit.limit_usd`, `rate_limits.spend_limit.period` | The spend so far and the limit in US dollars, and the limit's period |
 | `prompt_cache` | Cache statistics, described below |
 | `session_id` | The session's id |
 | `transcript_path` | The transcript file |
@@ -62,7 +64,8 @@ Claude Code sends these fields to your script on stdin:
 >   "effort": { "level": "high" },
 >   "rate_limits": {
 >     "five_hour": { "used_percentage": 12, "resets_at": 1800015000 },
->     "seven_day": { "used_percentage": 39, "resets_at": 1800274200 }
+>     "seven_day": { "used_percentage": 39, "resets_at": 1800274200 },
+>     "spend_limit": { "used_percentage": 63, "resets_at": 1801000000, "used_usd": 314.12, "limit_usd": 500, "period": "monthly" }
 >   }
 > }
 > ```

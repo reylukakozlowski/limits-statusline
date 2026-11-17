@@ -29,7 +29,8 @@ there.
 | Terminal status line | Claude Code with status line support and **Node.js 20+** on `PATH` (on macOS, for example, from [nodejs.org](https://nodejs.org/en/download), Homebrew or nvm) |
 | Branch in the header | `git` 2.15 or later on `PATH`; on macOS it comes with the Xcode Command Line Tools (`xcode-select --install`). Where git is missing, too slow or refuses the folder, the branch is read from the repository's `.git/HEAD`, without the `*` for uncommitted changes; `no git` means the folder is in no repository |
 | Desktop band | Claude Code 2.1.290 or later (the desktop app updates its own copy); the monospaced face from 2.1.299. No Node.js needed |
-| Weekly (7-day) and 5-hour limits | A claude.ai Pro, Max or Ultra subscription; the limits appear after the session's first response. Verified Ultra accounts have no 5-hour limit ([Ultra plan](https://support.claude.com/en/articles/17728952)) |
+| Weekly (7-day) and 5-hour limits | A claude.ai Pro, Max or Ultra subscription; the limits appear after the session's first response. Verified Ultra accounts have no 5-hour limit ([Ultra plan](https://support.claude.com/en/articles/17728952)), so they get no `5h` line |
+| Spend limit (`usd`) | A [Claude apps gateway with a spend limit](https://code.claude.com/docs/en/claude-apps-gateway-spend-limits); the line needs Claude Code 2.1.251+, and the amounts in dollars need 2.1.284+ on both Claude Code and the gateway and are shown in the terminal only |
 | Prompt-cache ratio in the terminal | Exact with Claude Code 2.1.251+, estimated from the last request on older versions |
 
 ## Install
@@ -87,7 +88,7 @@ and the command above restores it as long as the plugin is installed.
 1. **Turn the status line on, after a look at what changes.** Type
    `/limits-statusline:setup --dry-run`: it prints the `statusLine` command it would write and
    writes nothing. Then type `/limits-statusline:setup`: it writes the entry, saves the status line
-   you had, and the five lines appear at the bottom of the terminal after your next message.
+   you had, and the status lines appear at the bottom of the terminal after your next message.
 2. **See whether the 5-hour limit runs out before it resets.** Work as usual and read the `5h`
    line:
 
@@ -123,7 +124,8 @@ and the command above restores it as long as the plugin is installed.
 | `fast` | `fast_mode` | Shown in yellow while [fast mode](https://code.claude.com/docs/en/fast-mode) is on, which costs more than standard speed (terminal only) |
 | `+156 -23` | `cost.total_lines_added`, `total_lines_removed` | Lines of code added and removed in the session (terminal only) |
 | `ctx 54% 543k/1.0M` | `context_window` | Context window fill; the line shows how it moved during the session |
-| `7d` / `5h` | `rate_limits` | The weekly (7-day) and 5-hour plan limits: usage now `→` projected at the reset, `↻` time and clock time of the reset, `↗` pace, `⚠` when the limit runs out before the reset |
+| `7d` / `5h` | `rate_limits` | The weekly (7-day) and 5-hour plan limits: usage now `→` projected at the reset, `↻` time and clock time of the reset, `↗` pace, `⚠` when the limit runs out before the reset. A window the account has not been sent for a week has no line |
+| `usd` | `rate_limits.spend_limit` | Behind a Claude apps gateway: the share of your spend limit used (past 100% once exceeded), your spend and the limit in dollars when the gateway sends them (terminal only), and `↻` the reset of its period. No pace or projection |
 
 **Pace** is how fast the usage grew recently, shown per hour: over the last **30 minutes** for the
 5-hour limit and over the last **24 hours** for the 7-day limit, so the 7-day pace includes your
@@ -186,9 +188,9 @@ it from the directory, `-sealoop` when you added it from GitHub.
   `history/` (pruned after 7 days). Where git gives no answer, it reads the branch from the
   repository's `.git/HEAD`, as the band does.
 - **Plan limit history** (status line and desktop band alike): the 5-hour and 7-day percentages
-  with their time and reset time, and each session's last figures, in
-  `~/.claude/limits-statusline/limit-history.json`, kept for 1 hour (5-hour) and 48 hours
-  (7-day). A figure a session reports for the first time may be an old one, so the status line
+  with their time and reset time, each session's last figures, and when each of the two windows
+  was last reported, in `~/.claude/limits-statusline/limit-history.json`. The readings are kept
+  for 1 hour (5-hour) and 48 hours (7-day). A figure a session reports for the first time may be an old one, so the status line
   stamps it with the time the session's transcript was last written (the file's time only, never
   its contents).
 - **Setup** (`/limits-statusline:setup`): copies the status line runtime (the plugin's own
@@ -255,9 +257,18 @@ With `CLAUDE_CONFIG_DIR` set, these folders live there instead of `~/.claude`.
 - **The bottom line went blank after the plugin was removed or moved to another source** — run
   `/limits-statusline:setup` again with the plugin installed: it rebuilds the runtime copy and
   points `settings.json` at it, or use `--uninstall` to put your previous status line back.
-- **`7d —` and `5h —`** — the limits arrive with the first response of a session and only for
-  Pro, Max and Ultra subscribers. A verified Ultra account has no 5-hour limit: while Claude Code
-  sends no 5-hour window, `5h —` stays.
+- **`7d —`, `5h —`, or no limit line at all** — the limits arrive with the first response of a
+  session and only for Pro, Max and Ultra subscribers. A limit's line is drawn only for a window
+  the account has: one that Claude Code has not sent for a week (a verified Ultra account has no
+  5-hour window, an API key has neither) has no line, and a window that only reset keeps its line
+  as a dash until the next response. Right after installing there is no history yet, so the limit
+  lines appear with the session's first response. Behind a Claude apps gateway with a spend limit,
+  a `usd` line shows its share, the amounts when the gateway sends them, and the reset.
+- **No line for the weekly Fable limit** — Claude Code has a separate weekly limit for Fable
+  models (its [changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md), 2.1.323),
+  but as of 2.1.325 it sends status lines and mods only the 5-hour and 7-day windows and a
+  gateway's spend limit (the [status line page](https://code.claude.com/docs/en/statusline) lists
+  no other), so the plugin cannot show it.
 - **`7d` shows `→ —` and `↗ —` after installing** — the 7-day pace needs 12 hours of readings.
   With no history from before the weekly reset, the projection appears once the week is 12 hours
   old. Until the shared history covers a day, the pace is the average since the weekly reset,

@@ -29,13 +29,14 @@ const failing = async () => { throw new Error('denied') }
 
 type Answers = {
   processRun?: ($: any, e: any) => Promise<unknown>, files?: Record<string, string>, folders?: string[], cwd?: string,
-  asked?: string[], refuse?: boolean, writeFails?: boolean,
+  asked?: string[], refuse?: boolean, writeFails?: boolean, usage?: Record<string, unknown>,
 }
 
 function answerSession(on: any, {
   processRun, files = {}, folders = [], cwd = `${HOME_DIR}/daily-claude`, asked = [], refuse = false, writeFails = false,
+  usage = USAGE,
 }: Answers = {}) {
-  on('session.usage', async () => ({ value: USAGE }))
+  on('session.usage', async () => ({ value: usage }))
   on('session.model', async () => ({ value: 'claude-opus-5-5' }))
   on('session.cwd', async () => ({ value: cwd }))
   on('session.id', async () => ({ value: 'session-under-test' }))
@@ -348,6 +349,20 @@ test('the cache countdown runs for the lifetime the turn\'s cache write was made
   const ui = await mount($, 'desktop')
   expect(await ui.find({ type: 'Text', text: /cache 71% 5m/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /1h00m/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+// Behind a Claude apps gateway the session has a spend limit and no plan windows, and the shared
+// history has never seen one: the band draws the usd line and no 7d or 5h line.
+test('behind a gateway draws the spend limit and no line for the plan windows it never saw', async ($, on) => {
+  const gateway = { ...USAGE, rateLimits: [{ kind: 'spend_limit', percentUsed: 63, resetsAt: iso(NOW + 15_000_000) }] }
+  answerSession(on, { usage: gateway })
+  const ui = await mount($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /^usd/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /63%/ })).toBeDefined()
+  // The labels are padded to four cells; `5h40m` is the session's runtime.
+  expect(await ui.find({ type: 'Text', text: /^7d {2}/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^5h {2}/ })).toBeUndefined()
   await ui.unmount()
 })
 

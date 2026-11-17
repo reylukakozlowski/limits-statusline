@@ -1,10 +1,12 @@
-// Snapshot → five lines of tone-tagged segments. The single place that decides what the
+// Snapshot → lines of tone-tagged segments: the header, the session and the context, then a line
+// for each limit the account has (the 7-day and the 5-hour plan windows, a gateway's spend limit). The single place that decides what the
 // status line says; renderers only decide how a tone looks.
 
 import {
   DASH, formatClock, formatCountdown, formatDuration, formatPercent, formatRate, formatTokens, formatUsd,
 } from './format.mjs';
 import { BAR_CELLS, brailleLine, normalizeSeries, progressBar } from './glyphs.mjs';
+import { wasSeenLately } from './limit-history.mjs';
 import { LIMIT_WINDOWS } from './limit-windows.mjs';
 import { analyzeLimit } from './metrics.mjs';
 import { cacheTimeLeftMs } from './prompt-cache.mjs';
@@ -13,6 +15,8 @@ import { TONE, cacheTone, contextTone, limitTone } from './thresholds.mjs';
 /**
  * The contract both adapters fill. Unknown values are null, never undefined.
  * @typedef {import('./metrics.mjs').LimitReading} LimitReading
+ * @typedef {{ percentUsed: number, resetsAtMs: number | null, usedUsd: number | null, limitUsd: number | null }} SpendLimit
+ *   a Claude apps gateway's spend limit: the share used (past 100 once exceeded), and the amounts when sent
  * @typedef {{
  *   nowMs: number,
  *   timeZone: string | null,
@@ -30,6 +34,8 @@ import { TONE, cacheTone, contextTone, limitTone } from './thresholds.mjs';
  *   contextHistory: number[],
  *   limits: { sevenDay: LimitReading | null, fiveHour: LimitReading | null },
  *   limitReadings: import('./limit-history.mjs').LimitReadings,
+ *   limitsSeenAtMs: import('./limit-history.mjs').LimitSeen,
+ *   spendLimit: SpendLimit | null,
  * }} Snapshot
  * A segment that draws a line chart also carries its points (`series`, 0–1, oldest first), so a
  * surface that can draw vector graphics draws the line instead of the braille `text`.
@@ -85,6 +91,7 @@ export function buildLines(snapshot, { columns } = {}) {
     sessionLine(snapshot),
     contextLine(snapshot, size),
     ...limitLines(snapshot, size, width),
+    ...spendLimitLines(snapshot, size, width),
   ];
 }
 
@@ -159,7 +166,9 @@ function linesChangedSegments(linesChanged) {
 
 function limitLines(snapshot, size, width) {
   const clock = { nowMs: snapshot.nowMs, timeZone: snapshot.timeZone ?? null };
-  const limits = LIMIT_LINES.map(({ label, kind }) => {
+  // A window without a figure keeps its line, as a dash, only while the account is known to have it.
+  const hasLine = ({ kind }) => Boolean(snapshot.limits?.[kind]) || wasSeenLately(snapshot.limitsSeenAtMs?.[kind], snapshot.nowMs);
+  const limits = LIMIT_LINES.filter(hasLine).map(({ label, kind }) => {
     const reading = snapshot.limits?.[kind] ?? null;
     const analysis = analyzeLimit(reading, LIMIT_WINDOWS[kind], clock, snapshot.limitReadings?.[kind] ?? []);
     const clockText = formatClock(reading?.resetsAtMs, clock);
@@ -221,6 +230,27 @@ function limitLine({ label, analysis, projectionText: projection }, { size, deta
       ? [segment(GAP), segment(`⚠ 100% in ${formatCountdown(analysis.limitInMs)}`, TONE.alert)]
       : []),
   ];
+}
+
+// A gateway's spend limit: no pace or projection, since the length of its period is not always
+// sent. `usd ■■■■■■■■■■□□□□□□ 63%  $314.12/$500.00  ↻ 12d04h Mon 12:10`; the clock time goes
+// first when the line is too wide.
+function spendLimitLines({ spendLimit, nowMs, timeZone }, size, width) {
+  if (!spendLimit || !Number.isFinite(spendLimit.percentUsed)) return [];
+  const clock = { nowMs, timeZone: timeZone ?? null };
+  const draw = (showClock) => {
+    const clockText = showClock ? formatClock(spendLimit.resetsAtMs, clock) : DASH;
+    const countdown = formatCountdown(spendLimit.resetsAtMs - nowMs);
+    const hasAmounts = Number.isFinite(spendLimit.usedUsd) && Number.isFinite(spendLimit.limitUsd);
+    return [
+      segment('usd'.padEnd(LABEL_WIDTH), TONE.muted),
+      ...barSegments(spendLimit.percentUsed, limitTone(spendLimit), size.barWidth),
+      ...(hasAmounts ? [segment(GAP), segment(`${formatUsd(spendLimit.usedUsd)}/${formatUsd(spendLimit.limitUsd)}`, TONE.muted)] : []),
+      ...(countdown === DASH ? [] : [segment(GAP), segment(`↻ ${countdown}${clockText === DASH ? '' : ` ${clockText}`}`, TONE.muted)]),
+    ];
+  };
+  const full = draw(true);
+  return [width === null || lineText(full).length <= width ? full : draw(false)];
 }
 
 const projectionText = (percent) => (Math.round(percent) > PROJECTION_CAP ? `>${PROJECTION_CAP}%` : formatPercent(percent));
