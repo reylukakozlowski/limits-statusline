@@ -47,6 +47,27 @@ test('the 7-day pace looks back a whole day, across the weekly reset', () => {
   near(recentRate(points, { percentUsed: 3, resetsAtMs: reset }, week, NOW), 13 / 20);
 });
 
+// The projection multiplies the rate by the time left in the window, so a rate over a few
+// minutes of a week is noise times 500. Half the look-back is the least: 15 minutes, 12 hours.
+test('a window has no pace until its readings cover half the look-back', () => {
+  const week = { windowMs: 7 * 24 * HOUR, paceLookbackMs: 24 * HOUR };
+  const weekOpened = (agoMs) => ({ percentUsed: 3, resetsAtMs: NOW - agoMs + week.windowMs });
+  assert.equal(recentRate([], weekOpened(20 * MINUTE), week, NOW), null);
+  assert.equal(recentRate([], weekOpened(12 * HOUR - MINUTE), week, NOW), null);
+  near(recentRate([], weekOpened(12 * HOUR), week, NOW), 3 / 12);
+  const fiveOpened = (agoMs) => ({ percentUsed: 3, resetsAtMs: NOW - agoMs + FIVE.windowMs });
+  assert.equal(recentRate([], fiveOpened(14 * MINUTE), FIVE, NOW), null);
+  near(recentRate([], fiveOpened(15 * MINUTE), FIVE, NOW), 12);
+});
+
+test('a week that just opened has its pace at once when the week before left readings', () => {
+  const week = { windowMs: 7 * 24 * HOUR, paceLookbackMs: 24 * HOUR };
+  const previousReset = NOW - 20 * MINUTE;
+  const points = [[NOW - 20 * HOUR, 80, previousReset], [NOW - 10 * HOUR, 90, previousReset]];
+  // 10 points before the reset and 3 after it, over the 20 hours the readings cover.
+  near(recentRate(points, { percentUsed: 3, resetsAtMs: previousReset + week.windowMs }, week, NOW), 13 / 20);
+});
+
 test('a large drop within one window is a manual reset: usage counts again from the low figure', () => {
   const points = [at(50, 40), at(20, 1), at(0, 5)];
   // Cumulative 40 → 41 → 45; 30 minutes ago the line from 40 to 41 stands at 40 2/3.

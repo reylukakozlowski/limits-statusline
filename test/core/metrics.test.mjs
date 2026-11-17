@@ -1,9 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FULL_PERCENT, analyzeLimit, cacheHitRatio } from '../../src/core/metrics.mjs';
-import { LIMIT_KINDS, LIMIT_WINDOWS, retentionMs } from '../../src/core/limit-windows.mjs';
+import { LIMIT_KINDS, LIMIT_WINDOWS, minPaceSpanMs, retentionMs } from '../../src/core/limit-windows.mjs';
 import { nightBeforeReset } from '../../src/core/night.mjs';
-import { MIN_ELAPSED_MS } from '../../src/core/pace.mjs';
 
 const HOUR = 3_600_000;
 const near = (actual, expected, tolerance) =>
@@ -26,7 +25,8 @@ test('the windows are five hours and seven days, with 30-minute and one-day look
   assert.equal(SEVEN_DAY.bucketMs, 300_000);
   assert.equal(retentionMs(FIVE_HOUR), 3_600_000);
   assert.equal(retentionMs(SEVEN_DAY), 172_800_000);
-  assert.equal(MIN_ELAPSED_MS, 900_000);
+  assert.equal(minPaceSpanMs(FIVE_HOUR), 900_000);
+  assert.equal(minPaceSpanMs(SEVEN_DAY), 43_200_000);
   assert.equal(FULL_PERCENT, 100);
 });
 

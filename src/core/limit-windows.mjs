@@ -31,6 +31,14 @@ export const LIMIT_WINDOWS = Object.freeze({
 export const LIMIT_KINDS = Object.freeze(Object.keys(LIMIT_WINDOWS));
 
 /**
+ * The shortest stretch of readings a pace is read off: half the look-back, so 15 minutes of a
+ * 5-hour window and 12 hours of a week. A rate over less is noise, and the projection multiplies
+ * it by the time left in the window: 3% in a week's first 20 minutes would project past 1000%.
+ * @param {LimitWindow} window
+ */
+export const minPaceSpanMs = (window) => window.paceLookbackMs / 2;
+
+/**
  * How long readings are kept: twice the look-back, so a reading before the look-back's start is
  * still there to read the start off.
  * @param {LimitWindow} window
