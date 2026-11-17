@@ -3,7 +3,7 @@
   "description": "Claude Code plugins by SeaLoop.",
   "owner": {
     "name": "SeaLoop",
-    "email": "lukakozlowski@outlook.com"
+    "email": "lukakozlowski@sealoop.com"
   },
   "plugins": [
     {
@@ -16,7 +16,7 @@
       "description": "Status line with the 5-hour and weekly plan usage limits, recent pace and usage projected to the reset, plus session cost, cache, effort and context.",
       "author": {
         "name": "Luka Kozlowski",
-        "email": "lukakozlowski@outlook.com"
+        "email": "lukakozlowski@sealoop.com"
       }
     }
   ]

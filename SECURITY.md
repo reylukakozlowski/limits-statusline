@@ -8,7 +8,7 @@ updated for you once the fixed version is published there.
 
 ## Report a vulnerability
 
-Please do not open a public issue for a security problem. Email **lukakozlowski@outlook.com** with
+Please do not open a public issue for a security problem. Email **lukakozlowski@sealoop.com** with
 the subject `limits-statusline security`, and include:
 
 - what an attacker could do, and what they need for it;
