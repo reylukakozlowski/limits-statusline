@@ -112,6 +112,13 @@ test('narrower lines drop the clock time first, then the time to 100%, on both l
   ]);
 });
 
+// An empty COLUMNS reads as the number 0: a width nothing fits in, not a narrow terminal.
+test('a width of zero or less is an unknown width: the full layout, as without one', () => {
+  for (const columns of [0, -1, Number(''), NaN, undefined, null, '80']) {
+    assert.deepEqual(plain(buildLines(MOCKUP, { columns })), [...MOCKUP_LINES], String(columns));
+  }
+});
+
 test('without a known width or time zone the limit lines keep everything they can show', () => {
   const { fiveHour } = byRole(buildLines(RUNNING_OUT, { columns: undefined }));
   assert.match(lineText(fiveHour), /10:00 .* ⚠ 100% in 1h17m$/);

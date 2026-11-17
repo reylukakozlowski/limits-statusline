@@ -69,16 +69,18 @@ export const lineText = (line) => line.map((part) => part.text).join('');
 
 /**
  * @param {Snapshot} snapshot
- * @param {{ columns?: number }} options terminal or band width in cells
+ * @param {{ columns?: number }} options terminal or band width in cells; anything but a positive
+ *   number is an unknown width (an unset or empty COLUMNS), which draws everything
  * @returns {Line[]}
  */
 export function buildLines(snapshot, { columns } = {}) {
-  const size = Number.isFinite(columns) && columns < FULL_LINE_COLUMNS ? NARROW : WIDE;
+  const width = Number.isFinite(columns) && columns > 0 ? columns : null;
+  const size = width !== null && width < FULL_LINE_COLUMNS ? NARROW : WIDE;
   return [
     headerLine(snapshot),
     sessionLine(snapshot),
     contextLine(snapshot, size),
-    ...limitLines(snapshot, size, columns),
+    ...limitLines(snapshot, size, width),
   ];
 }
 
@@ -137,7 +139,7 @@ function linesChangedSegments(linesChanged) {
   return [segment(`+${added}`, TONE.added), segment(` -${removed}`, TONE.removed)];
 }
 
-function limitLines(snapshot, size, columns) {
+function limitLines(snapshot, size, width) {
   const clock = { nowMs: snapshot.nowMs, timeZone: snapshot.timeZone ?? null };
   const limits = LIMIT_LINES.map(({ label, kind }) => {
     const reading = snapshot.limits?.[kind] ?? null;
@@ -149,7 +151,7 @@ function limitLines(snapshot, size, columns) {
     const resets = resetColumn(limits.filter(({ analysis }) => analysis), details.showClock);
     return limits.map((limit) => limitLine(limit, { size, details, reset: resets.get(limit) }));
   };
-  const fits = (lines) => !Number.isFinite(columns) || lines.every((line) => lineText(line).length <= columns);
+  const fits = (lines) => width === null || lines.every((line) => lineText(line).length <= width);
   for (const details of LIMIT_DETAILS) {
     const lines = draw(details);
     if (fits(lines)) return lines;
