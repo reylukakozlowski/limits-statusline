@@ -10,16 +10,17 @@ import { atom, read, update } from 'claude-code';
 import { dotGitPaths, gitDirFromFile, gitFromHead } from '../core/git-head.mjs';
 import { NOT_A_REPO, parseGitStatus } from '../core/git-status.mjs';
 import { buildLines } from '../core/layout.mjs';
-import { EMPTY_LIMIT_HISTORY, parseLimitHistory, serializeLimitHistory } from '../core/limit-history.mjs';
+import { EMPTY_LIMIT_HISTORY, readLimitHistory, serializeLimitHistory } from '../core/limit-history.mjs';
 import { limitHistoryPath } from '../core/paths.mjs';
 import { renderBand } from './band-view.mjs';
 import { cacheTtlFromEngine } from './cache-ttl.mjs';
-import { configFolderFor, withMeasuredLimits } from './limit-history.mjs';
+import { configFolderFor, unreadableFileWatch, withMeasuredLimits } from './limit-history.mjs';
 import { shouldDraw, supportsTypography } from './policy.mjs';
 import { snapshotFromSession } from './snapshot.mjs';
 import { afterClear, initialTracker, withContext, withEffort, withGit, withTurnUsage } from './tracker.mjs';
 
 const tracker = atom({ plugin: 'limits-statusline', key: 'tracker' }, initialTracker());
+const historyFile = unreadableFileWatch();
 
 // Reset countdowns tick in minutes; redraw once a minute even while the session is idle.
 const REDRAW_EVERY_MS = 60_000;
@@ -167,19 +168,20 @@ async function configFolder($) {
   }
 }
 
-async function readLimitHistory($, configDir) {
+/** @returns the shared history, the empty one where there is no file yet, null for a file that cannot be read */
+async function storedLimitHistory($, configDir) {
   const file = limitHistoryPath(configDir);
   try {
-    return (await $.fs.exists(file)) ? parseLimitHistory(await $.fs.read(file)) : EMPTY_LIMIT_HISTORY;
+    return (await $.fs.exists(file)) ? readLimitHistory(await $.fs.read(file)) : EMPTY_LIMIT_HISTORY;
   } catch {
-    return EMPTY_LIMIT_HISTORY;
+    return null;
   }
 }
 
 /** @returns {Promise<import('../core/limit-history.mjs').LimitReadings>} the shared readings to draw from */
 async function loadLimitReadings($) {
   const configDir = await configFolder($);
-  return (configDir === null ? EMPTY_LIMIT_HISTORY : await readLimitHistory($, configDir)).readings;
+  return ((configDir === null ? null : await storedLimitHistory($, configDir)) ?? EMPTY_LIMIT_HISTORY).readings;
 }
 
 /** Adds this session's plan figures, measured just now, to the shared history. */
@@ -187,7 +189,12 @@ async function recordMeasuredLimits($, rateLimits, nowMs) {
   const configDir = await configFolder($);
   if (configDir === null) return;
   try {
-    const history = await readLimitHistory($, configDir);
+    const stored = await storedLimitHistory($, configDir);
+    // A file that cannot be read may be one another session is writing: it is left alone until
+    // it has stayed unreadable, so its readings are not replaced by this session's alone.
+    if (stored === null && !historyFile.mayReplace(nowMs)) return;
+    if (stored !== null) historyFile.readable();
+    const history = stored ?? EMPTY_LIMIT_HISTORY;
     const sessionId = await $.session.id();
     const next = withMeasuredLimits(history, { sessionId, rateLimits, nowMs });
     // The file's name as fixed text, so that the directory reads which file the mod writes; only

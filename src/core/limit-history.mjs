@@ -20,6 +20,13 @@ export const HISTORY_RETENTION_MS = Object.freeze(Object.fromEntries(
 /** Sessions whose last figures are remembered; the least recently seen fall off first. */
 export const MAX_SESSIONS = 64;
 
+/**
+ * A history file that cannot be read may be one another session is writing right now; replacing
+ * it with this session's readings alone would lose everyone else's. One that still cannot be
+ * read after this long is broken, and is replaced.
+ */
+export const UNREADABLE_GRACE_MS = MS_PER_MINUTE;
+
 /** Reset times this close together name the same window (the API may round them). */
 export const SAME_WINDOW_TOLERANCE_MS = 10 * MS_PER_MINUTE;
 
@@ -111,25 +118,33 @@ export function serializeLimitHistory(history) {
 }
 
 /**
- * Reads the file's text back; anything unreadable, of another version or malformed is dropped,
- * entry by entry, so one bad line never costs the rest.
+ * Reads the file's text back. Malformed entries are dropped one by one, so one bad line never
+ * costs the rest.
  * @param {unknown} text
- * @returns {LimitHistory}
+ * @returns {LimitHistory | null} null when the text is no history of this version: not JSON
+ *   (a file half written), or another version's
  */
-export function parseLimitHistory(text) {
+export function readLimitHistory(text) {
   let data;
   try {
     data = JSON.parse(typeof text === 'string' ? text : '');
   } catch {
-    return EMPTY_LIMIT_HISTORY;
+    return null;
   }
-  if (data === null || typeof data !== 'object' || data.version !== LIMIT_HISTORY_VERSION) return EMPTY_LIMIT_HISTORY;
+  if (data === null || typeof data !== 'object' || data.version !== LIMIT_HISTORY_VERSION) return null;
   const readings = Object.fromEntries(LIMIT_KINDS.map((kind) => [kind, validPoints(data.readings?.[kind])]));
   const sessions = Object.fromEntries(Object.entries(data.sessions ?? {})
     .filter(([, session]) => isSession(session))
     .map(([id, { atMs, fiveHour = null, sevenDay = null }]) => [id, { atMs, fiveHour, sevenDay }]));
   return { readings, sessions };
 }
+
+/**
+ * The history to draw from: the file's, or the empty one when it cannot be read.
+ * @param {unknown} text
+ * @returns {LimitHistory}
+ */
+export const parseLimitHistory = (text) => readLimitHistory(text) ?? EMPTY_LIMIT_HISTORY;
 
 const isPoint = (point) => Array.isArray(point) && point.length === 3
   && Number.isFinite(point[0]) && isPercent(point[1]) && Number.isFinite(point[2]);

@@ -3,7 +3,9 @@
 
 import fs from 'node:fs';
 import { dirname } from 'node:path';
-import { EMPTY_LIMIT_HISTORY, parseLimitHistory, recordLimits, serializeLimitHistory } from '../core/limit-history.mjs';
+import {
+  EMPTY_LIMIT_HISTORY, UNREADABLE_GRACE_MS, readLimitHistory, recordLimits, serializeLimitHistory,
+} from '../core/limit-history.mjs';
 import { writeAtomic } from './atomic-file.mjs';
 
 /**
@@ -13,9 +15,9 @@ import { writeAtomic } from './atomic-file.mjs';
  * @returns {import('../core/limit-history.mjs').LimitReadings}
  */
 export function recordLimitHistory(file, update) {
-  const history = readHistory(file);
+  const { history, isReplaceable } = readHistory(file, update.nowMs);
   const next = recordLimits(history, update);
-  if (next !== history) {
+  if (next !== history && isReplaceable) {
     try {
       fs.mkdirSync(dirname(file), { recursive: true });
       writeAtomic(file, serializeLimitHistory(next));
@@ -41,10 +43,26 @@ export function transcriptWrittenAtMs(transcriptPath) {
   }
 }
 
-function readHistory(file) {
+// The history and whether this run may write the file. A file that is there and cannot be used
+// (another session is writing it, or something holds it) is left alone: this run draws with its
+// own readings and the next one reads again. Only one that stayed unreadable is replaced.
+function readHistory(file, nowMs) {
+  let text;
   try {
-    return parseLimitHistory(fs.readFileSync(file, 'utf8'));
+    text = fs.readFileSync(file, 'utf8');
+  } catch (error) {
+    return { history: EMPTY_LIMIT_HISTORY, isReplaceable: error?.code === 'ENOENT' };
+  }
+  const history = readLimitHistory(text);
+  if (history) return { history, isReplaceable: true };
+  return { history: EMPTY_LIMIT_HISTORY, isReplaceable: nowMs - writtenAtMs(file) >= UNREADABLE_GRACE_MS };
+}
+
+/** When the file was last written; now-like (never replaceable) when that cannot be told. */
+function writtenAtMs(file) {
+  try {
+    return fs.statSync(file).mtimeMs;
   } catch {
-    return EMPTY_LIMIT_HISTORY;
+    return Infinity;
   }
 }

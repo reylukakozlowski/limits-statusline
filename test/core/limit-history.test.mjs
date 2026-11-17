@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  EMPTY_LIMIT_HISTORY, HISTORY_RETENTION_MS, MAX_SESSIONS, parseLimitHistory, recordLimits, serializeLimitHistory,
+  EMPTY_LIMIT_HISTORY, HISTORY_RETENTION_MS, MAX_SESSIONS, parseLimitHistory, readLimitHistory, recordLimits,
+  serializeLimitHistory,
 } from '../../src/core/limit-history.mjs';
 
 const NOW = 1_800_000_000_000;
@@ -153,6 +154,14 @@ test('parseLimitHistory turns anything broken into the empty history and drops b
     readings: { fiveHour: [[NOW, 12, FIVE_RESET]], sevenDay: [] },
     sessions: { a: { atMs: NOW, fiveHour: [12, FIVE_RESET], sevenDay: null } },
   });
+});
+
+test('readLimitHistory tells a file that is no history of this version from an empty one', () => {
+  for (const text of ['', '{ half a fi', 'null', '[]', '{"version":2,"readings":{},"sessions":{}}', undefined, 42]) {
+    assert.equal(readLimitHistory(text), null, String(text));
+    assert.equal(parseLimitHistory(text), EMPTY_LIMIT_HISTORY, String(text));
+  }
+  assert.deepEqual(readLimitHistory('{"version":1}'), { readings: { fiveHour: [], sevenDay: [] }, sessions: {} });
 });
 
 test('the empty history is frozen, so a caller cannot change it by accident', () => {
