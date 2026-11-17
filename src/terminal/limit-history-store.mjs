@@ -9,10 +9,10 @@ import {
 import { writeAtomic } from './atomic-file.mjs';
 
 /**
- * Adds the session's changed readings to the file and returns the readings to draw from.
+ * Adds the session's changed readings to the file and returns the history to draw from.
  * @param {string} file
  * @param {{ sessionId: unknown, limits: Parameters<typeof recordLimits>[1]['limits'], nowMs: number }} update
- * @returns {import('../core/limit-history.mjs').LimitReadings}
+ * @returns {import('../core/limit-history.mjs').LimitHistory}
  */
 export function recordLimitHistory(file, update) {
   const { history, isReplaceable } = readHistory(file, update.nowMs);
@@ -25,7 +25,7 @@ export function recordLimitHistory(file, update) {
       // Another run will try again; this one still draws with its own new readings.
     }
   }
-  return next.readings;
+  return next;
 }
 
 /**

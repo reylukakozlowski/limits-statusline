@@ -14,7 +14,7 @@ import { STATUS_LINE_PAGE } from '../../scripts/lib/status-line-docs.mjs';
 import { edited, PAGE, withExample } from '../fixtures/status-line-page.mjs';
 
 const DOCS = '/runner/temp/statusline.md';
-const FIELDS = 27; // the contract's fields (status-line-contract-drift.test.mjs pins the list)
+const FIELDS = 31; // the contract's fields (status-line-contract-drift.test.mjs pins the list)
 const MILLISECONDS = ['in Unix epoch seconds |', 'in Unix epoch milliseconds |'];
 
 /** Runs the check with `files` (path → text) as the only readable files. */

@@ -15,8 +15,8 @@ const HIT_RATIO_ROW = '| `hit_ratio` | Cache reads as a share of all input, from
 const check = (page = PAGE, options) => checkContract(parseStatusLineDocs(page), options);
 
 test('the page as it is documents every field the plugin reads as it expects, and nothing new', () => {
-  // 27: the fields snapshot.mjs and run.mjs read (status-line-contract-drift.test.mjs pins the list).
-  assert.deepEqual(check(), { ok: true, checked: 27, missing: [], retyped: [], unitChanged: [], newLimitFields: [], newFields: [] });
+  // 31: the fields snapshot.mjs and run.mjs read (status-line-contract-drift.test.mjs pins the list).
+  assert.deepEqual(check(), { ok: true, checked: 31, missing: [], retyped: [], unitChanged: [], newLimitFields: [], newFields: [] });
 });
 
 test('a field taken off the page breaks the contract, and only that field is named', () => {
@@ -66,7 +66,7 @@ test('a ratio that becomes a percentage, or a percentage that becomes a ratio, b
 // real page would never state, shows here as a field whose changed row goes unnoticed.
 test('every field with a unit breaks the contract once its row stops stating that unit', () => {
   const withUnit = STATUS_LINE_CONTRACT.filter((entry) => entry.unit);
-  assert.equal(withUnit.length, 10);
+  assert.equal(withUnit.length, 12);
   for (const { path } of withUnit) {
     const name = path.startsWith('prompt_cache.') ? path.slice('prompt_cache.'.length) : path;
     const row = PAGE.split('\n').find((line) => line.startsWith('| `') && line.includes(`\`${name}\``));
@@ -112,9 +112,10 @@ test('a newly documented plan limit field fails the check, in the example or in 
 });
 
 test('a plan limit field the plugin leaves unread on purpose does not fail the check', () => {
-  const page = edited([FIVE_HOUR_RESET, `${FIVE_HOUR_RESET},\n>     "spend_limit": { "used_percentage": 63 }`]);
-  assert.equal(check(page).ok, true, 'rate_limits.spend_limit.used_percentage is in UNREAD_FIELDS');
-  assert.deepEqual(check(page, { unread: [] }).newLimitFields, ['rate_limits.spend_limit.used_percentage']);
+  // The fixture documents rate_limits.spend_limit.period, which UNREAD_FIELDS lists.
+  assert.equal(check().ok, true);
+  assert.deepEqual(check(PAGE, { unread: [] }).newLimitFields, ['rate_limits.spend_limit.period']);
+  assert.equal(check(PAGE, { unread: [] }).ok, false);
 });
 
 test('a field only a table names is news too, but a row for an object of the example is not', () => {

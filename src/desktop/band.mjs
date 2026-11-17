@@ -63,14 +63,14 @@ export function registerBand(on, options) {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (!shouldDraw(mode, e.surface) || e.props.hasSurvey) return next(e);
-    const [usage, modelRaw, cwd, state, nowMs, typography, limitReadings] = await Promise.all([
+    const [usage, modelRaw, cwd, state, nowMs, typography, limitHistory] = await Promise.all([
       $.session.usage(), $.session.model(), $.session.cwd(), read($, tracker), $.clock.now(), hasTypography($),
-      loadLimitReadings($),
+      loadLimitHistory($),
     ]);
     // The lifetime the API reported, else the one Claude Code's settings and the plan imply.
     const cacheTtlMs = observedCacheTtlMs(state) ?? await readCacheTtl($, usage?.rateLimits, nowMs);
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const snapshot = snapshotFromSession({ usage, modelRaw, cwd, tracker: state, nowMs, timeZone, limitReadings, cacheTtlMs });
+    const snapshot = snapshotFromSession({ usage, modelRaw, cwd, tracker: state, nowMs, timeZone, limitHistory, cacheTtlMs });
     const lines = buildLines(snapshot, { columns: e.props.bodyColumns });
     return renderBand(lines, $.ui.resolve(e), h, { typography });
   });
@@ -179,10 +179,10 @@ async function storedLimitHistory($, configDir) {
   }
 }
 
-/** @returns {Promise<import('../core/limit-history.mjs').LimitReadings>} the shared readings to draw from */
-async function loadLimitReadings($) {
+/** @returns {Promise<import('../core/limit-history.mjs').LimitHistory>} the shared history to draw from */
+async function loadLimitHistory($) {
   const configDir = await configFolder($);
-  return ((configDir === null ? null : await storedLimitHistory($, configDir)) ?? EMPTY_LIMIT_HISTORY).readings;
+  return (configDir === null ? null : await storedLimitHistory($, configDir)) ?? EMPTY_LIMIT_HISTORY;
 }
 
 /** Adds this session's plan figures, measured just now, to the shared history. */

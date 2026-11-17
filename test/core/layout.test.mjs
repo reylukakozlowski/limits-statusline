@@ -32,11 +32,53 @@ test('buildLines colours by meaning: limit ok, context warn, cost and model', ()
   assert.equal(segmentWith(header, 'Opus 5.5').tone, TONE.model);
 });
 
-test('layout renders placeholders without limits', () => {
-  const { sevenDay, fiveHour } = byRole(buildLines({ ...MOCKUP, limits: { sevenDay: null, fiveHour: null } }, { columns: 120 }));
+const DAY_MS = 86_400_000;
+const NO_FIGURES = { sevenDay: null, fiveHour: null };
+
+// Before a session's first response there are no figures yet, and after a 5-hour window's reset
+// none for it until the next response: a window seen within the week keeps its line, as a dash.
+test('a window without a figure keeps its line as a dash while the account is known to have it', () => {
+  const seen = { ...MOCKUP, limits: NO_FIGURES, limitsSeenAtMs: { sevenDay: NOW - 7 * DAY_MS, fiveHour: NOW - 60_000 } };
+  const { sevenDay, fiveHour } = byRole(buildLines(seen, { columns: 120 }));
   assert.equal(lineText(sevenDay), '7d  —');
   assert.equal(lineText(fiveHour), '5h  —');
   assert.ok(sevenDay.every((segment) => segment.tone === TONE.muted));
+});
+
+// A verified Ultra account has no 5-hour window, an API key no plan windows at all: a line for
+// a window that never comes would be a dash forever.
+test('a window not seen for more than a week, or never, has no line', () => {
+  const linesOf = (limits, limitsSeenAtMs) => plain(buildLines({ ...MOCKUP, limits, limitsSeenAtMs }, { columns: 120 }));
+  const weekOnly = linesOf({ ...MOCKUP.limits, fiveHour: null }, { sevenDay: NOW, fiveHour: null });
+  assert.deepEqual(weekOnly, [MOCKUP_LINES[0], MOCKUP_LINES[1], MOCKUP_LINES[2], '7d  ■■■■■■□□□□□□□□□□ 39% →  69%  ↻ 3d04h Mon 12:10  ↗ 0.4%/h']);
+  assert.deepEqual(linesOf(NO_FIGURES, { sevenDay: null, fiveHour: null }), MOCKUP_LINES.slice(0, 3));
+  assert.deepEqual(linesOf(NO_FIGURES, { sevenDay: NOW - 7 * DAY_MS - 1, fiveHour: NOW - 7 * DAY_MS - 1 }), MOCKUP_LINES.slice(0, 3));
+  // A figure is drawn whatever the history says.
+  assert.deepEqual(linesOf(MOCKUP.limits, { sevenDay: null, fiveHour: null }), [...MOCKUP_LINES]);
+});
+
+// rate_limits.spend_limit, behind a Claude apps gateway: the share used (past 100 once exceeded)
+// and the reset with every response, the amounts when the gateway has them.
+test('a gateway spend limit has a line of its own: bar, share, amounts and reset, no pace', () => {
+  const spendLine = (spendLimit, columns = 120) => plain(buildLines({ ...MOCKUP, limits: NO_FIGURES, spendLimit }, { columns })).at(-1);
+  const reset = NOW + 12 * DAY_MS + 4 * 3_600_000 + 10 * 60_000; // Wed 27 Jan 2027 12:10 UTC
+  assert.equal(spendLine({ percentUsed: 63, resetsAtMs: reset, usedUsd: 314.12, limitUsd: 500 }),
+    'usd ■■■■■■■■■■□□□□□□ 63%  $314.12/$500.00  ↻ 12d04h Wed 12:10');
+  assert.equal(spendLine({ percentUsed: 63, resetsAtMs: reset, usedUsd: null, limitUsd: null }),
+    'usd ■■■■■■■■■■□□□□□□ 63%  ↻ 12d04h Wed 12:10');
+  assert.equal(spendLine({ percentUsed: 63, resetsAtMs: null, usedUsd: 314.12, limitUsd: null }), 'usd ■■■■■■■■■■□□□□□□ 63%');
+  assert.equal(spendLine({ percentUsed: 137, resetsAtMs: reset, usedUsd: 685, limitUsd: 500 }, 44),
+    'usd ■■■■■■■■■■ 137%  $685.00/$500.00  ↻ 12d04h', 'narrow: 10 cells, and the clock time goes first');
+});
+
+test('the spend limit takes the limit colours, sits below the plan lines, and is absent without a figure', () => {
+  const lines = (spendLimit) => buildLines({ ...MOCKUP, spendLimit }, { columns: 120 });
+  const toneOf = (percentUsed) => segmentWith(lines({ percentUsed, resetsAtMs: null, usedUsd: null, limitUsd: null }).at(-1), '%').tone;
+  assert.deepEqual([toneOf(79), toneOf(80), toneOf(100), toneOf(137)], [TONE.ok, TONE.warn, TONE.alert, TONE.alert]);
+  assert.deepEqual(plain(lines({ percentUsed: 10, resetsAtMs: null, usedUsd: null, limitUsd: null })).slice(0, 5), [...MOCKUP_LINES]);
+  for (const none of [null, undefined, { percentUsed: null, resetsAtMs: NOW, usedUsd: 1, limitUsd: 2 }]) {
+    assert.deepEqual(plain(lines(none)), [...MOCKUP_LINES]);
+  }
 });
 
 test('layout narrow: 10-cell bars and no line below the full line width', () => {
@@ -288,8 +330,6 @@ test('layout of an empty snapshot is readable and never prints undefined or NaN'
     '— | no git | ✦ —',
     '    —',
     'ctx □□□□□□□□□□□□□□□□   —  —/—',
-    '7d  —',
-    '5h  —',
   ]);
 });
 

@@ -77,6 +77,11 @@ export const STATUS_LINE_CONTRACT = Object.freeze([
   field('rate_limits.five_hour.resets_at', 'number', unit('Unix epoch seconds')),
   field('rate_limits.seven_day.used_percentage', 'number', unit('from 0 to 100')),
   field('rate_limits.seven_day.resets_at', 'number', unit('Unix epoch seconds')),
+  // A Claude apps gateway's spend limit; the page's table states no unit for the first two.
+  field('rate_limits.spend_limit.used_percentage', 'number'),
+  field('rate_limits.spend_limit.resets_at', 'number'),
+  field('rate_limits.spend_limit.used_usd', 'number', unit('US dollars')),
+  field('rate_limits.spend_limit.limit_usd', 'number', unit('US dollars')),
   // The keys of the context and limit histories (run.mjs).
   field('session_id', 'string'),
   field('transcript_path', 'string'),
@@ -112,11 +117,7 @@ export const UNREAD_FIELDS = Object.freeze([
   'prompt_cache.requests',
   'prompt_cache.ttl',
   'prompt_id',
-  'rate_limits.spend_limit.limit_usd',
   'rate_limits.spend_limit.period',
-  'rate_limits.spend_limit.resets_at',
-  'rate_limits.spend_limit.used_percentage',
-  'rate_limits.spend_limit.used_usd',
   'session_name',
   'thinking.enabled',
   'version',

@@ -22,7 +22,7 @@ test('the example gives each leaf by its dotted path with the type of its exampl
   // Objects are not fields of their own: only their leaves are.
   assert.equal(types.has('rate_limits'), false);
   assert.equal(types.has('rate_limits.five_hour'), false);
-  assert.equal(types.size, 33); // the leaves of the fixture's example, counted by hand
+  assert.equal(types.size, 38); // the leaves of the fixture's example, counted by hand
 });
 
 test('the example\'s arrays, nulls and empty objects keep their own types', () => {
@@ -61,7 +61,9 @@ test('every field a two-cell row names gets that row\'s description, and nothing
     'model.display_name', 'model.id', 'prompt_cache', 'prompt_cache.expires_at', 'prompt_cache.hit_ratio',
     'prompt_cache.ttl', 'prompt_cache.warm', 'rate_limits.five_hour.resets_at',
     'rate_limits.five_hour.used_percentage', 'rate_limits.seven_day.resets_at',
-    'rate_limits.seven_day.used_percentage', 'session_id', 'transcript_path', 'version',
+    'rate_limits.seven_day.used_percentage', 'rate_limits.spend_limit.limit_usd', 'rate_limits.spend_limit.period',
+    'rate_limits.spend_limit.resets_at', 'rate_limits.spend_limit.used_percentage', 'rate_limits.spend_limit.used_usd',
+    'session_id', 'transcript_path', 'version',
     'workspace.current_dir', 'workspace.project_dir', 'workspace.repo.host', 'workspace.repo.name',
     'workspace.repo.owner',
   ]);

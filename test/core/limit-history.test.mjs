@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  EMPTY_LIMIT_HISTORY, HISTORY_RETENTION_MS, MAX_SESSIONS, parseLimitHistory, readLimitHistory, recordLimits,
-  serializeLimitHistory,
+  EMPTY_LIMIT_HISTORY, HISTORY_RETENTION_MS, LIMIT_SEEN_FOR_MS, MAX_SESSIONS, parseLimitHistory, readLimitHistory,
+  recordLimits, serializeLimitHistory, wasSeenLately,
 } from '../../src/core/limit-history.mjs';
 
 const NOW = 1_800_000_000_000;
@@ -153,7 +153,27 @@ test('parseLimitHistory turns anything broken into the empty history and drops b
   assert.deepEqual(parseLimitHistory(mixed), {
     readings: { fiveHour: [[NOW, 12, FIVE_RESET]], sevenDay: [] },
     sessions: { a: { atMs: NOW, fiveHour: [12, FIVE_RESET], sevenDay: null } },
+    // No times in the file (one written before they were kept): the newest reading stands in.
+    seenAtMs: { fiveHour: NOW, sevenDay: null },
   });
+});
+
+test('the history keeps when each kind of window was last reported, and reads it back', () => {
+  const first = record(EMPTY_LIMIT_HISTORY, 'a', 12, NOW);
+  assert.deepEqual(first.seenAtMs, { fiveHour: NOW, sevenDay: null });
+  const second = record(first, 'b', null, NOW + 5 * MINUTE, 40);
+  assert.deepEqual(second.seenAtMs, { fiveHour: NOW, sevenDay: NOW + 5 * MINUTE });
+  assert.deepEqual(parseLimitHistory(serializeLimitHistory(second)).seenAtMs, second.seenAtMs);
+  // A time kept in the file wins over the readings, which age out sooner.
+  const stored = JSON.stringify({ version: 1, readings: { fiveHour: [], sevenDay: [] }, sessions: {}, seenAtMs: { fiveHour: NOW - 3 * 86_400_000, sevenDay: 'x' } });
+  assert.deepEqual(parseLimitHistory(stored).seenAtMs, { fiveHour: NOW - 3 * 86_400_000, sevenDay: null });
+});
+
+test('a window counts as the account\'s for a week after it was last reported', () => {
+  assert.equal(LIMIT_SEEN_FOR_MS, 7 * 86_400_000);
+  assert.equal(wasSeenLately(NOW - LIMIT_SEEN_FOR_MS, NOW), true);
+  assert.equal(wasSeenLately(NOW - LIMIT_SEEN_FOR_MS - 1, NOW), false);
+  for (const never of [null, undefined, NaN, 'x']) assert.equal(wasSeenLately(never, NOW), false, String(never));
 });
 
 test('readLimitHistory tells a file that is no history of this version from an empty one', () => {
@@ -161,7 +181,8 @@ test('readLimitHistory tells a file that is no history of this version from an e
     assert.equal(readLimitHistory(text), null, String(text));
     assert.equal(parseLimitHistory(text), EMPTY_LIMIT_HISTORY, String(text));
   }
-  assert.deepEqual(readLimitHistory('{"version":1}'), { readings: { fiveHour: [], sevenDay: [] }, sessions: {} });
+  assert.deepEqual(readLimitHistory('{"version":1}'),
+    { readings: { fiveHour: [], sevenDay: [] }, sessions: {}, seenAtMs: { fiveHour: null, sevenDay: null } });
 });
 
 test('the empty history is frozen, so a caller cannot change it by accident', () => {

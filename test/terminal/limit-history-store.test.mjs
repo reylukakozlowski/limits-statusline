@@ -17,15 +17,16 @@ const tempDir = (t) => {
 
 test('recordLimitHistory creates the folder and file and returns the readings to draw from', (t) => {
   const file = join(tempDir(t), 'limits-statusline', 'limit-history.json');
-  const readings = recordLimitHistory(file, { sessionId: 'a', limits: limits(12), nowMs: NOW });
+  const { readings, seenAtMs } = recordLimitHistory(file, { sessionId: 'a', limits: limits(12), nowMs: NOW });
   assert.deepEqual(readings, { fiveHour: [[NOW, 12, RESET]], sevenDay: [] });
+  assert.deepEqual(seenAtMs, { fiveHour: NOW, sevenDay: null });
   assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')).readings.fiveHour, [[NOW, 12, RESET]]);
 });
 
 test('a second session adds to the same file; a repeat leaves the file untouched', (t) => {
   const file = join(tempDir(t), 'limit-history.json');
   recordLimitHistory(file, { sessionId: 'a', limits: limits(12), nowMs: NOW });
-  const readings = recordLimitHistory(file, { sessionId: 'b', limits: limits(14), nowMs: NOW + 120_000 });
+  const { readings } = recordLimitHistory(file, { sessionId: 'b', limits: limits(14), nowMs: NOW + 120_000 });
   assert.deepEqual(readings.fiveHour.map(([, percent]) => percent), [12, 14]);
   const before = statSync(file).mtimeMs;
   const content = readFileSync(file, 'utf8');
@@ -48,7 +49,7 @@ function fileWritten(t, text, agoMs) {
 test('a file that cannot be read and was written within the last minute is left as it is', (t) => {
   for (const text of ['{ half a fi', '', JSON.stringify({ version: 2, readings: {}, sessions: {} })]) {
     const file = fileWritten(t, text, 59_000);
-    const readings = recordLimitHistory(file, { sessionId: 'a', limits: limits(12), nowMs: NOW });
+    const { readings } = recordLimitHistory(file, { sessionId: 'a', limits: limits(12), nowMs: NOW });
     assert.deepEqual(readings.fiveHour, [[NOW, 12, RESET]], 'this run still draws its own reading');
     assert.equal(readFileSync(file, 'utf8'), text);
     assert.deepEqual(readdirSync(join(file, '..')), ['limit-history.json']);
@@ -64,7 +65,7 @@ test('a file that has stayed unreadable for a minute is broken, and is replaced'
 test('an unwritable place still returns this run\'s readings and never throws', (t) => {
   const blocker = join(tempDir(t), 'not-a-folder');
   writeFileSync(blocker, 'a file where the folder should be');
-  const readings = recordLimitHistory(join(blocker, 'limit-history.json'), { sessionId: 'a', limits: limits(12), nowMs: NOW });
+  const { readings } = recordLimitHistory(join(blocker, 'limit-history.json'), { sessionId: 'a', limits: limits(12), nowMs: NOW });
   assert.deepEqual(readings.fiveHour, [[NOW, 12, RESET]]);
 });
 
@@ -72,7 +73,7 @@ test('a write that fails leaves no temporary file behind', (t) => {
   const dir = tempDir(t);
   const file = join(dir, 'limit-history.json');
   mkdirSync(file); // a folder where the file should be: the rename onto it fails
-  const readings = recordLimitHistory(file, { sessionId: 'a', limits: limits(12), nowMs: NOW });
+  const { readings } = recordLimitHistory(file, { sessionId: 'a', limits: limits(12), nowMs: NOW });
   assert.deepEqual(readings.fiveHour, [[NOW, 12, RESET]]);
   assert.deepEqual(readdirSync(dir), ['limit-history.json']);
 });
@@ -90,7 +91,7 @@ test('transcriptWrittenAtMs is the transcript\'s modification time, or null with
 test('without a session id or a usable reading nothing is written', (t) => {
   const dir = tempDir(t);
   const file = join(dir, 'limit-history.json');
-  assert.deepEqual(recordLimitHistory(file, { sessionId: undefined, limits: limits(12), nowMs: NOW }), { fiveHour: [], sevenDay: [] });
-  assert.deepEqual(recordLimitHistory(file, { sessionId: 'a', limits: { fiveHour: null, sevenDay: null }, nowMs: NOW }), { fiveHour: [], sevenDay: [] });
+  assert.deepEqual(recordLimitHistory(file, { sessionId: undefined, limits: limits(12), nowMs: NOW }).readings, { fiveHour: [], sevenDay: [] });
+  assert.deepEqual(recordLimitHistory(file, { sessionId: 'a', limits: { fiveHour: null, sevenDay: null }, nowMs: NOW }).readings, { fiveHour: [], sevenDay: [] });
   assert.deepEqual(readdirSync(dir), []);
 });

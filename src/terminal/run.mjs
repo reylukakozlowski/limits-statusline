@@ -1,4 +1,4 @@
-// The terminal status line: stdin JSON → five coloured lines on stdout. Always exits 0,
+// The terminal status line: stdin JSON → coloured lines on stdout. Always exits 0,
 // because a failing status line command only leaves the user with an empty bar.
 
 import { spawnSync } from 'node:child_process';
@@ -48,7 +48,7 @@ function render(input, { env, argv, nowMs, spawn, color, home, timeZone }) {
     ? recordContext(join(dataDir, 'history'), input.session_id, input.context_window?.used_percentage, { nowMs })
     : [];
   const configDir = dataDir ? claudeConfigDir(env.CLAUDE_CONFIG_DIR, home) : null;
-  const limitReadings = configDir
+  const limitHistory = configDir
     ? recordLimitHistory(limitHistoryPath(configDir), {
       sessionId: input.session_id,
       limits: limitsFromStatusInput(input),
@@ -57,7 +57,7 @@ function render(input, { env, argv, nowMs, spawn, color, home, timeZone }) {
     })
     : undefined;
   const git = probeGit(workingDirectory(input), { spawn });
-  const snapshot = snapshotFromStatusInput(input, { nowMs, git, contextHistory, timeZone, limitReadings });
+  const snapshot = snapshotFromStatusInput(input, { nowMs, git, contextHistory, timeZone, limitHistory });
   return renderAnsi(buildLines(snapshot, { columns: Number(env.COLUMNS) }), { color });
 }
 
