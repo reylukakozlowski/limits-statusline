@@ -24,6 +24,7 @@ import { TONE, cacheTone, contextTone, limitTone } from './thresholds.mjs';
  *   cacheHitRatio: number | null,
  *   promptCache: import('./prompt-cache.mjs').PromptCache | null,
  *   effort: string | null,
+ *   fastMode: boolean | null,
  *   linesChanged: { added: number, removed: number } | null,
  *   context: { usedTokens: number | null, windowTokens: number | null, percent: number | null },
  *   contextHistory: number[],
@@ -109,12 +110,13 @@ function contextLine({ context, contextHistory }, size) {
   ];
 }
 
-function sessionLine({ costUsd, durationMs, cacheHitRatio, promptCache, effort, linesChanged, nowMs }) {
+function sessionLine({ costUsd, durationMs, cacheHitRatio, promptCache, effort, fastMode, linesChanged, nowMs }) {
   const items = [
     Number.isFinite(costUsd) && [segment(formatUsd(costUsd), TONE.cost)],
     Number.isFinite(durationMs) && [segment(formatDuration(durationMs), TONE.muted)],
     Number.isFinite(cacheHitRatio) && cacheSegments(cacheHitRatio, promptCache, nowMs),
     effort && [segment(effort, TONE.ok)],
+    fastMode === true && [segment('fast', TONE.warn)],
     linesChangedSegments(linesChanged),
   ].filter(Boolean);
   if (items.length === 0) return [indent(), segment(DASH, TONE.muted)];

@@ -39,6 +39,7 @@ export function snapshotFromStatusInput(input, { nowMs, git, contextHistory, tim
     cacheHitRatio: number(record(data.prompt_cache).hit_ratio) ?? cacheFromUsage(context.current_usage),
     promptCache: promptCacheState(data.prompt_cache),
     effort: text(record(data.effort).level),
+    fastMode: typeof data.fast_mode === 'boolean' ? data.fast_mode : null,
     linesChanged: linesChanged(cost),
     context: {
       usedTokens: number(context.total_input_tokens),

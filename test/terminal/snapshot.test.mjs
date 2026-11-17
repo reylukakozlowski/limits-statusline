@@ -14,6 +14,13 @@ test('the full stdin fixture maps onto the mockup snapshot', () => {
   assert.deepEqual(snapshot, MOCKUP);
 });
 
+test('fast_mode is read as sent, and unknown when it is absent or no boolean', () => {
+  const fastOf = (input) => snapshotFromStatusInput(input, options).fastMode;
+  assert.equal(fastOf({ fast_mode: true }), true);
+  assert.equal(fastOf({ fast_mode: false }), false);
+  for (const input of [{}, { fast_mode: 'true' }, { fast_mode: 1 }, { fast_mode: null }]) assert.equal(fastOf(input), null, JSON.stringify(input));
+});
+
 test('the shared limit readings passed in reach the snapshot', () => {
   const limitReadings = { fiveHour: [[NOW, 12, NOW + 15_000_000]], sevenDay: [] };
   assert.equal(snapshotFromStatusInput({}, { ...options, limitReadings }).limitReadings, limitReadings);

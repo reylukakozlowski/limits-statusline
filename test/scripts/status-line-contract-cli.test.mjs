@@ -14,7 +14,7 @@ import { STATUS_LINE_PAGE } from '../../scripts/lib/status-line-docs.mjs';
 import { edited, PAGE, withExample } from '../fixtures/status-line-page.mjs';
 
 const DOCS = '/runner/temp/statusline.md';
-const FIELDS = 26; // the contract's fields (status-line-contract-drift.test.mjs pins the list)
+const FIELDS = 27; // the contract's fields (status-line-contract-drift.test.mjs pins the list)
 const MILLISECONDS = ['in Unix epoch seconds |', 'in Unix epoch milliseconds |'];
 
 /** Runs the check with `files` (path → text) as the only readable files. */
@@ -134,7 +134,7 @@ test('the entry point reads the page it is given, appends to GITHUB_STEP_SUMMARY
   const node = (args) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', env: { GITHUB_STEP_SUMMARY: summary } });
   const passed = node(['--docs', fixture]);
   assert.equal(passed.status, 0, passed.stderr);
-  assert.match(passed.stdout, /^status line contract: the 26 fields the plugin reads are documented/);
+  assert.match(passed.stdout, new RegExp(`^status line contract: the ${FIELDS} fields the plugin reads are documented`));
   assert.match(readFileSync(summary, 'utf8'), /^### ✅ Status line contract\n/);
   const usage = node([]);
   assert.equal(usage.status, 2);

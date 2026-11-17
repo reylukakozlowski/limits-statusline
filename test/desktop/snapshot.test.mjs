@@ -32,7 +32,8 @@ const SOURCES = Object.freeze({
 });
 
 test('mods API figures map onto the mockup snapshot, without the changed lines the API does not have', () => {
-  assert.deepEqual(snapshotFromSession(SOURCES), { ...MOCKUP, linesChanged: null });
+  // The mods API reports neither changed lines nor fast mode.
+  assert.deepEqual(snapshotFromSession(SOURCES), { ...MOCKUP, linesChanged: null, fastMode: null });
 });
 
 test('the shared limit readings passed in reach the snapshot', () => {
