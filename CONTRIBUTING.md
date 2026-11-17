@@ -69,9 +69,12 @@ on Linux and runs:
    The contract (`scripts/lib/status-line-contract.mjs`) lists every input field the status line
    reads, with the type the page's "Full JSON schema" example gives it and, where the code relies
    on one, the unit its table row states (`from 0 to 100`, `Unix epoch seconds`). A field the page
-   no longer documents, or documents with another type or unit, fails the check; a field the page
-   newly documents is only listed as a warning and in the run's summary. A page the parser does
-   not recognise fails it too (exit code 2), rather than reading as every field gone.
+   no longer documents, or documents with another type or unit, fails the check. So does a field
+   the page newly documents under `rate_limits`: it is a plan limit the plugin could show, such as
+   the weekly limit of one model, which Claude Code 2.1.325 has and does not pass to status lines.
+   Any other newly documented field is only listed as a warning and in the run's summary. A page
+   the parser does not recognise fails the check too (exit code 2), rather than reading as every
+   field gone.
 
 Each check runs even when an earlier one failed, and any failure fails the run. A failed run is the
 only notification. GitHub sends a scheduled workflow's notifications to the user who created the
@@ -109,6 +112,9 @@ that failed says where to look:
   The annotation names the field and what the page says now. Change the code that reads the field
   in `src/terminal/snapshot.mjs` or `run.mjs`, then the field's entry in `STATUS_LINE_CONTRACT` and
   the date beside it. A field that only moved, or a unit only reworded, needs the contract alone.
+- **Check the status line contract** with exit code 1 and "is newly documented: a plan limit the
+  plugin does not read yet": Claude Code now passes that limit to status lines. Read it in the code
+  and add it to the contract, or add it to `UNREAD_FIELDS` when the plugin should not show it.
 - **Check the status line contract** with exit code 2: the page's layout changed, so the parser
   (`scripts/lib/status-line-docs.mjs`) no longer finds the "Full JSON schema" example or the field
   tables. Fix the parser and its fixture (`test/fixtures/status-line-docs.md`); the plugin may need
