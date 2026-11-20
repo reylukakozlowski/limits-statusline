@@ -117,7 +117,7 @@ and the command above restores it as long as the plugin is installed.
 | Item | Source | Meaning |
 |---|---|---|
 | cost | `cost.total_cost_usd` | Session cost in US dollars with two decimals, estimated by Claude Code at list price; resets on `/clear` |
-| `5h40m` | `cost.total_api_duration_ms` | Model time: how long the session waited for the model's responses, not how long it has been open. Commands, tests and background tasks are not counted. The desktop band times each model request itself, a subagent's included, and starts over on `/clear` |
+| `5h40m` | `cost.total_api_duration_ms` | Model time: how long the session waited for the model's responses, not how long it has been open. A subagent's requests count, a background subagent's too; commands, tests and background shells do not. `/clear` starts it over. The desktop band times each model request it is shown the same way |
 | `cache 99%` | `prompt_cache.hit_ratio` | Share of input tokens served from the prompt cache |
 | `52m` / `cold` | `prompt_cache.expires_at` | How long the prompt cache stays warm without a new prompt (yellow in its last 5 minutes), or that it went cold and the next prompt rebuilds it |
 | `xhigh` | `effort.level` | Reasoning effort of the session (desktop: shown after the first request) |
