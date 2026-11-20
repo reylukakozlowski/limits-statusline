@@ -17,14 +17,15 @@ test('the workflow is called Tests and runs only for pull requests into develop'
   const triggers = section('on', 'permissions');
   assert.deepEqual(triggers.match(/^ {2}[\w-]+:/gm), ['  pull_request:']);
   assert.match(triggers, /^ {4}branches: \[develop\]$/m);
-  assert.match(triggers, /^ {4}types: \[opened, synchronize, reopened, ready_for_review\]$/m);
+  // Any other type also fires for a draft and gives it a run of its own: the trigger has no draft filter.
+  assert.match(triggers, /^ {4}types: \[ready_for_review\]$/m);
 });
 
 test('a push or a pull request from a fork with write access never starts it: no push, no pull_request_target', () => {
   assert.doesNotMatch(WORKFLOW, /^\s+(push|pull_request_target|workflow_run|schedule):/m);
 });
 
-test('a draft runs no job; marking it ready, and every push after that, runs the tests', () => {
+test('a draft runs no job; only marking it ready runs the tests, and the job condition stays as a guard', () => {
   assert.match(WORKFLOW, /^ {4}if: github\.event\.pull_request\.draft == false$/m);
 });
 

@@ -1,17 +1,19 @@
 # Tests: `npm test` on macOS, Linux and Windows for each pull request into develop, so a change is
 # checked on every system Claude Code runs on before the owner merges it.
 #
-# A draft runs no job (GitHub shows the jobs as skipped and spends no minutes); marking the pull
-# request ready for review runs all three, and so does every push to it after that. One system
-# failing never cancels the others, so the run shows each system's result. The tests need nothing
-# installed: the repository has no dependencies. Nothing here runs on a push, a tag or a schedule,
-# and the token can only read the repository.
+# A draft gets no run at all: the pull_request trigger has no draft filter, so only marking the pull
+# request ready for review starts the workflow (owner's decision of 2026-11-21), and it runs all
+# three. A push to a pull request that is already ready starts nothing: convert it to a draft and
+# mark it ready again (gh pr ready --undo, push, gh pr ready). The job condition stays as a guard
+# for drafts. One system failing never cancels the others, so the run shows each system's result.
+# The tests need nothing installed: the repository has no dependencies. Nothing here runs on a
+# push, a tag or a schedule, and the token can only read the repository.
 name: Tests
 
 on:
   pull_request:
     branches: [develop]
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [ready_for_review]
 
 permissions:
   contents: read
