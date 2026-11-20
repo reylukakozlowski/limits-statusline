@@ -22,7 +22,7 @@ test('the example gives each leaf by its dotted path with the type of its exampl
   // Objects are not fields of their own: only their leaves are.
   assert.equal(types.has('rate_limits'), false);
   assert.equal(types.has('rate_limits.five_hour'), false);
-  assert.equal(types.size, 38); // the leaves of the fixture's example, counted by hand
+  assert.equal(types.size, 39); // the leaves of the fixture's example, counted by hand
 });
 
 test('the example\'s arrays, nulls and empty objects keep their own types', () => {
@@ -56,8 +56,8 @@ test('every field a two-cell row names gets that row\'s description, and nothing
   assert.equal(descriptions.get('workspace.repo.name'), 'Host, owner and name of the `origin` remote');
   assert.deepEqual([...descriptions.keys()].sort(), [
     'context_window.context_window_size', 'context_window.current_usage', 'context_window.total_input_tokens',
-    'context_window.total_output_tokens', 'context_window.used_percentage', 'cost.total_cost_usd',
-    'cost.total_duration_ms', 'cost.total_lines_added', 'cost.total_lines_removed', 'cwd', 'effort.level', 'fast_mode',
+    'context_window.total_output_tokens', 'context_window.used_percentage', 'cost.total_api_duration_ms',
+    'cost.total_cost_usd', 'cost.total_duration_ms', 'cost.total_lines_added', 'cost.total_lines_removed', 'cwd', 'effort.level', 'fast_mode',
     'model.display_name', 'model.id', 'prompt_cache', 'prompt_cache.expires_at', 'prompt_cache.hit_ratio',
     'prompt_cache.ttl', 'prompt_cache.warm', 'rate_limits.five_hour.resets_at',
     'rate_limits.five_hour.used_percentage', 'rate_limits.seven_day.resets_at',

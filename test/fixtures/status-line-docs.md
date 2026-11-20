@@ -19,6 +19,7 @@ Claude Code sends these fields to your script on stdin:
 | `workspace.repo.host`, `workspace.repo.owner`, `workspace.repo.name` | Host, owner and name of the `origin` remote |
 | `cost.total_cost_usd` | The session's estimated cost in USD |
 | `cost.total_duration_ms` | How long the session has run, in milliseconds |
+| `cost.total_api_duration_ms` | Time spent waiting for API responses, in milliseconds |
 | `cost.total_lines_added`, `cost.total_lines_removed` | Lines changed |
 | `context_window.total_input_tokens`, `context_window.total_output_tokens` | Tokens in the context window |
 | `context_window.context_window_size` | The window's size in tokens |
@@ -51,7 +52,7 @@ Claude Code sends these fields to your script on stdin:
 >     "repo": { "host": "github.com", "owner": "someone", "name": "project" }
 >   },
 >   "version": "2.1.319",
->   "cost": { "total_cost_usd": 0.5, "total_duration_ms": 1000, "total_lines_added": 3, "total_lines_removed": 1 },
+>   "cost": { "total_cost_usd": 0.5, "total_duration_ms": 1000, "total_api_duration_ms": 400, "total_lines_added": 3, "total_lines_removed": 1 },
 >   "context_window": {
 >     "total_input_tokens": 1500,
 >     "total_output_tokens": 20,
