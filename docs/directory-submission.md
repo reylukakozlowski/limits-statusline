@@ -7,6 +7,35 @@ that every release reaches the directory by itself, because the directory follow
 production branch that only the Release workflow moves, to the tag of a release the owner
 approved. `develop` is the working branch and never reaches users.
 
+## Where the submission stands (2026-11-20)
+
+The portal's **Versions** and **Review** tabs, read on 2026-11-20:
+
+- **2026-10-20 to 2026-10-27** (v1.0.2 to v1.0.12): every version passed the security scan and was
+  **held for a reviewer** ([the band's policy holds](#the-bands-policy-holds)). No reviewer
+  decided on any of them.
+- **Since 2026-11-01** (v1.0.13 to v1.0.17): every version passes the scan and is **refused by
+  directory policy** by an automatic check. The status is **Needs changes**; nothing was ever live.
+
+The refusal has five blocking findings, each "accepted only from Verified organizations". The
+portal says Verified "means Anthropic knows your organization is a real company. It is about who
+you are, not a test of your plugins."
+
+| Blocking finding | What in this plugin raises it | Can the plugin drop it? |
+|---|---|---|
+| Hooks of type command | The SessionStart hook in `hooks/hooks.json` that refreshes the status line's runtime copy | Not without breaking updates of the terminal status line |
+| Mods | `modules` in `hooks/hooks.json`: the desktop band | Only by dropping the band |
+| Files outside the allowed list (only Markdown, text, JSON, YAML and images) | Every `.mjs` file: the status line itself is a Node.js program | No: a status line is a program Claude Code runs |
+| `allowed-tools` beyond Read, Grep, Glob and LS | `Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" *)` in `commands/setup.md` | Yes, at the cost of one more approval when setup runs |
+| Config file fields outside the allowed list | `scripts` in `package.json` | Yes, but `npm test` would go with it |
+
+The first three are what the plugin is, so no change to the repository lets an organization that
+is not Verified list it. Dropping the last two alone changes nothing. The public documentation
+(Submit your plugin, Plugin pre-submission checklist, Track your directory submission, Connector
+verification, read on 2026-11-20) does not say how an organization becomes Verified; the portal's
+**Get help** or **Contact Anthropic** in the plugin's menu, or `directory@anthropic.com`, is the
+way to ask.
+
 ## Before you submit
 
 - A paid claude.ai plan (Pro or Max submits from its own account) and your GitHub account connected

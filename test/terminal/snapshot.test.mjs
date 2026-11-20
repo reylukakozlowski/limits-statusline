@@ -14,6 +14,20 @@ test('the full stdin fixture maps onto the mockup snapshot', () => {
   assert.deepEqual(snapshot, MOCKUP);
 });
 
+// The status line page: `total_api_duration_ms` is the time spent waiting for API responses,
+// `total_duration_ms` the session's wall-clock time, which the status line no longer shows.
+test('the model time is the time spent waiting for API responses, not how long the session has run', () => {
+  const modelTimeOf = (cost) => snapshotFromStatusInput({ cost }, options).modelTimeMs;
+  assert.equal(modelTimeOf({ total_duration_ms: 30_600_000, total_api_duration_ms: 4_100_000 }), 4_100_000);
+  assert.equal(modelTimeOf({ total_duration_ms: 30_600_000, total_api_duration_ms: 0 }), 0);
+});
+
+test('without the API time the model time is unknown, even when the session duration is there', () => {
+  const modelTimeOf = (cost) => snapshotFromStatusInput({ cost }, options).modelTimeMs;
+  assert.equal(modelTimeOf({ total_duration_ms: 30_600_000 }), null);
+  assert.equal(modelTimeOf({ total_api_duration_ms: '4100000' }), null);
+});
+
 test('fast_mode is read as sent, and unknown when it is absent or no boolean', () => {
   const fastOf = (input) => snapshotFromStatusInput(input, options).fastMode;
   assert.equal(fastOf({ fast_mode: true }), true);

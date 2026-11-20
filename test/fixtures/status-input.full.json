@@ -13,8 +13,8 @@
   "output_style": { "name": "default" },
   "cost": {
     "total_cost_usd": 20.33,
-    "total_duration_ms": 20400000,
-    "total_api_duration_ms": 4100000,
+    "total_duration_ms": 30600000,
+    "total_api_duration_ms": 20400000,
     "total_lines_added": 156,
     "total_lines_removed": 23
   },

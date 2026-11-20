@@ -22,7 +22,7 @@ export { lineText } from './layout-segments.mjs';
  *   git: import('./git-status.mjs').GitState | null,
  *   modelName: string | null,
  *   costUsd: number | null,
- *   durationMs: number | null,
+ *   modelTimeMs: number | null,
  *   cacheHitRatio: number | null,
  *   promptCache: import('./prompt-cache.mjs').PromptCache | null,
  *   effort: string | null,
@@ -34,8 +34,9 @@ export { lineText } from './layout-segments.mjs';
  *   limitHistory: Pick<import('./limit-history.mjs').LimitHistory, 'readings' | 'seenAtMs'>,
  *   spendLimit: import('./metrics.mjs').SpendLimit | null,
  * }} Snapshot
- * `limits`: the session's own figures; `limitHistory`: what every session reported, for the pace
- * and for which windows the account has.
+ * `modelTimeMs`: how long the session waited for the model's responses, not how long it has been
+ * open; `limits`: the session's own figures; `limitHistory`: what every session reported, for the
+ * pace and for which windows the account has.
  * @typedef {import('./layout-segments.mjs').Segment} Segment
  * @typedef {import('./layout-segments.mjs').Line} Line
  */
@@ -77,11 +78,11 @@ function contextLine({ context, contextHistory }, size) {
   ];
 }
 
-function sessionLine({ costUsd, durationMs, cacheHitRatio, promptCache, effort, fastMode, linesChanged, nowMs }) {
+function sessionLine({ costUsd, modelTimeMs, cacheHitRatio, promptCache, effort, fastMode, linesChanged, nowMs }) {
   const indent = segment(' '.repeat(LABEL_WIDTH));
   const items = [
     Number.isFinite(costUsd) && [segment(formatUsd(costUsd), TONE.cost)],
-    Number.isFinite(durationMs) && [segment(formatDuration(durationMs), TONE.muted)],
+    Number.isFinite(modelTimeMs) && [segment(formatDuration(modelTimeMs), TONE.muted)],
     Number.isFinite(cacheHitRatio) && cacheSegments(cacheHitRatio, promptCache, nowMs),
     effort && [segment(effort, TONE.ok)],
     fastMode === true && [segment('fast', TONE.warn)],

@@ -36,7 +36,7 @@ export function snapshotFromStatusInput(input, { nowMs, git, contextHistory, tim
     git: git ?? null,
     modelName: prettyModelName(text(model.display_name) ?? text(model.id)),
     costUsd: number(cost.total_cost_usd),
-    durationMs: number(cost.total_duration_ms),
+    modelTimeMs: number(cost.total_api_duration_ms),
     cacheHitRatio: number(record(data.prompt_cache).hit_ratio) ?? cacheFromUsage(context.current_usage),
     promptCache: promptCacheState(data.prompt_cache),
     effort: text(record(data.effort).level),

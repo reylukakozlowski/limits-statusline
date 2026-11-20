@@ -115,7 +115,7 @@ test('fast mode shows after the effort in the warning colour, and only while it 
 
 test('layout keeps an empty session line in its place as a dash', () => {
   const noSession = {
-    ...MOCKUP, costUsd: null, durationMs: null, cacheHitRatio: null, effort: null, linesChanged: null,
+    ...MOCKUP, costUsd: null, modelTimeMs: null, cacheHitRatio: null, effort: null, linesChanged: null,
   };
   const { session, context } = byRole(buildLines(noSession, { columns: 120 }));
   assert.equal(lineText(session), '    —');
