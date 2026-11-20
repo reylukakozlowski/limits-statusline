@@ -1,7 +1,7 @@
 // Snapshot fixtures shared by core and adapter tests. MOCKUP encodes the approved mockup;
 // MOCKUP_LINES is the mockup as measured from its pixels (16-cell bars, the session line in the
 // bar column, a min→max line for the context history), with the session line moved up to sit
-// under the header so cost and runtime are read first, and the limit lines extended with the
+// under the header so cost and model time are read first, and the limit lines extended with the
 // usage projected to the reset and the reset's clock time. The 7-day projection leaves out the
 // night before the reset (Monday 02:00–07:00 UTC), so it is 69%, not the mockup's 71%.
 
@@ -14,7 +14,7 @@ export const MOCKUP = Object.freeze({
   git: { isRepo: false, branch: null, isDirty: false },
   modelName: 'Opus 5.5',
   costUsd: 20.33,
-  durationMs: 20_400_000,
+  modelTimeMs: 20_400_000,
   cacheHitRatio: 0.99,
   promptCache: { warm: true, expiresAtMs: NOW + 3_120_000 },
   effort: 'xhigh',
@@ -45,7 +45,7 @@ export const EMPTY = Object.freeze({
   git: null,
   modelName: null,
   costUsd: null,
-  durationMs: null,
+  modelTimeMs: null,
   cacheHitRatio: null,
   promptCache: null,
   effort: null,

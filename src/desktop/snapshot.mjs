@@ -23,7 +23,6 @@ export function snapshotFromSession({
   const figures = recordOf(usage);
   const state = tracker ?? initialTracker();
   const context = recordOf(figures.context);
-  const startedAt = numberOrNull(figures.startedAt);
   return {
     nowMs,
     timeZone,
@@ -31,7 +30,8 @@ export function snapshotFromSession({
     git: state.git ?? null,
     modelName: prettyModelName(modelRaw),
     costUsd: numberOrNull(recordOf(figures.cost).usd),
-    durationMs: startedAt !== null && nowMs >= startedAt ? nowMs - startedAt : null,
+    // The band times each model request itself (tracker.mjs withModelTime).
+    modelTimeMs: numberOrNull(tracker?.modelTimeMs),
     cacheHitRatio: cacheHitRatio({
       inputTokens: state.cache.input,
       cacheCreationTokens: state.cache.creation,

@@ -5,6 +5,7 @@ export type LimitsTracker = {
   cache: { input: number; creation: number; read: number }
   lastTurn: { atMs: number; isCached: boolean } | null
   history: number[]
+  modelTimeMs: number
   git: { isRepo: boolean; branch: string | null; isDirty: boolean } | null
 }
 

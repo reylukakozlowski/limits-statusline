@@ -1,22 +1,23 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  afterClear, initialTracker, withContext, withEffort, withGit, withTurnUsage,
+  afterClear, initialTracker, withContext, withEffort, withGit, withModelTime, withTurnUsage,
 } from '../../src/desktop/tracker.mjs';
 
 test('afterClear starts the conversation figures over and keeps what still holds', () => {
   const git = { isRepo: true, branch: 'develop', isDirty: false };
   const busy = {
-    effort: 'xhigh', cache: { input: 5, creation: 1, read: 90 }, lastTurn: { atMs: 5, isCached: true }, cacheTtl: '1h', history: [10, 20], git,
+    effort: 'xhigh', cache: { input: 5, creation: 1, read: 90 }, lastTurn: { atMs: 5, isCached: true }, cacheTtl: '1h', history: [10, 20],
+    modelTimeMs: 42_000, git,
   };
   assert.deepEqual(afterClear(busy), {
-    effort: 'xhigh', cache: { input: 0, creation: 0, read: 0 }, lastTurn: null, cacheTtl: null, history: [], git,
+    effort: 'xhigh', cache: { input: 0, creation: 0, read: 0 }, lastTurn: null, cacheTtl: null, history: [], modelTimeMs: 0, git,
   });
 });
 
 test('initialTracker knows nothing yet', () => {
   assert.deepEqual(initialTracker(), {
-    effort: null, cache: { input: 0, creation: 0, read: 0 }, lastTurn: null, cacheTtl: null, history: [], git: null,
+    effort: null, cache: { input: 0, creation: 0, read: 0 }, lastTurn: null, cacheTtl: null, history: [], modelTimeMs: 0, git: null,
   });
 });
 
@@ -68,4 +69,28 @@ test('withContext and withGit update their own fields', () => {
   assert.equal(withContext(tracker, 54), tracker);
   const git = { isRepo: true, branch: 'develop', isDirty: false };
   assert.deepEqual(withGit(tracker, git).git, git);
+});
+
+// A model request from the moment the band hands it on to the moment its response has come back.
+test('withModelTime adds how long a model request took', () => {
+  const once = withModelTime(initialTracker(), 1_000, 43_000);
+  assert.equal(once.modelTimeMs, 42_000);
+  assert.equal(withModelTime(once, 50_000, 50_500).modelTimeMs, 42_500);
+});
+
+test('withModelTime adds nothing for a request that took no time', () => {
+  assert.equal(withModelTime(initialTracker(), 5_000, 5_000).modelTimeMs, 0);
+  assert.equal(withModelTime(initialTracker(), 5_000, 5_001).modelTimeMs, 1);
+});
+
+test('withModelTime leaves the tracker as it was when the clock went back or gave no time', () => {
+  const tracker = withModelTime(initialTracker(), 0, 9_000);
+  assert.equal(withModelTime(tracker, 5_000, 4_999), tracker);
+  assert.equal(withModelTime(tracker, NaN, 5_000), tracker);
+  assert.equal(withModelTime(tracker, 5_000, null), tracker);
+});
+
+test('withModelTime starts from zero on a tracker kept by a version of the band without model time', () => {
+  const { modelTimeMs: _dropped, ...older } = initialTracker();
+  assert.equal(withModelTime(older, 0, 3_000).modelTimeMs, 3_000);
 });

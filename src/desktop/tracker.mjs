@@ -1,5 +1,5 @@
 // What the desktop band learns from events, as pure reducers: effort from each main-loop
-// model request, cache counts, cache lifetime and the time of each main-loop turn, the context
+// model request, how long every model request took, cache counts, cache lifetime and the time of each main-loop turn, the context
 // fill after each turn, and the last git answer. Subagent traffic is ignored, like the terminal's prompt_cache.
 
 import { HISTORY_MAX_POINTS, appendPoint } from '../core/history.mjs';
@@ -12,15 +12,20 @@ import { numberOrNull } from '../core/values.mjs';
  *   lastTurn: import('../core/prompt-cache.mjs').LastTurn | null,
  *   cacheTtl: '5m' | '1h' | null,
  *   history: number[],
+ *   modelTimeMs: number,
  *   git: import('../core/git-status.mjs').GitState | null,
  * }} Tracker
  * `cacheTtl`: the lifetime of the main conversation's last cache write, as the API reported it;
  * null until a turn reports one (an engine that does not split cache writes by lifetime never does).
+ * `modelTimeMs`: the time the session's model requests took, subagents' included, as the terminal's
+ * `cost.total_api_duration_ms` counts the time spent waiting for API responses.
  */
 
 /** @returns {Tracker} */
 export function initialTracker() {
-  return { effort: null, cache: { input: 0, creation: 0, read: 0 }, lastTurn: null, cacheTtl: null, history: [], git: null };
+  return {
+    effort: null, cache: { input: 0, creation: 0, read: 0 }, lastTurn: null, cacheTtl: null, history: [], modelTimeMs: 0, git: null,
+  };
 }
 
 /** @param {Tracker} tracker @param {{ effort?: unknown, agentId?: string }} step `turn.step` input */
@@ -29,6 +34,20 @@ export function withEffort(tracker, step) {
   const level = step?.effort;
   const effort = typeof level === 'string' ? level : Number.isFinite(level) ? String(level) : null;
   return effort === tracker.effort ? tracker : { ...tracker, effort };
+}
+
+/**
+ * Adds the time a model request took, from when the band handed it on to when its response had
+ * come back. A clock that went back or gave no time adds nothing.
+ * @param {Tracker} tracker
+ * @param {unknown} startedAtMs
+ * @param {unknown} endedAtMs
+ */
+export function withModelTime(tracker, startedAtMs, endedAtMs) {
+  const started = numberOrNull(startedAtMs);
+  const ended = numberOrNull(endedAtMs);
+  if (started === null || ended === null || ended < started) return tracker;
+  return { ...tracker, modelTimeMs: (numberOrNull(tracker.modelTimeMs) ?? 0) + (ended - started) };
 }
 
 /**
@@ -71,8 +90,8 @@ export function withContext(tracker, percent, maxPoints = HISTORY_MAX_POINTS) {
 }
 
 /**
- * After /clear the conversation starts over: its cache counts, last turn and context history
- * go, while the effort setting and the git state still hold.
+ * After /clear the conversation starts over: its cache counts, last turn, model time and context
+ * history go, while the effort setting and the git state still hold.
  * @param {Tracker} tracker
  */
 export function afterClear(tracker) {

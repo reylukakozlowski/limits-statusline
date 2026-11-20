@@ -29,18 +29,18 @@ const failing = async () => { throw new Error('denied') }
 
 type Answers = {
   processRun?: ($: any, e: any) => Promise<unknown>, files?: Record<string, string>, folders?: string[], cwd?: string,
-  asked?: string[], refuse?: boolean, writeFails?: boolean, usage?: Record<string, unknown>,
+  asked?: string[], refuse?: boolean, writeFails?: boolean, usage?: Record<string, unknown>, now?: () => number,
 }
 
 function answerSession(on: any, {
   processRun, files = {}, folders = [], cwd = `${HOME_DIR}/daily-claude`, asked = [], refuse = false, writeFails = false,
-  usage = USAGE,
+  usage = USAGE, now = () => NOW,
 }: Answers = {}) {
   on('session.usage', async () => ({ value: usage }))
   on('session.model', async () => ({ value: 'claude-opus-5-5' }))
   on('session.cwd', async () => ({ value: cwd }))
   on('session.id', async () => ({ value: 'session-under-test' }))
-  on('clock.now', async () => ({ value: NOW }))
+  on('clock.now', async () => ({ value: now() }))
   on('session.version', async () => ({ value: { version: '2.1.299' } }))
   on('env.get', refuse ? failing : async ($: any, e: any) => ({ value: e.name === 'USERPROFILE' ? HOME_DIR : undefined }))
   on('settings.read', refuse ? failing : async () => ({ value: {} }))
@@ -274,6 +274,58 @@ test("a subagent's request leaves the session's effort as it was", async ($, on)
   await ui.unmount()
 })
 
+// The session started 5h40m ago (USAGE.startedAt). The band times each model request itself, from
+// handing it on to its response having come back: here 24 s for the main loop's, 18 s for a subagent's.
+const answerStepsTaking = (on: any, clock: { time: number }) => on('turn.step', async function* ($: any, e: any) {
+  clock.time += e.agentId ? 18_000 : 24_000
+  yield { kind: 'text', index: 0, text: 'the answer' }
+  return { turnId: e.turnId, index: e.index, answer: 'the answer', toolUses: [] }
+})
+
+test('shows the time the model requests took, a subagent\'s included, not how long the session has run', async ($, on) => {
+  const clock = { time: NOW }
+  answerSession(on, { now: () => clock.time })
+  answerStepsTaking(on, clock)
+  await step($, { effort: 'xhigh' })
+  await step($, { effort: 'low', agentId: 'agent-1' })
+  const ui = await mount($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /42s/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /5h40m/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a model request that fails still counts the time it took', async ($, on) => {
+  const clock = { time: NOW }
+  answerSession(on, { now: () => clock.time })
+  on('turn.step', async function* () {
+    clock.time += 9_000
+    throw new Error('overloaded')
+  })
+  let failed = false
+  try {
+    await step($, { effort: 'xhigh' })
+  } catch {
+    failed = true
+  }
+  expect(failed).toBe(true)
+  const ui = await mount($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /\$20\.33 · 9s/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('/clear starts the model time over', async ($, on) => {
+  const clock = { time: NOW }
+  answerSession(on, { now: () => clock.time })
+  answerStepsTaking(on, clock)
+  on('session.end', async ($: any, e: any) => ({ sessionId: e.sessionId }))
+  await step($, { effort: 'xhigh' })
+  await $.session.end({ reason: 'clear', sessionId: 'session-under-test', resume: { id: 'session-under-test' } })
+  const ui = await mount($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /24s/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /\$20\.33 · 0s/ })).toBeDefined()
+  await ui.unmount()
+})
+
 test('a history file that cannot be written leaves the band drawn', async ($, on) => {
   answerSession(on, { writeFails: true })
   await $.session.measure({ context: { tokens: 0, window: 1_000_000, percent: 54 }, rateLimits: USAGE.rateLimits, changed: ['rateLimits'] } as never)
@@ -360,7 +412,7 @@ test('behind a gateway draws the spend limit and no line for the plan windows it
   const ui = await mount($, 'desktop')
   expect(await ui.find({ type: 'Text', text: /^usd/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /63%/ })).toBeDefined()
-  // The labels are padded to four cells; `5h40m` is the session's runtime.
+  // The labels are padded to four cells, so `5h` here is a line's label, not a time.
   expect(await ui.find({ type: 'Text', text: /^7d {2}/ })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /^5h {2}/ })).toBeUndefined()
   await ui.unmount()

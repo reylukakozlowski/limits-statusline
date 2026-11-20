@@ -7,7 +7,7 @@ answers, at a glance, "how close am I to my limits, and will I hit them before t
 the 5-hour and the weekly (7-day) limit it shows the usage now and where your current pace takes
 it by the reset, the time and clock time of the reset, and the pace itself. When that pace would
 pass 100% before the window resets, the limit turns red and says when it runs out. Next to the
-limits it shows the session's cost, runtime, prompt-cache hit ratio and how long the cache stays
+limits it shows the session's cost, model time, prompt-cache hit ratio and how long the cache stays
 warm, effort and lines changed, the project, git branch and model, and how full the context
 window is. The banner above shows the five lines of a sample session.
 
@@ -117,7 +117,7 @@ and the command above restores it as long as the plugin is installed.
 | Item | Source | Meaning |
 |---|---|---|
 | cost | `cost.total_cost_usd` | Session cost in US dollars with two decimals, estimated by Claude Code at list price; resets on `/clear` |
-| `5h40m` | `cost.total_duration_ms` | How long the session has been running (desktop: since the session first started) |
+| `5h40m` | `cost.total_api_duration_ms` | Model time: how long the session waited for the model's responses, not how long it has been open. Commands, tests and background tasks are not counted. The desktop band times each model request itself, a subagent's included, and starts over on `/clear` |
 | `cache 99%` | `prompt_cache.hit_ratio` | Share of input tokens served from the prompt cache |
 | `52m` / `cold` | `prompt_cache.expires_at` | How long the prompt cache stays warm without a new prompt (yellow in its last 5 minutes), or that it went cold and the next prompt rebuilds it |
 | `xhigh` | `effort.level` | Reasoning effort of the session (desktop: shown after the first request) |
@@ -217,9 +217,9 @@ it from the directory, `-sealoop` when you added it from GitHub.
     upward, as git does. In a git worktree `.git` is a file that names the worktree's git folder,
     and the band reads `HEAD` there, unless the file names a folder on another computer.
   - **What it reads:** the session's figures from Claude Code (context fill, plan limits, cost,
-    runtime, model, working folder, session id and version); from each model request (a
-    `turn.step` hook) only the effort level, handing the request and the response on unchanged
-    without looking at their text; from each finished turn only its token counts, for the cache
+    model, working folder, session id and version); from each model request (a `turn.step` hook)
+    only the effort level and, from the clock, how long the request took until its response came
+    back, handing the request and the response on unchanged without looking at their text; from each finished turn only its token counts, for the cache
     ratio and the cache's lifetime; the plan limit history file; where `git` gives no answer, whether Claude Code has the session
     in a git repository and the session's `.git/HEAD` (in a worktree, its `.git` file and the
     `HEAD` file in the folder it names); until a turn has reported the cache's lifetime, the

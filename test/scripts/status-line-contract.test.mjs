@@ -132,7 +132,7 @@ test('the fields the plugin leaves unread on purpose are what keeps documented o
   const { newFields } = check(PAGE, { unread: [] });
   // The fixture's documented fields that the contract does not list, counted by hand.
   assert.deepEqual(newFields, [
-    'context_window.current_usage.output_tokens', 'context_window.total_output_tokens', 'prompt_cache.ttl',
+    'context_window.current_usage.output_tokens', 'context_window.total_output_tokens', 'cost.total_duration_ms', 'prompt_cache.ttl',
     'version', 'workspace.repo.host', 'workspace.repo.owner',
   ]);
 });

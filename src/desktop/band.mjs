@@ -17,7 +17,9 @@ import { cacheTtlFromEngine, observedCacheTtlMs } from './cache-ttl.mjs';
 import { configFolderFor, unreadableFileWatch, withMeasuredLimits } from './limit-history.mjs';
 import { shouldDraw, supportsTypography } from './policy.mjs';
 import { snapshotFromSession } from './snapshot.mjs';
-import { afterClear, initialTracker, withContext, withEffort, withGit, withTurnUsage } from './tracker.mjs';
+import {
+  afterClear, initialTracker, withContext, withEffort, withGit, withModelTime, withTurnUsage,
+} from './tracker.mjs';
 
 const tracker = atom({ plugin: 'limits-statusline', key: 'tracker' }, initialTracker());
 
@@ -35,9 +37,17 @@ export function registerBand(on, options) {
     return next(e);
   });
 
+  // Every model request, a subagent's too: its effort, and how long it took until its response had
+  // come back, whether it ended in an answer, an error or an interrupt.
   on('turn.step', async function* ($, e, next) {
     await update($, tracker, (state) => withEffort(state ?? initialTracker(), e));
-    return yield* next(e);
+    const startedAtMs = await $.clock.now();
+    try {
+      return yield* next(e);
+    } finally {
+      const endedAtMs = await $.clock.now();
+      await update($, tracker, (state) => withModelTime(state ?? initialTracker(), startedAtMs, endedAtMs));
+    }
   });
 
   on('turn.complete', async ($, e, next) => {

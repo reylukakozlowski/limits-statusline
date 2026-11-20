@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { snapshotFromSession } from '../../src/desktop/snapshot.mjs';
+import { initialTracker } from '../../src/desktop/tracker.mjs';
 import { MOCKUP, EMPTY, NOW } from '../fixtures/snapshots.mjs';
 
 const iso = (ms) => new Date(ms).toISOString();
@@ -23,6 +24,7 @@ const TRACKER = Object.freeze({
   cache: { input: 10, creation: 0, read: 990 },
   lastTurn: { atMs: NOW - 480_000, isCached: true }, // 8 minutes ago: 52 minutes of a one-hour cache left
   history: [...MOCKUP.contextHistory],
+  modelTimeMs: 20_400_000,
   git: MOCKUP.git,
 });
 
@@ -85,7 +87,15 @@ test('a window whose reset time has passed is dropped, as Claude Code drops it f
   assert.equal(snapshotFromSession({ usage, modelRaw: null, cwd: null, tracker: null, nowMs: NOW }).limits.fiveHour, null);
 });
 
-test('a session started in the future reads as no duration', () => {
-  const usage = { ...USAGE, startedAt: NOW + 1000 };
-  assert.equal(snapshotFromSession({ usage, modelRaw: null, cwd: null, tracker: null, nowMs: NOW }).durationMs, null);
+// The band measures the model time itself; when the session started says nothing about it.
+test('the model time is the tracker\'s, not the time since the session started', () => {
+  const tracker = { ...TRACKER, modelTimeMs: 42_000 };
+  assert.equal(snapshotFromSession({ ...SOURCES, tracker }).modelTimeMs, 42_000);
+});
+
+test('the model time is zero before any request, and unknown without a tracker or in one from before the band measured it', () => {
+  assert.equal(snapshotFromSession({ ...SOURCES, tracker: initialTracker() }).modelTimeMs, 0);
+  assert.equal(snapshotFromSession({ ...SOURCES, tracker: null }).modelTimeMs, null);
+  const { modelTimeMs: _dropped, ...older } = TRACKER;
+  assert.equal(snapshotFromSession({ ...SOURCES, tracker: older }).modelTimeMs, null);
 });
