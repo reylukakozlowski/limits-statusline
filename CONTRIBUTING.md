@@ -28,13 +28,13 @@ which `sh`, Git Bash, PowerShell and Node.js all read, and the only program it s
 
 The **Tests** workflow ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)) runs
 `npm test` on `macos-latest`, `ubuntu-latest` and `windows-latest`, with Node.js 24, for each pull
-request into `develop`. A draft gets no run at all: the `pull_request` trigger has no draft filter
+request into `develop`. A draft runs nothing: its jobs are skipped, though GitHub still lists a
+skipped run, since the `pull_request` trigger has no draft filter
 ([GitHub Docs](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request),
-read on 2026-11-21), so only `ready_for_review` starts the workflow, and marking the pull request
-ready for review runs the three systems. A push to a pull request that is already ready runs
-nothing: convert it to a draft and mark it ready again (`gh pr ready --undo`, push, `gh pr ready`),
-or after GitHub's **Update branch** button, **Convert to draft** and **Ready for review**, to test
-the new commit. One system failing does not stop the
+read on 2026-11-21). Marking the pull request ready for review runs the three systems, and every
+push after that runs them again, GitHub's **Update branch** button included. Starting the workflow
+only on `ready_for_review`, tried on 2026-11-21 (LS-97), was dropped the same day: a push to a
+ready pull request then left the required checks "Expected". One system failing does not stop the
 others, so each one reports its own result. The workflow can only read the repository and holds
 no secret; `test/scripts/tests-workflow.test.mjs` pins all of that. The Release workflow runs the
 tests once more, on Linux, before it tags.
