@@ -49,7 +49,7 @@ export function snapshotFromStatusInput(input, { nowMs, git, contextHistory, tim
     },
     contextHistory: Array.isArray(contextHistory) ? contextHistory : [],
     limits: limitsFromStatusInput(data),
-    limitHistory: { readings: limitHistory.readings, seenAtMs: limitHistory.seenAtMs },
+    limitHistory: { readings: limitHistory.readings, seenAtMs: limitHistory.seenAtMs, activity: limitHistory.activity ?? [] },
     spendLimit: spendLimitFromStatusInput(data),
   };
 }

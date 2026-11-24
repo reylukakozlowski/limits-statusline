@@ -1,7 +1,9 @@
 // The recent pace of a plan limit: how fast its usage grew over the window's look-back, read
 // from the shared readings (limit-history.mjs). Readings of earlier windows count too, so the
-// 7-day pace can look back a whole day across the weekly reset.
+// 7-day pace can look back a whole day across the weekly reset. The pace of work is the same
+// growth over the time the sessions worked (activity.mjs).
 
+import { activeMsBetween, activityStartMs } from './activity.mjs';
 import { isSameWindow } from './limit-history.mjs';
 import { minPaceSpanMs } from './limit-windows.mjs';
 import { MS_PER_HOUR } from './time.mjs';
@@ -32,6 +34,30 @@ export function recentRate(points, reading, window, nowMs) {
   const fromMs = Math.max(nowMs - window.paceLookbackMs, series[0][0]);
   if (nowMs - fromMs < minPaceSpanMs(window)) return null;
   return (series.at(-1)[1] - valueAt(series, fromMs)) / ((nowMs - fromMs) / MS_PER_HOUR);
+}
+
+/**
+ * Usage per hour of work over the same look-back: the rise divided by the time the sessions
+ * worked in it, not by the clock. Null for a window that has no pace of work, and when the
+ * record holds too little work. The look-back starts no earlier than the record of work does,
+ * so usage from before it is never divided by work that was not recorded.
+ * @param {LimitPoint[]} points the shared readings of this kind of window
+ * @param {import('./activity.mjs').ActivitySpan[]} activity when the sessions worked
+ * @param {LimitReading | null} reading the session's own figure
+ * @param {LimitWindow} window
+ * @param {number} nowMs
+ * @returns {number | null}
+ */
+export function workRate(points, activity, reading, window, nowMs) {
+  if (window.minWorkSpanMs === null) return null;
+  if (!reading || !Number.isFinite(reading.percentUsed) || !Number.isFinite(reading.resetsAtMs)) return null;
+  const recordedFromMs = activityStartMs(activity);
+  if (recordedFromMs === null) return null;
+  const series = cumulativeUsage(seriesPoints(pointsUpTo(points, nowMs), reading, window, nowMs));
+  const fromMs = Math.max(nowMs - window.paceLookbackMs, series[0][0], recordedFromMs);
+  const workedMs = activeMsBetween(activity, fromMs, nowMs);
+  if (workedMs < window.minWorkSpanMs) return null;
+  return (series.at(-1)[1] - valueAt(series, fromMs)) / (workedMs / MS_PER_HOUR);
 }
 
 /**

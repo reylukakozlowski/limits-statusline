@@ -2,6 +2,8 @@
 // gateway's spend limit.
 //   7d  ■■■■■■□□□□□□□□□□ 39% →  69%  ↻ 3d04h Mon 12:10  ↗ 0.4%/h
 //   usd ■■■■■■■■■■□□□□□□ 63%  $314.12/$500.00  ↻ 12d04h Wed 12:10
+// A limit that runs out before its reset also says when: `⚠ 100% in 1h17m` on the clock, and for
+// the week `⚠ 100% in ~26m of work`.
 
 import { DASH, formatClock, formatCountdown, formatPercent, formatRate, formatUsd } from './format.mjs';
 import {
@@ -55,7 +57,9 @@ function planRows({ limits, limitHistory, nowMs, timeZone }) {
     .filter(({ kind }) => accountHasWindow(limits?.[kind] ?? null, limitHistory?.seenAtMs?.[kind], nowMs))
     .map(({ name, kind }) => {
       const reading = limits?.[kind] ?? null;
-      const analysis = analyzeLimit(reading, LIMIT_WINDOWS[kind], clock, limitHistory?.readings?.[kind] ?? []);
+      const analysis = analyzeLimit(
+        reading, LIMIT_WINDOWS[kind], clock, limitHistory?.readings?.[kind] ?? [], limitHistory?.activity ?? [],
+      );
       const clockText = formatClock(reading?.resetsAtMs, clock);
       return {
         name,
@@ -97,10 +101,15 @@ function planLine({ name, analysis, projectionText: projection }, { size, detail
     segment(GAP),
     segment(`↗ ${formatRate(analysis.ratePerHour)}`, rateTone),
     ...(details.showLimitIn && analysis.limitInMs !== null
-      ? [segment(GAP), segment(`⚠ 100% in ${formatCountdown(analysis.limitInMs)}`, TONE.alert)]
+      ? [segment(GAP), segment(`⚠ 100% in ${limitInText(analysis)}`, TONE.alert)]
       : []),
   ];
 }
+
+// The time of work where it is known, marked as an estimate: `~26m of work`. Else the time on
+// the clock: `1h17m`.
+const limitInText = ({ limitInMs, limitInWorkMs }) =>
+  (limitInWorkMs === null ? formatCountdown(limitInMs) : `~${formatCountdown(limitInWorkMs)} of work`);
 
 /**
  * A gateway's spend limit: its share, the amounts when they were sent, and the reset. No pace or

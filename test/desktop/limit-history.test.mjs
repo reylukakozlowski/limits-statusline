@@ -50,6 +50,17 @@ test('a measurement adds the plan figures and the session, and ignores other win
   assert.deepEqual(Object.keys(next.sessions), ['session-1']);
 });
 
+// NOW opens a five-minute bucket (activity.mjs).
+test('a measurement marks that the session worked just now, with or without new plan figures', () => {
+  const first = withMeasuredLimits(EMPTY_LIMIT_HISTORY, { sessionId: 'session-1', rateLimits: [fiveHour(12, RESET)], nowMs: NOW });
+  assert.deepEqual(first.activity, [[NOW, NOW + 300_000]]);
+  const later = withMeasuredLimits(first, { sessionId: 'session-1', rateLimits: null, nowMs: NOW + 300_000 });
+  assert.deepEqual(later.activity, [[NOW, NOW + 600_000]]);
+  assert.equal(later.readings, first.readings);
+  // An account without a plan window keeps no record of work.
+  assert.equal(withMeasuredLimits(EMPTY_LIMIT_HISTORY, { sessionId: 'session-1', rateLimits: null, nowMs: NOW }), EMPTY_LIMIT_HISTORY);
+});
+
 test('the same figure again, or a window whose reset has passed, leaves the history as it was', () => {
   const once = withMeasuredLimits(EMPTY_LIMIT_HISTORY, { sessionId: 'session-1', rateLimits: [fiveHour(12, RESET)], nowMs: NOW });
   assert.equal(withMeasuredLimits(once, { sessionId: 'session-1', rateLimits: [fiveHour(12, RESET)], nowMs: NOW + 60_000 }), once);

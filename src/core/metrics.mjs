@@ -1,8 +1,8 @@
 // Plan-limit arithmetic: the recent pace (pace.mjs) extended to the reset, less the window's
-// pause before it (limit-windows.mjs), the time left until the limit runs out at that pace, and
-// the prompt-cache hit ratio.
+// pause before it (limit-windows.mjs), the time left until the limit runs out at that pace, on
+// the clock and in hours of work, and the prompt-cache hit ratio.
 
-import { currentPercent, recentRate } from './pace.mjs';
+import { currentPercent, recentRate, workRate } from './pace.mjs';
 import { MS_PER_HOUR } from './time.mjs';
 
 /** Usage at which a limit runs out. */
@@ -14,10 +14,13 @@ export const FULL_PERCENT = 100;
  *   a Claude apps gateway's spend limit: the share used (past 100 once exceeded), its reset, and
  *   the amounts in US dollars when they were sent
  * @typedef {{ percentUsed: number, remainingMs: number | null, ratePerHour: number | null,
- *             projectedPercent: number | null, limitInMs: number | null }} LimitAnalysis
+ *             projectedPercent: number | null, limitInMs: number | null,
+ *             limitInWorkMs: number | null }} LimitAnalysis
  * `remainingMs` runs to the reset; the projection counts no growth during the pause before it.
  * `limitInMs` is the time on the clock until the limit runs out, the pause counted as time in
  * which nothing is used; it is set only when that happens before the reset.
+ * `limitInWorkMs` is the time of work until then, at the pace of work (pace.mjs); it is set only
+ * with `limitInMs`, for a window that has a pace of work and enough work on record.
  * @typedef {{ startMs: number, endMs: number }} Pause
  * A stretch before the reset in which the usage does not grow, all of it still to come:
  * now < `startMs` < `endMs` <= the reset.
@@ -28,12 +31,13 @@ export const FULL_PERCENT = 100;
  * @param {import('./limit-windows.mjs').LimitWindow} window
  * @param {import('./zone-time.mjs').Clock} clock now, and the zone the window's pause follows
  * @param {import('./limit-history.mjs').LimitPoint[]} [points] shared readings of this kind
+ * @param {import('./activity.mjs').ActivitySpan[]} [activity] when the sessions worked
  * @returns {LimitAnalysis | null} null when there is no usable usage figure
  */
-export function analyzeLimit(reading, window, clock, points = []) {
+export function analyzeLimit(reading, window, clock, points = [], activity = []) {
   if (!reading || !Number.isFinite(reading.percentUsed)) return null;
   const { nowMs } = clock;
-  const unknown = { ratePerHour: null, projectedPercent: null, limitInMs: null };
+  const unknown = { ratePerHour: null, projectedPercent: null, limitInMs: null, limitInWorkMs: null };
   if (!Number.isFinite(reading.resetsAtMs)) return { percentUsed: reading.percentUsed, remainingMs: null, ...unknown };
   const percentUsed = currentPercent(points, reading, nowMs);
   const remainingMs = Math.max(0, reading.resetsAtMs - nowMs);
@@ -41,13 +45,29 @@ export function analyzeLimit(reading, window, clock, points = []) {
   if (ratePerHour === null) return { percentUsed, remainingMs, ...unknown };
   const pause = window.pauseBeforeReset(reading.resetsAtMs, clock);
   const usableMs = remainingMs - pausedMs(pause);
+  const limitInMs = timeUntilFull(percentUsed, ratePerHour, usableMs, pause, nowMs);
   return {
     percentUsed,
     remainingMs,
     ratePerHour,
     projectedPercent: percentUsed + ratePerHour * (usableMs / MS_PER_HOUR),
-    limitInMs: timeUntilFull(percentUsed, ratePerHour, usableMs, pause, nowMs),
+    limitInMs,
+    limitInWorkMs: limitInMs === null
+      ? null
+      : workUntilFull(percentUsed, workRate(points, activity, reading, window, nowMs), limitInMs),
   };
+}
+
+/**
+ * The work left at the pace of work. Work is never slower than the clock, which also counts the
+ * breaks, so a figure past the time on the clock comes from a record that does not fit the
+ * readings, and is left out.
+ * @param {number} percentUsed @param {number | null} workRatePerHour @param {number} limitInMs
+ */
+function workUntilFull(percentUsed, workRatePerHour, limitInMs) {
+  if (workRatePerHour === null || !(workRatePerHour > 0)) return null;
+  const workMs = ((FULL_PERCENT - percentUsed) / workRatePerHour) * MS_PER_HOUR;
+  return workMs <= limitInMs ? workMs : null;
 }
 
 /** @param {Pause | null} pause */

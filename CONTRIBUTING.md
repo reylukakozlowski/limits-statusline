@@ -11,6 +11,7 @@ npm run test:coverage    # the same with coverage
 npm run test:mod         # the desktop band, run by the engine itself (Claude Code 2.1.299+)
 claude plugin validate .  # manifest, hooks module and state contract
 npm run simulate:pace    # the Monte Carlo comparison behind the pace look-backs
+npm run simulate:limit-time  # the same for the ways to tell the time until the week is used up
 ```
 
 `npm run test:mod` needs a `claude` of 2.1.299 or later. When the one on `PATH` is older, run

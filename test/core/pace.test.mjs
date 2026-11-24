@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { RESET_DROP_PERCENT, currentPercent, recentRate } from '../../src/core/pace.mjs';
+import { RESET_DROP_PERCENT, currentPercent, recentRate, workRate } from '../../src/core/pace.mjs';
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -136,4 +136,44 @@ test('currentPercent takes the newest reading of the same window, else the sessi
   assert.equal(currentPercent([], five(40), NOW), 40);
   assert.equal(currentPercent([at(5, 1)], five(40), NOW), 1); // a manual reset another session already saw
   assert.equal(currentPercent([at(5, 45), [NOW + MINUTE, 90, FIVE_RESET]], five(40), NOW), 45);
+});
+
+// A week that resets in ten hours: 92% a day ago, 99% now.
+const WEEK = Object.freeze({ windowMs: 7 * 24 * HOUR, paceLookbackMs: 24 * HOUR, minWorkSpanMs: HOUR });
+const WEEK_RESET = NOW + 10 * HOUR;
+const week = (percentUsed) => ({ percentUsed, resetsAtMs: WEEK_RESET });
+const weekAt = (hoursAgo, percent) => [NOW - hoursAgo * HOUR, percent, WEEK_RESET];
+const worked = (fromHoursAgo, toHoursAgo) => [NOW - fromHoursAgo * HOUR, NOW - toHoursAgo * HOUR];
+const DAY_OF_READINGS = [weekAt(24, 92), weekAt(0, 99)];
+
+test('the pace of work is the rise over the hours worked, not over the clock', () => {
+  // Seven points in a day with three hours of work: 0.29%/h on the clock, 2.33%/h of work.
+  const activity = [worked(24, 22), worked(1, 0)];
+  near(recentRate(DAY_OF_READINGS, week(99), WEEK, NOW), 7 / 24);
+  near(workRate(DAY_OF_READINGS, activity, week(99), WEEK, NOW), 7 / 3);
+});
+
+test('work from before the look-back does not count, nor does the part of a span after now', () => {
+  const activity = [worked(30, 25), worked(25, 23), [NOW - HOUR, NOW + 2 * HOUR]];
+  near(workRate(DAY_OF_READINGS, activity, week(99), WEEK, NOW), 7 / 2); // 24h–23h ago and the last hour
+});
+
+test('a pace of work needs an hour of work in the look-back', () => {
+  const justUnder = [worked(1, 5 / 60)]; // 55 minutes
+  assert.equal(workRate(DAY_OF_READINGS, justUnder, week(99), WEEK, NOW), null);
+  near(workRate(DAY_OF_READINGS, [worked(1, 0)], week(99), WEEK, NOW), (7 / 24) / 1); // the rise since the work began
+  assert.equal(workRate(DAY_OF_READINGS, [], week(99), WEEK, NOW), null);
+});
+
+test('when the record of work starts inside the look-back, only the usage since then is counted', () => {
+  // 92% a day ago, 96% twelve hours ago, 99% now; work is on record for the last twelve hours.
+  const points = [weekAt(24, 92), weekAt(12, 96), weekAt(0, 99)];
+  near(workRate(points, [worked(12, 11), worked(2, 1)], week(99), WEEK, NOW), 3 / 2);
+});
+
+test('a window whose time to 100% runs on the clock has no pace of work', () => {
+  const clockOnly = { ...WEEK, minWorkSpanMs: null };
+  assert.equal(workRate(DAY_OF_READINGS, [worked(3, 0)], week(99), clockOnly, NOW), null);
+  assert.equal(workRate(DAY_OF_READINGS, [worked(3, 0)], null, WEEK, NOW), null);
+  assert.equal(workRate(DAY_OF_READINGS, [worked(3, 0)], { percentUsed: 99, resetsAtMs: null }, WEEK, NOW), null);
 });

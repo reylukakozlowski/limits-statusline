@@ -6,7 +6,11 @@
 // so it is stamped now. A figure the session reports for the first time may be old (a session
 // left open before the history existed, or forgotten since), so it is stamped with the
 // session's last response: stamping it "now" would put an old figure after newer ones.
+//
+// The file also keeps when the sessions worked (activity.mjs): the time of each session's last
+// response, which the pace of work divides the usage by.
 
+import { markActive, pruneActivity, readActivity } from './activity.mjs';
 import { LIMIT_KINDS, LIMIT_WINDOWS, retentionMs } from './limit-windows.mjs';
 import { MS_PER_MINUTE } from './time.mjs';
 
@@ -45,7 +49,9 @@ export const SAME_WINDOW_TOLERANCE_MS = 10 * MS_PER_MINUTE;
  * @typedef {{ atMs: number, fiveHour: SeenFigure | null, sevenDay: SeenFigure | null }} SessionSeen
  * @typedef {{ fiveHour: number | null, sevenDay: number | null }} LimitSeen when each kind of
  *   window was last reported by any session, null when never
- * @typedef {{ readings: LimitReadings, sessions: Record<string, SessionSeen>, seenAtMs: LimitSeen }} LimitHistory
+ * @typedef {{ readings: LimitReadings, sessions: Record<string, SessionSeen>, seenAtMs: LimitSeen,
+ *             activity: import('./activity.mjs').ActivitySpan[] }} LimitHistory
+ *   `activity`: when the sessions worked, kept as long as the oldest readings
  * @typedef {{ fiveHour: import('./metrics.mjs').LimitReading | null,
  *             sevenDay: import('./metrics.mjs').LimitReading | null }} Limits
  */
@@ -55,6 +61,7 @@ export const EMPTY_LIMIT_HISTORY = Object.freeze({
   readings: Object.freeze({ fiveHour: Object.freeze([]), sevenDay: Object.freeze([]) }),
   sessions: Object.freeze({}),
   seenAtMs: Object.freeze({ fiveHour: null, sevenDay: null }),
+  activity: Object.freeze([]),
 });
 
 /** @param {number} a @param {number} b reset times */
@@ -64,15 +71,32 @@ const isPercent = (value) => Number.isFinite(value) && value >= 0;
 const isUsableReading = (reading) => isPercent(reading?.percentUsed) && Number.isFinite(reading?.resetsAtMs);
 
 /**
- * Adds the session's readings that differ from what it reported last, prunes what is too old.
+ * Adds the session's readings that differ from what it reported last and the time it last
+ * worked, prunes what is too old.
  * @param {LimitHistory} history
  * @param {{ sessionId: unknown, limits: Limits | null, nowMs: number, lastResponseAtMs?: number | null }} update
- *   `lastResponseAtMs`: when the session's last response arrived, if known; it stamps figures the
- *   session reports for the first time
+ *   `limits`: null when the session has no new figures to report; `lastResponseAtMs`: when the
+ *   session's last response arrived, if known; it stamps figures the session reports for the
+ *   first time and marks that time as worked
  * @returns {LimitHistory} `history` itself when nothing was added
  */
 export function recordLimits(history, { sessionId, limits, nowMs, lastResponseAtMs = null }) {
-  if (typeof sessionId !== 'string' || sessionId === '' || !limits) return history;
+  if (typeof sessionId !== 'string' || sessionId === '') return history;
+  const withReadings = limits ? recordReadings(history, { sessionId, limits, nowMs, lastResponseAtMs }) : history;
+  return recordActivity(withReadings, { nowMs, lastResponseAtMs });
+}
+
+// Work is recorded only for an account that has a plan window: without one nothing reads it.
+function recordActivity(history, { nowMs, lastResponseAtMs }) {
+  const hasPlanWindow = LIMIT_KINDS.some((kind) => Number.isFinite(history.seenAtMs[kind]));
+  if (!hasPlanWindow || !Number.isFinite(lastResponseAtMs)) return history;
+  const known = history.activity ?? [];
+  const cutoffMs = nowMs - Math.max(...Object.values(HISTORY_RETENTION_MS));
+  const activity = pruneActivity(markActive(known, Math.min(lastResponseAtMs, nowMs)), cutoffMs);
+  return activity === known ? history : { ...history, activity };
+}
+
+function recordReadings(history, { sessionId, limits, nowMs, lastResponseAtMs }) {
   const seen = history.sessions[sessionId];
   const changed = LIMIT_KINDS.filter((kind) => isUsableReading(limits[kind]) && !isSameFigure(seen?.[kind], limits[kind]));
   if (changed.length === 0) return history;
@@ -89,7 +113,7 @@ export function recordLimits(history, { sessionId, limits, nowMs, lastResponseAt
     seenAtMs[kind] = nowMs;
   }
   const sessions = keepRecentSessions({ ...history.sessions, [sessionId]: { atMs: nowMs, ...figures } }, nowMs);
-  return { readings, sessions, seenAtMs };
+  return { ...history, readings, sessions, seenAtMs };
 }
 
 function isSameFigure(figure, reading) {
@@ -149,7 +173,7 @@ export function readLimitHistory(text) {
   const sessions = Object.fromEntries(Object.entries(data.sessions ?? {})
     .filter(([, session]) => isSession(session))
     .map(([id, { atMs, fiveHour = null, sevenDay = null }]) => [id, { atMs, fiveHour, sevenDay }]));
-  return { readings, sessions, seenAtMs: seenFrom(data.seenAtMs, readings) };
+  return { readings, sessions, seenAtMs: seenFrom(data.seenAtMs, readings), activity: readActivity(data.activity) };
 }
 
 // A file written before the times were kept has none: the newest reading of a kind stands in.
