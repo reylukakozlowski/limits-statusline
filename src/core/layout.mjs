@@ -31,7 +31,8 @@ export { lineText } from './layout-segments.mjs';
  *   context: { usedTokens: number | null, windowTokens: number | null, percent: number | null },
  *   contextHistory: number[],
  *   limits: { sevenDay: LimitReading | null, fiveHour: LimitReading | null },
- *   limitHistory: Pick<import('./limit-history.mjs').LimitHistory, 'readings' | 'seenAtMs'>,
+ *   limitHistory: Pick<import('./limit-history.mjs').LimitHistory, 'readings' | 'seenAtMs'>
+ *     & { activity?: import('./activity.mjs').ActivitySpan[] },
  *   spendLimit: import('./metrics.mjs').SpendLimit | null,
  * }} Snapshot
  * `modelTimeMs`: how long the session waited for the model's responses, not how long it has been

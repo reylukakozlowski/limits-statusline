@@ -57,10 +57,14 @@ export function registerBand(on, options) {
   });
 
   // A measurement names what moved since the last one, so a plan figure recorded here was
-  // observed just now: the shared history gets it with the right time.
+  // observed just now: the shared history gets it with the right time. Anything that moved came
+  // with a response, so the history also gets that the session worked just now.
   on('session.measure', async ($, e, next) => {
     await update($, tracker, (state) => withContext(state ?? initialTracker(), e.context?.percent));
-    if (e.changed?.includes('rateLimits')) await recordMeasuredLimits($, e.rateLimits, await $.clock.now(), historyFile);
+    if (e.changed?.length > 0) {
+      const rateLimits = e.changed.includes('rateLimits') ? e.rateLimits : null;
+      await recordMeasuredLimits($, rateLimits, await $.clock.now(), historyFile);
+    }
     await refreshGit($);
     return next(e);
   });
@@ -196,7 +200,8 @@ async function loadLimitHistory($) {
 }
 
 /**
- * Adds this session's plan figures, measured just now, to the shared history.
+ * Adds what a measurement found to the shared history: that the session worked just now, and its
+ * plan figures (`rateLimits`, null when they did not move).
  * @param {ReturnType<typeof unreadableFileWatch>} historyFile since when the file could not be read
  */
 async function recordMeasuredLimits($, rateLimits, nowMs, historyFile) {

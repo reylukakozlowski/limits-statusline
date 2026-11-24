@@ -50,7 +50,7 @@ export function snapshotFromSession({
     },
     contextHistory: [...state.history],
     limits: limitsFromRateLimits(figures.rateLimits, nowMs),
-    limitHistory: { readings: limitHistory.readings, seenAtMs: limitHistory.seenAtMs },
+    limitHistory: { readings: limitHistory.readings, seenAtMs: limitHistory.seenAtMs, activity: limitHistory.activity ?? [] },
     spendLimit: spendLimitFromRateLimits(figures.rateLimits, nowMs),
   };
 }

@@ -17,6 +17,7 @@ test('the workflow is called Tests and runs only for pull requests into develop'
   const triggers = section('on', 'permissions');
   assert.deepEqual(triggers.match(/^ {2}[\w-]+:/gm), ['  pull_request:']);
   assert.match(triggers, /^ {4}branches: \[develop\]$/m);
+  // synchronize: a push to a ready pull request (also GitHub's Update branch) runs the required checks again.
   assert.match(triggers, /^ {4}types: \[opened, synchronize, reopened, ready_for_review\]$/m);
 });
 

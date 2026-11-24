@@ -3,6 +3,8 @@
 Effective 20 October 2026. This statement covers the Limits Status Line plugin for Claude Code
 (`limits-statusline`), wherever you install it from: Anthropic's directory or GitHub.
 
+Changed 24 November 2026: the plan limit history also keeps when your sessions worked.
+
 Limits Status Line runs entirely on your computer.
 
 ## What it collects and sends
@@ -38,7 +40,8 @@ All of it stays on your computer, as the next two sections describe.
   (a `turn.step` hook), times the request from the clock, and hands the request and the response on
   without looking at their text.
 - The time the session's transcript file was last written (its modification time only, never
-  its contents), to stamp a plan limit reading with when it arrived.
+  its contents), to stamp a plan limit reading with when it arrived and to mark that time as
+  one in which you worked.
 - From local `git`, the current branch and whether tracked files changed. Where `git` gives no
   answer (it is missing, takes too long or refuses the folder), the branch is read from the
   repository's own `.git/HEAD` instead; in a git worktree, from its `.git` file and the `HEAD`
@@ -60,7 +63,7 @@ Everything stays on your computer, under `~/.claude` (or `CLAUDE_CONFIG_DIR` whe
 | What | Where | Kept |
 |---|---|---|
 | Context fill history: one list of percentages per session | `plugins/data/limits-statusline-<source>/history/` | Pruned after 7 days |
-| Plan limit history: the 5-hour and 7-day usage percentages with their time and reset time, each session's id with the last figures it reported, and when each of the two windows was last reported, shared by the status line and the desktop band | `limits-statusline/limit-history.json` | Whenever a reading is added, readings older than 1 hour (5-hour) or 48 hours (7-day) are pruned except the newest of them, and sessions not seen for 48 hours or beyond the 64 most recent; the file stays until you delete it |
+| Plan limit history: the 5-hour and 7-day usage percentages with their time and reset time, each session's id with the last figures it reported, when each of the two windows was last reported, and when your sessions worked (the start and end of each stretch of work, to five minutes; not what was worked on), shared by the status line and the desktop band | `limits-statusline/limit-history.json` | Whenever a reading is added, readings older than 1 hour (5-hour) or 48 hours (7-day) are pruned except the newest of them, and sessions not seen for 48 hours or beyond the 64 most recent; whenever work is marked, stretches that ended more than 48 hours ago are pruned; the file stays until you delete it |
 | A copy of the plugin's status line code with a fingerprint of that code, and a setup marker with the path of the `settings.json` setup changed | `plugins/data/limits-statusline-<source>/` | Until you uninstall the plugin |
 | The desktop band's figures (effort, cache counts and lifetime, context history, git state with the branch name) | The session state Claude Code holds for the plugin's mod | For the session; the plugin keeps none of it beyond the session |
 | The `statusLine` entry | `settings.json` | Until `/limits-statusline:setup --uninstall` |

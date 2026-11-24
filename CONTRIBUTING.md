@@ -11,6 +11,7 @@ npm run test:coverage    # the same with coverage
 npm run test:mod         # the desktop band, run by the engine itself (Claude Code 2.1.299+)
 claude plugin validate .  # manifest, hooks module and state contract
 npm run simulate:pace    # the Monte Carlo comparison behind the pace look-backs
+npm run simulate:limit-time  # the same for the ways to tell the time until the week is used up
 ```
 
 `npm run test:mod` needs a `claude` of 2.1.299 or later. When the one on `PATH` is older, run
@@ -28,8 +29,13 @@ which `sh`, Git Bash, PowerShell and Node.js all read, and the only program it s
 
 The **Tests** workflow ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)) runs
 `npm test` on `macos-latest`, `ubuntu-latest` and `windows-latest`, with Node.js 24, for each pull
-request into `develop`. A draft runs nothing; marking the pull request ready for review runs the
-three systems, and every push after that runs them again. One system failing does not stop the
+request into `develop`. A draft runs nothing: its jobs are skipped, though GitHub still lists a
+skipped run, since the `pull_request` trigger has no draft filter
+([GitHub Docs](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request),
+read on 2026-11-21). Marking the pull request ready for review runs the three systems, and every
+push after that runs them again, GitHub's **Update branch** button included. Starting the workflow
+only on `ready_for_review`, tried on 2026-11-21 (LS-97), was dropped the same day: a push to a
+ready pull request then left the required checks "Expected". One system failing does not stop the
 others, so each one reports its own result. The workflow can only read the repository and holds
 no secret; `test/scripts/tests-workflow.test.mjs` pins all of that. The Release workflow runs the
 tests once more, on Linux, before it tags.
@@ -48,9 +54,10 @@ Some tests depend on the system they run on:
 `npm run test:mod` needs Claude Code, so the Tests workflow does not run it; the Compatibility
 workflow below runs the same tests every second day. Neither workflow shows how the lines look:
 the status line in a macOS terminal (Terminal.app, iTerm2) and the desktop band in the macOS app
-have not been checked by hand yet. To make the three `npm test on …` checks required before a
-merge, the owner adds them to the `develop` ruleset (Settings → Rules → Rulesets → protect develop
-→ Require status checks to pass).
+have not been checked by hand yet. The three `npm test on …` checks are required before a merge
+(since 2026-11-21, the owner's decision): the `develop` ruleset lists them (Settings → Rules →
+Rulesets → protect develop → Require status checks to pass), so a commit the Tests workflow has
+not run on cannot be merged.
 
 ### Against the newest Claude Code
 
