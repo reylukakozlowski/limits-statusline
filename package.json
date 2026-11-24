@@ -11,7 +11,8 @@
     "test:coverage": "node --test --experimental-test-coverage \"test/**/*.test.mjs\"",
     "release": "node scripts/release.mjs",
     "test:mod": "claude plugin test .",
-    "simulate:pace": "node scripts/pace-simulation.mjs"
+    "simulate:pace": "node scripts/pace-simulation.mjs",
+    "simulate:limit-time": "node scripts/limit-time-simulation.mjs"
   },
   "author": "Luka Kozlowski <lukakozlowski@sealoop.com>",
   "license": "MIT"

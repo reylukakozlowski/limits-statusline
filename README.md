@@ -124,7 +124,7 @@ and the command above restores it as long as the plugin is installed.
 | `fast` | `fast_mode` | Shown in yellow while [fast mode](https://code.claude.com/docs/en/fast-mode) is on, which costs more than standard speed (terminal only) |
 | `+156 -23` | `cost.total_lines_added`, `total_lines_removed` | Lines of code added and removed in the session (terminal only) |
 | `ctx 54% 543k/1.0M` | `context_window` | Context window fill; the line shows how it moved during the session |
-| `7d` / `5h` | `rate_limits` | The weekly (7-day) and 5-hour plan limits: usage now `→` projected at the reset, `↻` time and clock time of the reset, `↗` pace, `⚠` when the limit runs out before the reset. A window the account has not been sent for a week has no line |
+| `7d` / `5h` | `rate_limits` | The weekly (7-day) and 5-hour plan limits: usage now `→` projected at the reset, `↻` time and clock time of the reset, `↗` pace, `⚠` when the limit runs out before the reset (for the week, after how much work). A window the account has not been sent for a week has no line |
 | `usd` | `rate_limits.spend_limit` | Behind a Claude apps gateway: the share of your spend limit used (past 100% once exceeded), your spend and the limit in dollars when the gateway sends them (terminal only), and `↻` the reset of its period. No pace or projection |
 
 **Pace** is how fast the usage grew recently, shown per hour: over the last **30 minutes** for the
@@ -148,8 +148,16 @@ again, for whoever works on through it. The `↻` countdown always shows the res
 without a known time zone nothing is left out.
 
 Colours: green below 80% projected, yellow from 80% to 100%, **red above 100%** or when the limit
-is used up; then `⚠ 100% in 1h17m` says when it runs out at the current pace, for the 7-day limit
-with that night skipped. The reset's clock time is in your computer's time zone, with the weekday
+is used up; then `⚠ 100% in 1h17m` says when it runs out at the current pace. For the 7-day limit
+that time is counted in **work**: `⚠ 100% in ~26m of work`. A week is used up in the hours you
+work, a few a day, and the pace of the last 24 hours counts the nights and breaks too: with 1%
+left it can say "in 3h26m" of a limit that half an hour of work uses up. So the plugin keeps
+when your sessions worked (five-minute marks, taken from the time of each response) and divides
+the usage of the last 24 hours by that time. The figure is an estimate, hence the `~`: Claude
+Code reports the usage in whole percents, so near the end of the limit the real time can be
+shorter, and usage on claude.ai or on another computer is counted while its time is not, which
+also makes the figure err on the early side. Until an hour of work is on record the line shows
+the time on the clock instead, with the night before the reset skipped. The reset's clock time is in your computer's time zone, with the weekday
 when it is more than a day away. On a narrow screen the clock time goes first, then the `⚠` part.
 The context bar is green below 50%, orange to 80% and red above. The context line is scaled from
 its lowest to its highest point, so it shows the shape of the trend; the percentage next to the
@@ -188,9 +196,10 @@ it from the directory, `-sealoop` when you added it from GitHub.
   `history/` (pruned after 7 days). Where git gives no answer, it reads the branch from the
   repository's `.git/HEAD`, as the band does.
 - **Plan limit history** (status line and desktop band alike): the 5-hour and 7-day percentages
-  with their time and reset time, each session's last figures, and when each of the two windows
-  was last reported, in `~/.claude/limits-statusline/limit-history.json`. The readings are kept
-  for 1 hour (5-hour) and 48 hours (7-day). A figure a session reports for the first time may be an old one, so the status line
+  with their time and reset time, each session's last figures, when each of the two windows
+  was last reported, and when your sessions worked (the start and end of each stretch, to five
+  minutes), in `~/.claude/limits-statusline/limit-history.json`. The readings are kept
+  for 1 hour (5-hour) and 48 hours (7-day), the times of work for 48 hours. A figure a session reports for the first time may be an old one, so the status line
   stamps it with the time the session's transcript was last written (the file's time only, never
   its contents).
 - **Setup** (`/limits-statusline:setup`): copies the status line runtime (the plugin's own
@@ -273,6 +282,9 @@ With `CLAUDE_CONFIG_DIR` set, these folders live there instead of `~/.claude`.
   With no history from before the weekly reset, the projection appears once the week is 12 hours
   old. Until the shared history covers a day, the pace is the average since the weekly reset,
   which early in the week counts mostly working hours, so the projection runs high at first.
+- **`⚠ 100% in 3h25m` on the `7d` line, without `of work`** — the time of work needs an hour of
+  work on record within the last 24 hours, so it appears after the first hour of work with this
+  version. Until then the line shows the time on the clock.
 - **Odd pace after switching accounts** — the shared history does not tell accounts apart; two
   accounts used in turn within a week mix their figures until the readings age out (48 hours).
 - **No effort or cache shown** — older Claude Code versions do not send them; update Claude Code.

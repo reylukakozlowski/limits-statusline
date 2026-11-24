@@ -41,11 +41,14 @@ export function unreadableFileWatch() {
 }
 
 /**
- * The history with this session's plan figures, measured just now; the same history when they
- * change nothing.
+ * The history with what a measurement that found something moved says: the session worked just
+ * now, and its plan figures when they are among what moved. The same history when that changes
+ * nothing.
  * @param {import('../core/limit-history.mjs').LimitHistory} history
- * @param {{ sessionId: unknown, rateLimits: unknown, nowMs: number }} measurement `session.measure`'s windows
+ * @param {{ sessionId: unknown, rateLimits: unknown, nowMs: number }} measurement `rateLimits`:
+ *   `session.measure`'s windows, null when they did not move
  */
 export function withMeasuredLimits(history, { sessionId, rateLimits, nowMs }) {
-  return recordLimits(history, { sessionId, limits: limitsFromRateLimits(rateLimits, nowMs), nowMs });
+  const limits = rateLimits === null ? null : limitsFromRateLimits(rateLimits, nowMs);
+  return recordLimits(history, { sessionId, limits, nowMs, lastResponseAtMs: nowMs });
 }

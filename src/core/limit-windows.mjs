@@ -9,10 +9,18 @@ import { MS_PER_DAY, MS_PER_HOUR, MS_PER_MINUTE } from './time.mjs';
  * The look-backs won a simulation of bursty work (`npm run simulate:pace`): 30 minutes keeps the
  * 5-hour colour right most often, and a whole day lets the 7-day pace include the nights.
  * @typedef {(resetsAtMs: number | null, clock: import('./zone-time.mjs').Clock) => import('./metrics.mjs').Pause | null} PauseRule
- * @typedef {{ windowMs: number, paceLookbackMs: number, bucketMs: number, pauseBeforeReset: PauseRule }} LimitWindow
+ * @typedef {{ windowMs: number, paceLookbackMs: number, bucketMs: number, pauseBeforeReset: PauseRule,
+ *             minWorkSpanMs: number | null }} LimitWindow
  * `bucketMs`: readings in one bucket of this length keep only the newest, which bounds the history.
  * `pauseBeforeReset`: the stretch before the reset that the projection leaves out. A 5-hour window
  * is used up in one sitting; the week's last night before its reset is not worked through.
+ * `minWorkSpanMs`: the least time of work within the look-back that a pace of work is read off
+ * (pace.mjs); null for a window whose time to 100% runs on the clock. A week is used up in the
+ * hours of work, a few a day, so its time to 100% is counted in them: the average of the last day
+ * said "in three and a half hours" of a limit that half an hour of work used up. Of the ways to
+ * tell that time that a simulation compared (`npm run simulate:limit-time`), the pace of work
+ * over the last day came closest. An hour of work is two or three of the whole percents the
+ * usage is reported in.
  */
 
 /** @type {PauseRule} */
@@ -21,9 +29,11 @@ const NO_PAUSE = () => null;
 export const LIMIT_WINDOWS = Object.freeze({
   fiveHour: Object.freeze({
     windowMs: 5 * MS_PER_HOUR, paceLookbackMs: 30 * MS_PER_MINUTE, bucketMs: MS_PER_MINUTE, pauseBeforeReset: NO_PAUSE,
+    minWorkSpanMs: null,
   }),
   sevenDay: Object.freeze({
     windowMs: 7 * MS_PER_DAY, paceLookbackMs: MS_PER_DAY, bucketMs: 5 * MS_PER_MINUTE, pauseBeforeReset: nightBeforeReset,
+    minWorkSpanMs: MS_PER_HOUR,
   }),
 });
 

@@ -363,6 +363,21 @@ test('a measurement of the context alone writes no history', async ($, on) => {
   expect(files[HISTORY_FILE]).toBeUndefined()
 })
 
+// NOW opens a five-minute bucket: the work is marked as that bucket.
+test('a measurement of the context alone marks the work once the history has plan figures', async ($, on) => {
+  const stored = {
+    version: 1, readings: { fiveHour: [], sevenDay: [[NOW - 600_000, 39, NOW + 274_200_000]] }, sessions: {},
+    seenAtMs: { fiveHour: null, sevenDay: NOW - 600_000 },
+  }
+  const files: Record<string, string> = { [HISTORY_FILE]: JSON.stringify(stored) }
+  answerSession(on, { files })
+  on('fs.read', async ($: any, e: any) => ({ value: files[fileKey(e.path)] ?? '' }))
+  await measure($, 54)
+  const history = JSON.parse(files[HISTORY_FILE] ?? 'null')
+  expect(history.activity).toEqual([[NOW, NOW + 300_000]])
+  expect(history.readings).toEqual(stored.readings)
+})
+
 test('draws the newest shared figure and the pace of the last half hour', async ($, on) => {
   const reset = NOW + 15_000_000
   const readings = { fiveHour: [[NOW - 3_600_000, 20, reset], [NOW - 1_800_000, 30, reset], [NOW - 60_000, 45, reset]], sevenDay: [] }

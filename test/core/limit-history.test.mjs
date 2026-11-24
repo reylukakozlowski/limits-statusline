@@ -152,7 +152,51 @@ test('readLimitHistory drops bad entries one by one and keeps the rest', () => {
     sessions: { a: { atMs: NOW, fiveHour: [12, FIVE_RESET], sevenDay: null } },
     // No times in the file (one written before they were kept): the newest reading stands in.
     seenAtMs: { fiveHour: NOW, sevenDay: null },
+    activity: [],
   });
+});
+
+// NOW lies on a five-minute boundary, so it opens a bucket.
+const BUCKET = 5 * MINUTE;
+
+test('a session that reports when it last responded marks that time as worked', () => {
+  const history = firstSeen(EMPTY_LIMIT_HISTORY, 'a', 12, NOW - 7 * MINUTE);
+  assert.deepEqual(history.activity, [[NOW - 2 * BUCKET, NOW - BUCKET]]);
+  // A response time ahead of this clock counts as now.
+  assert.deepEqual(firstSeen(EMPTY_LIMIT_HISTORY, 'a', 12, NOW + 30 * MINUTE).activity, [[NOW, NOW + BUCKET]]);
+  // Without a response time nothing is known about when the session worked.
+  assert.deepEqual(record(EMPTY_LIMIT_HISTORY, 'a', 12, NOW).activity, []);
+});
+
+test('work is marked without new figures too, and work in a marked bucket returns the same history', () => {
+  const known = firstSeen(EMPTY_LIMIT_HISTORY, 'a', 12, NOW);
+  const later = recordLimits(known, { sessionId: 'a', limits: null, nowMs: NOW + 6 * MINUTE, lastResponseAtMs: NOW + 6 * MINUTE });
+  assert.deepEqual(later.activity, [[NOW, NOW + 2 * BUCKET]]);
+  assert.equal(later.readings, known.readings);
+  assert.equal(recordLimits(later, { sessionId: 'a', limits: limits(12), nowMs: NOW + 8 * MINUTE, lastResponseAtMs: NOW + 8 * MINUTE }), later);
+});
+
+test('an account without a plan window keeps no record of work', () => {
+  const update = { sessionId: 'a', limits: { fiveHour: null, sevenDay: null }, nowMs: NOW, lastResponseAtMs: NOW };
+  assert.equal(recordLimits(EMPTY_LIMIT_HISTORY, update), EMPTY_LIMIT_HISTORY);
+  assert.equal(recordLimits(EMPTY_LIMIT_HISTORY, { ...update, limits: null }), EMPTY_LIMIT_HISTORY);
+});
+
+test('work older than the longest retention is pruned when new work is marked', () => {
+  const first = firstSeen(EMPTY_LIMIT_HISTORY, 'a', 12, NOW);
+  const afterMs = NOW + HISTORY_RETENTION_MS.sevenDay + BUCKET;
+  const later = recordLimits(first, { sessionId: 'a', limits: null, nowMs: afterMs, lastResponseAtMs: afterMs });
+  assert.deepEqual(later.activity, [[afterMs, afterMs + BUCKET]]);
+  // One millisecond earlier the first span still ends inside the retention.
+  const within = recordLimits(first, { sessionId: 'a', limits: null, nowMs: afterMs - 1, lastResponseAtMs: afterMs - 1 });
+  assert.deepEqual(within.activity, [[NOW, NOW + BUCKET], [afterMs - BUCKET, afterMs]]);
+});
+
+test('the record of work survives the file, and its malformed spans are dropped', () => {
+  const history = firstSeen(EMPTY_LIMIT_HISTORY, 'a', 12, NOW);
+  assert.deepEqual(readLimitHistory(serializeLimitHistory(history)), history);
+  const stored = JSON.stringify({ version: 1, activity: [[NOW, NOW + BUCKET], [NOW, 'x'], 'nope'] });
+  assert.deepEqual(readLimitHistory(stored).activity, [[NOW, NOW + BUCKET]]);
 });
 
 test('the history keeps when each kind of window was last reported, and reads it back', () => {
@@ -180,7 +224,7 @@ test('readLimitHistory tells a file that is no history of this version from an e
     assert.equal(readLimitHistory(text), null, String(text));
   }
   assert.deepEqual(readLimitHistory('{"version":1}'),
-    { readings: { fiveHour: [], sevenDay: [] }, sessions: {}, seenAtMs: { fiveHour: null, sevenDay: null } });
+    { readings: { fiveHour: [], sevenDay: [] }, sessions: {}, seenAtMs: { fiveHour: null, sevenDay: null }, activity: [] });
 });
 
 test('the empty history is frozen, so a caller cannot change it by accident', () => {

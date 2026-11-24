@@ -112,7 +112,7 @@ test('analyzeLimit skewed reset: a reset in the past means nothing remains and t
 
 test('analyzeLimit without a reset time keeps the usage but no countdown or rate', () => {
   assert.deepEqual(analyzeLimit({ percentUsed: 30, resetsAtMs: null }, SEVEN_DAY, clockAt(0)), {
-    percentUsed: 30, remainingMs: null, ratePerHour: null, projectedPercent: null, limitInMs: null,
+    percentUsed: 30, remainingMs: null, ratePerHour: null, projectedPercent: null, limitInMs: null, limitInWorkMs: null,
   });
 });
 
@@ -171,6 +171,56 @@ test('the 5-hour limit never leaves out the night', () => {
   const result = analyzeLimit({ percentUsed: 30, resetsAtMs: fourAm }, FIVE_HOUR, warsawAt(elevenPm), points);
   near(result.ratePerHour, 20, 1e-9);
   near(result.projectedPercent, 30 + 20 * 5, 1e-9);
+});
+
+// The evening the work pace was added for: Monday 2026-11-23 21:02 in Warsaw, the week resets on
+// Tuesday at 07:00, 92% a day ago and 99% now, three hours of work in that day.
+const MONDAY_2102 = Date.parse('2026-11-23T20:02:00Z');
+const RESET_0700 = Date.parse('2026-11-24T06:00:00Z');
+const LAST_DAY = [[MONDAY_2102 - 24 * HOUR, 92, RESET_0700], [MONDAY_2102, 99, RESET_0700]];
+const workedHours = (fromHoursAgo, toHoursAgo) => [MONDAY_2102 - fromHoursAgo * HOUR, MONDAY_2102 - toHoursAgo * HOUR];
+const THREE_HOURS_OF_WORK = [workedHours(24, 22), workedHours(1, 0)];
+const mondayEvening = (points, activity) =>
+  analyzeLimit({ percentUsed: 99, resetsAtMs: RESET_0700 }, SEVEN_DAY, warsawAt(MONDAY_2102), points, activity);
+
+test('the last percent of a week is 26 minutes of work away, though 3h26m at the pace of the whole day', () => {
+  const result = mondayEvening(LAST_DAY, THREE_HOURS_OF_WORK);
+  near(result.ratePerHour, 7 / 24, 1e-9);
+  near(result.limitInMs, (24 / 7) * HOUR, 1); // 1% at 0.29%/h, over before the night at 02:00
+  near(result.limitInWorkMs, (3 / 7) * HOUR, 1); // 1% at 7 points in 3 hours of work
+});
+
+test('without enough work on record the time to 100% stays the one on the clock', () => {
+  const result = mondayEvening(LAST_DAY, []);
+  near(result.limitInMs, (24 / 7) * HOUR, 1);
+  assert.equal(result.limitInWorkMs, null);
+  assert.equal(mondayEvening(LAST_DAY, [workedHours(0.5, 0)]).limitInWorkMs, null);
+});
+
+test('a limit that does not run out before the reset has no time of work either', () => {
+  // 80% a day ago and 81% now: 0.04%/h reaches 81.2% by 02:00.
+  const slow = [[MONDAY_2102 - 24 * HOUR, 80, RESET_0700], [MONDAY_2102, 81, RESET_0700]];
+  const result = analyzeLimit({ percentUsed: 81, resetsAtMs: RESET_0700 }, SEVEN_DAY, warsawAt(MONDAY_2102), slow, THREE_HOURS_OF_WORK);
+  assert.equal(result.limitInMs, null);
+  assert.equal(result.limitInWorkMs, null);
+});
+
+test('a time of work longer than the time on the clock is left out', () => {
+  // The record of work covers the last two hours, in which half a point was used: 0.25%/h of
+  // work is 4 hours for the last percent, while the day's 19 points say 1h16m on the clock.
+  const points = [[MONDAY_2102 - 24 * HOUR, 80, RESET_0700], [MONDAY_2102 - 2 * HOUR, 98.5, RESET_0700], [MONDAY_2102, 99, RESET_0700]];
+  const result = mondayEvening(points, [workedHours(2, 0)]);
+  near(result.limitInMs, (24 / 19) * HOUR, 1);
+  assert.equal(result.limitInWorkMs, null);
+});
+
+test('the 5-hour limit has no time of work: it is used up in one sitting', () => {
+  const points = [[-HOUR, 20, 3 * HOUR], [-0.5 * HOUR, 30, 3 * HOUR], [-0.1 * HOUR, 45, 3 * HOUR]];
+  const result = analyzeLimit({ percentUsed: 45, resetsAtMs: 3 * HOUR }, FIVE_HOUR, clockAt(0), points, [[-2 * HOUR, 0]]);
+  near(result.limitInMs, (55 / 30) * HOUR, 1);
+  assert.equal(result.limitInWorkMs, null);
+  assert.equal(FIVE_HOUR.minWorkSpanMs, null);
+  assert.equal(SEVEN_DAY.minWorkSpanMs, HOUR);
 });
 
 test('cacheHitRatio is cache reads over all input tokens', () => {

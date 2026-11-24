@@ -37,6 +37,17 @@ test('a second session adds to the same file; a repeat leaves the file untouched
   assert.deepEqual(readdirSync(join(file, '..')), ['limit-history.json']); // no temporary file left behind
 });
 
+// NOW opens a five-minute bucket (core/activity.mjs); the response came two minutes into it.
+test('the time of the last response is written to the file as work, once per bucket', (t) => {
+  const file = join(tempDir(t), 'limit-history.json');
+  const update = { sessionId: 'a', limits: limits(12), nowMs: NOW + 120_000, lastResponseAtMs: NOW + 120_000 };
+  assert.deepEqual(recordLimitHistory(file, update).activity, [[NOW, NOW + 300_000]]);
+  assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')).activity, [[NOW, NOW + 300_000]]);
+  const content = readFileSync(file, 'utf8');
+  recordLimitHistory(file, { ...update, nowMs: NOW + 240_000, lastResponseAtMs: NOW + 240_000 });
+  assert.equal(readFileSync(file, 'utf8'), content);
+});
+
 /** A file with `text`, last written `agoMs` before NOW. */
 function fileWritten(t, text, agoMs) {
   const file = join(tempDir(t), 'limit-history.json');

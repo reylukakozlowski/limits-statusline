@@ -45,10 +45,14 @@ test('mods API figures map onto the mockup snapshot, without the changed lines t
 });
 
 test('the shared limit readings passed in reach the snapshot', () => {
-  const limitHistory = { readings: { fiveHour: [[NOW, 12, NOW + 15_000_000]], sevenDay: [] }, sessions: {}, seenAtMs: { fiveHour: NOW, sevenDay: null } };
+  const limitHistory = {
+    readings: { fiveHour: [[NOW, 12, NOW + 15_000_000]], sevenDay: [] }, sessions: {}, seenAtMs: { fiveHour: NOW, sevenDay: null },
+    activity: [[NOW - 300_000, NOW]],
+  };
   const snapshot = snapshotFromSession({ ...SOURCES, limitHistory });
-  // The readings and the times, without the sessions: the layout needs no session ids.
-  assert.deepEqual(snapshot.limitHistory, { readings: limitHistory.readings, seenAtMs: limitHistory.seenAtMs });
+  // The readings, the times and the work, without the sessions: the layout needs no session ids.
+  assert.deepEqual(snapshot.limitHistory,
+    { readings: limitHistory.readings, seenAtMs: limitHistory.seenAtMs, activity: [[NOW - 300_000, NOW]] });
 });
 
 test('the cache state is estimated from the last turn and the lifetime, and unknown without either', () => {

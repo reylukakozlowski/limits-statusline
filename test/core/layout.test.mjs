@@ -232,6 +232,35 @@ test('the same week without a time zone runs to the reset: red, and when it runs
   assert.equal(segmentWith(sevenDay, '102%').tone, TONE.alert);
 });
 
+// Friday 20:00 UTC, the week resets on Saturday at 07:00: 92% a day ago, 99% now, 0.29%/h.
+const FRIDAY_20 = NOW + 12 * HOUR_MS;
+const SATURDAY_07 = FRIDAY_20 + 11 * HOUR_MS;
+const LAST_PERCENT = (activity) => ({
+  ...MOCKUP,
+  nowMs: FRIDAY_20,
+  limits: { ...MOCKUP.limits, sevenDay: { percentUsed: 99, resetsAtMs: SATURDAY_07 } },
+  limitHistory: {
+    ...withReadings({ fiveHour: [], sevenDay: [[FRIDAY_20 - DAY_MS, 92, SATURDAY_07], [FRIDAY_20, 99, SATURDAY_07]] }),
+    ...(activity ? { activity } : {}),
+  },
+});
+
+test('the 7-day line gives the time to 100% in work when the work is on record', () => {
+  // Three hours of work in the last day: 7 points in 3 hours, so the last percent is 25m43s.
+  const activity = [[FRIDAY_20 - DAY_MS, FRIDAY_20 - 22 * HOUR_MS], [FRIDAY_20 - HOUR_MS, FRIDAY_20]];
+  const { sevenDay } = byRole(buildLines(LAST_PERCENT(activity), { columns: 120 }));
+  assert.match(lineText(sevenDay), /99% → 101% {2}↻ 11h00m 07:00 {2}↗ 0\.3%\/h {2}⚠ 100% in ~25m of work$/);
+  assert.equal(segmentWith(sevenDay, 'of work').tone, TONE.alert);
+});
+
+test('without work on record the 7-day line gives the time on the clock, as before', () => {
+  // The last percent at 7 points a day: 3h25m43s.
+  for (const activity of [undefined, [], [[FRIDAY_20 - 30 * MINUTE_MS, FRIDAY_20]]]) {
+    const { sevenDay } = byRole(buildLines(LAST_PERCENT(activity), { columns: 120 }));
+    assert.match(lineText(sevenDay), /↗ 0\.3%\/h {2}⚠ 100% in 3h25m$/);
+  }
+});
+
 test('in the first 15 minutes of a window there is no projection yet, shown as a muted dash', () => {
   const limits = { ...MOCKUP.limits, fiveHour: { percentUsed: 2, resetsAtMs: NOW + 17_400_000 } };
   const { fiveHour } = byRole(buildLines({ ...MOCKUP, limits }, { columns: 120 }));
